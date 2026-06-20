@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Krewe Mystique de la Capitale</title>
+    <script>
+      (function () {
+        try {
+          var cachedHomeHero = localStorage.getItem('adminCachedImage:/:header#home|image');
+          if (cachedHomeHero) {
+            document.documentElement.style.setProperty('--home-hero-image', 'url("' + cachedHomeHero + '")');
+          }
+        } catch (_error) {
+          // Ignore localStorage errors in private browsing or restricted environments.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <header id="home" class="hero" data-admin-background-var="--admin-bg-image" style="--admin-bg-image: var(--home-hero-image, url('assets/images/2026_KM_RoyalCourt.jpeg'));">
+      <div class="hero-overlay"></div>
+      <div class="hero-content container">
+        <p class="eyebrow">Krewe Mystique de la Capitale</p>
+        <h1>Tradition in motion, modern by design.</h1>
+        <p class="hero-copy">
+          Discover the Royal Court, parade culture, veteran honors, and community
+          celebration that define the oldest parading krewe in Baton Rouge.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="/events.html">Explore Events</a>
+          <a class="button secondary" href="/contact.html">Contact Us</a>
+        </div>
+
+        <div class="countdown-card" aria-label="Countdown to next parade day">
+          <span class="label">Next Parade Day</span>
+          <div id="countdown" class="countdown-grid">
+            <div class="countdown-item">
+              <strong id="days">00</strong>
+              <small>Days</small>
+            </div>
+            <div class="countdown-item">
+              <strong id="hours">00</strong>
+              <small>Hours</small>
+            </div>
+            <div class="countdown-item">
+              <strong id="minutes">00</strong>
+              <small>Minutes</small>
+            </div>
+            <div class="countdown-item">
+              <strong id="seconds">00</strong>
+              <small>Seconds</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="about" class="section section-intro">
+        <div class="container grid-two">
+          <div>
+            <span class="section-tag">Oldest Parading Krewe</span>
+            <h2>Rolling since 1977 in Baton Rouge</h2>
+            <p>
+              Krewe Mystique de la Capitale celebrates history, honoring culture and
+              community every parade season. Our mission is to create meaningful
+              memories for members, guests, and veterans alike.
+            </p>
+            <a class="button outline" href="/history.html">Learn More</a>
+          </div>
+          <div class="intro-card">
+            <img src="assets/images/military_logos.jpg" alt="Military logos" />
+            <div>
+              <h3>Veteran Salute</h3>
+              <p>
+                Nominate a veteran to ride in the parade. Krewe Mystique provides a
+                special celebration and throws to non-member veterans every parade.
+              </p>
+              <a href="/veterans.html">Learn More</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+     
+
+    <footer class="footer">
+      <div class="container footer-grid">
+        <p>&copy; 2026 Krewe Mystique de la Capitale.</p>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

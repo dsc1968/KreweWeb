@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dashboard - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="section">
+        <div id="profile"></div>
+        <section style="margin-top:2rem;">
+          <h3>Member Resources</h3>
+          <p>Quick links and announcements will appear here for members.</p>
+          <ul>
+            <li><a href="/events.html">Upcoming Events</a></li>
+            <li><a href="/photos.html">Photos & Tableau</a></li>
+            <li><a href="/history.html">History</a></li>
+          </ul>
+        </section>
+        <section id="admin-tools" style="margin-top:2rem; display:none;">
+          <h3>Admin Tools</h3>
+          <p>Manage users on the dedicated admin page.</p>
+          <a id="open-user-management" class="button secondary" href="/user-management.html">Open User Management</a>
+        </section>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

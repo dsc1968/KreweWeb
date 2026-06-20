@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>User Management - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="admin-user-management-page" class="section" style="display:none;">
+        <h2>User Management</h2>
+        <p>Admins can add users, reset passwords, disable accounts, and delete users.</p>
+        <div id="admin-user-feedback" aria-live="polite"></div>
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-top:1rem;">
+          <p id="admin-user-summary" style="margin:0;"></p>
+          <label for="admin-user-filter">Show</label>
+          <select id="admin-user-filter" class="admin-user-select">
+            <option value="member">Members</option>
+            <option value="all">All Users</option>
+            <option value="admin">Admins</option>
+            <option value="disabled">Disabled</option>
+          </select>
+          <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+        </div>
+        <div style="overflow-x:auto; margin-top:1rem;">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Name</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Email</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Joined</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Role</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-user-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Register - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="auth-page">
+      <div class="auth-card container">
+        <h1>Create an account</h1>
+        <form id="register-form">
+          <label for="full_name">Full name</label>
+          <input id="full_name" name="full_name" required />
+
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required />
+
+          <div id="verification-code-group" hidden>
+            <label for="verification_code">Verification code</label>
+            <input id="verification_code" name="verification_code" inputmode="numeric" autocomplete="one-time-code" />
+          </div>
+
+          <p id="register-feedback" aria-live="polite"></p>
+
+          <button class="button primary" type="submit" id="register-submit-button">Send verification code</button>
+        </form>
+        <p>
+          Already have an account? <a href="/login.html">Log in</a>
+        </p>
+      </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>
