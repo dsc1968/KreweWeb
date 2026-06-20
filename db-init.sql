@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS element_overrides (
   font_style TEXT,
   text_transform TEXT,
   text_color TEXT,
+  background_color TEXT,
+  width_value TEXT,
+  height_value TEXT,
+  border_style TEXT,
+  border_width TEXT,
+  border_color TEXT,
+  border_radius TEXT,
+  position_mode TEXT,
+  pos_x INTEGER,
+  pos_y INTEGER,
   position INTEGER,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -58,6 +68,35 @@ CREATE TABLE IF NOT EXISTS page_sections (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS photo_albums (
+  id SERIAL PRIMARY KEY,
+  page_path TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  cover_image_path TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS album_images (
+  id SERIAL PRIMARY KEY,
+  album_id INTEGER NOT NULL REFERENCES photo_albums(id) ON DELETE CASCADE,
+  image_path TEXT NOT NULL,
+  caption TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS photo_albums_page_position_idx
+ON photo_albums (page_path, position);
+
+CREATE INDEX IF NOT EXISTS album_images_album_position_idx
+ON album_images (album_id, position);
 
 -- Demo seed accounts (run only once in development)
 -- To add these, uncomment and run in psql or via the seed endpoint

@@ -471,6 +471,187 @@ p {
   border-radius: 24px;
 }
 
+.media-albums-root {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.album-admin-toolbar {
+  display: none;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
+}
+
+body.admin-edit-mode .album-admin-toolbar {
+  display: flex;
+}
+
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.album-card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(8, 16, 42, 0.72);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.album-cover {
+  border-radius: 14px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: rgba(2, 8, 22, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.album-cover-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: rgba(219, 231, 255, 0.8);
+  font-size: 0.92rem;
+}
+
+.album-meta h3 {
+  margin: 0;
+}
+
+.album-meta p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.album-tools {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+body.admin-edit-mode .album-tools {
+  display: flex;
+}
+
+.album-tools button,
+.album-admin-toolbar button,
+.album-viewer-toolbar button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f7ff;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.album-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.8rem;
+}
+
+.album-photo-item {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(2, 8, 22, 0.82);
+}
+
+.album-photo-item img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+}
+
+.album-photo-caption {
+  font-size: 0.82rem;
+  color: #dbe7ff;
+  padding: 0.45rem 0.5rem 0.55rem;
+}
+
+.album-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 0;
+  padding: 1.25rem;
+  border-radius: 0;
+  border: none;
+  background: rgba(2, 8, 22, 0.94);
+}
+
+.album-lightbox-stage {
+  min-height: 70vh;
+  max-height: 96vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.5rem;
+}
+
+.album-lightbox-stage img {
+  max-width: min(92vw, 1700px);
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.album-lightbox-caption {
+  font-size: 0.9rem;
+  color: #dbe7ff;
+  text-align: center;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.album-lightbox-caption span {
+  font-size: 0.8rem;
+  color: rgba(219, 231, 255, 0.72);
+}
+
+.album-lightbox-nav {
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.album-lightbox-close {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.8rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.5rem;
+}
+
 .countdown-card {
   max-width: 100%;
   padding: 1.5rem;

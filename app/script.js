@@ -40,8 +40,8 @@ if (countdownElements.days) {
 }
 
 (function () {
-  const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, li, button, label, figcaption';
-  const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,li,button,label,figcaption';
+  const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, li, button, label, figcaption, td, th, div[data-admin-editable-target="text"]';
+  const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,li,button,label,figcaption,td,th,div[data-admin-editable-target="text"]';
   const state = {
     pagePath: normalizePagePath(window.location.pathname),
     profilePromise: null,
@@ -59,8 +59,24 @@ if (countdownElements.days) {
     calendarMonth: null,
     calendarDefaultYear: 2027,
     calendarDefaultMonth: 2,
+    freeDragMode: false,
+    freeDragHandlersBound: false,
+    draggingElement: null,
+    dragStartX: 0,
+    dragStartY: 0,
+    dragOriginX: 0,
+    dragOriginY: 0,
+    isAdmin: false,
+    albums: [],
+    albumImagesById: new Map(),
+    albumViewerModal: null,
+    albumViewerImages: [],
+    albumViewerIndex: -1,
+    albumViewerTitle: '',
+    albumUiBound: false,
   };
-  const nonEditablePagePaths = new Set(['/dashboard.html']);
+  const albumRootElementKey = 'media-albums-root|container';
+  const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
 
   function isPageEditable() {
     return !nonEditablePagePaths.has(state.pagePath);
@@ -110,6 +126,15 @@ if (countdownElements.days) {
     return {
       error: text.trim() || 'The server returned a non-JSON response. Restart the server and try again.',
     };
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function ensureContactStatusNode(form) {
@@ -186,6 +211,38 @@ if (countdownElements.days) {
 
   async function fetchElementOverrides() {
     const res = await fetch(`/api/element-overrides?page=${encodeURIComponent(state.pagePath)}`);
+    if (!res.ok) return [];
+    const data = await parseApiResponse(res);
+    return Array.isArray(data.items) ? data.items : [];
+  }
+
+  async function fetchAdminImageLibrary() {
+    const token = getStoredToken();
+    const res = await fetch('/api/admin/images', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) {
+      throw new Error(data.error || 'Unable to load image library');
+    }
+    return Array.isArray(data.items) ? data.items : [];
+  }
+
+  function isAlbumEnabledPage() {
+    return state.pagePath === '/photos.html' || state.pagePath === '/royal-court.html';
+  }
+
+  async function fetchAlbums() {
+    const res = await fetch(`/api/albums?page=${encodeURIComponent(state.pagePath)}`);
+    if (!res.ok) return [];
+    const data = await parseApiResponse(res);
+    return Array.isArray(data.items) ? data.items : [];
+  }
+
+  async function fetchAlbumImages(albumId) {
+    const res = await fetch(`/api/albums/${albumId}/images`);
     if (!res.ok) return [];
     const data = await parseApiResponse(res);
     return Array.isArray(data.items) ? data.items : [];
@@ -378,6 +435,16 @@ if (countdownElements.days) {
       fontStyle: patch.fontStyle ?? current.font_style ?? null,
       textTransform: patch.textTransform ?? current.text_transform ?? null,
       textColor: patch.textColor ?? current.text_color ?? null,
+      backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
+      widthValue: patch.widthValue ?? current.width_value ?? null,
+      heightValue: patch.heightValue ?? current.height_value ?? null,
+      borderStyle: patch.borderStyle ?? current.border_style ?? null,
+      borderWidth: patch.borderWidth ?? current.border_width ?? null,
+      borderColor: patch.borderColor ?? current.border_color ?? null,
+      borderRadius: patch.borderRadius ?? current.border_radius ?? null,
+      positionMode: patch.positionMode ?? current.position_mode ?? null,
+      posX: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
+      posY: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
       position: Number.isInteger(patch.position) ? patch.position : (Number.isInteger(current.position) ? current.position : null),
     };
 
@@ -415,6 +482,117 @@ if (countdownElements.days) {
     return data;
   }
 
+  async function createAlbum(payload) {
+    const token = getStoredToken();
+    const res = await fetch('/api/admin/albums', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        pagePath: state.pagePath,
+        title: payload.title,
+        description: payload.description || '',
+        coverImagePath: payload.coverImagePath || '',
+      }),
+    });
+
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to create album');
+    return data.item;
+  }
+
+  async function updateAlbum(albumId, payload) {
+    const token = getStoredToken();
+    const res = await fetch(`/api/admin/albums/${albumId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to update album');
+    return data.item;
+  }
+
+  async function deleteAlbum(albumId) {
+    const token = getStoredToken();
+    const res = await fetch(`/api/admin/albums/${albumId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to delete album');
+    return data;
+  }
+
+  async function reorderAlbums(orderedIds) {
+    const token = getStoredToken();
+    const res = await fetch('/api/admin/albums-reorder', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        pagePath: state.pagePath,
+        orderedIds,
+      }),
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to reorder albums');
+    return data;
+  }
+
+  async function createAlbumImage(albumId, payload) {
+    const token = getStoredToken();
+    const res = await fetch(`/api/admin/albums/${albumId}/images`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to add photo');
+    return data.item;
+  }
+
+  async function updateAlbumImage(albumId, imageId, payload) {
+    const token = getStoredToken();
+    const res = await fetch(`/api/admin/albums/${albumId}/images/${imageId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to update photo');
+    return data.item;
+  }
+
+  async function deleteAlbumImage(albumId, imageId) {
+    const token = getStoredToken();
+    const res = await fetch(`/api/admin/albums/${albumId}/images/${imageId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) throw new Error(data.error || 'Unable to delete photo');
+    return data;
+  }
+
   function initHeaderState() {
     const token = getStoredToken();
     const isLoggedIn = Boolean(token);
@@ -443,12 +621,40 @@ if (countdownElements.days) {
       existingAuthLink.remove();
     }
 
+    const existingDashboardLink = document.getElementById('nav-dashboard-link');
+    if (existingDashboardLink) {
+      existingDashboardLink.remove();
+    }
+
+    const existingLogoutLink = document.getElementById('nav-logout-link');
+    if (existingLogoutLink) {
+      existingLogoutLink.remove();
+    }
+
     if (nav && !isLoggedIn) {
       const authLink = document.createElement('a');
       authLink.id = 'nav-auth-link';
       authLink.href = '/login.html';
       authLink.textContent = 'Login';
       nav.appendChild(authLink);
+    } else if (nav && isLoggedIn) {
+      const dashboardLink = document.createElement('a');
+      dashboardLink.id = 'nav-dashboard-link';
+      dashboardLink.href = '/dashboard.html';
+      dashboardLink.textContent = 'Dashboard';
+
+      const logoutLink = document.createElement('a');
+      logoutLink.id = 'nav-logout-link';
+      logoutLink.href = '#';
+      logoutLink.textContent = 'Log Off';
+      logoutLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        localStorage.removeItem('krewe_token');
+        window.location.href = '/';
+      });
+
+      nav.appendChild(dashboardLink);
+      nav.appendChild(logoutLink);
     }
 
     const existingLoginActions = document.getElementById('login-actions');
@@ -456,7 +662,7 @@ if (countdownElements.days) {
       existingLoginActions.remove();
     }
 
-    if (headerInner && isLoggedIn) {
+    if (headerInner && isLoggedIn && !nav) {
       const actions = document.createElement('span');
       actions.id = 'login-actions';
       actions.style.display = 'inline-flex';
@@ -551,6 +757,7 @@ if (countdownElements.days) {
       section.dataset.adminSectionType = 'static';
       if (!section.dataset.adminBackgroundVar) {
         section.dataset.adminBackgroundVar = '--admin-section-bg';
+        section.dataset.adminBgVarAuto = 'true';
       }
     });
   }
@@ -589,6 +796,11 @@ if (countdownElements.days) {
       element.dataset.adminKey = key;
       state.registry.set(`image:${key}`, element);
     });
+
+    const albumsRoot = getAlbumsRoot();
+    if (albumsRoot && albumsRoot.dataset.adminKey) {
+      state.registry.set(`album-root:${albumsRoot.dataset.adminKey}`, albumsRoot);
+    }
   }
 
   function applyElementStyles(element, override) {
@@ -598,6 +810,65 @@ if (countdownElements.days) {
     element.style.fontStyle = override.font_style || '';
     element.style.textTransform = override.text_transform || '';
     element.style.color = override.text_color || '';
+    element.style.backgroundColor = override.background_color || '';
+    element.style.width = override.width_value || '';
+    element.style.height = override.height_value || '';
+    element.style.borderStyle = override.border_style || '';
+    element.style.borderWidth = override.border_width || '';
+    element.style.borderColor = override.border_color || '';
+    element.style.borderRadius = override.border_radius || '';
+
+    const isAbsolute = override.position_mode === 'absolute';
+    element.classList.toggle('admin-free-positioned', isAbsolute);
+    if (isAbsolute) {
+      if (element.dataset.adminEditable === 'album-root') {
+        ensureAlbumRootPlaceholder(element);
+      }
+      if (element.parentElement && window.getComputedStyle(element.parentElement).position === 'static') {
+        element.parentElement.style.position = 'relative';
+      }
+      element.style.position = 'absolute';
+      element.style.left = `${Number.isFinite(override.pos_x) ? override.pos_x : 0}px`;
+      element.style.top = `${Number.isFinite(override.pos_y) ? override.pos_y : 0}px`;
+      element.style.margin = '0';
+      element.style.zIndex = '9';
+    } else {
+      if (element.dataset.adminEditable === 'album-root') {
+        removeAlbumRootPlaceholder(element);
+      }
+      element.style.position = '';
+      element.style.left = '';
+      element.style.top = '';
+      element.style.margin = '';
+      element.style.zIndex = '';
+    }
+  }
+
+  function ensureAlbumRootPlaceholder(element) {
+    if (!element || element.dataset.adminEditable !== 'album-root' || !element.parentElement) return;
+
+    let placeholder = element.parentElement.querySelector('[data-admin-album-placeholder="true"]');
+    if (!placeholder) {
+      placeholder = document.createElement('div');
+      placeholder.dataset.adminAlbumPlaceholder = 'true';
+      element.parentElement.insertBefore(placeholder, element);
+    }
+
+    const styles = window.getComputedStyle(element);
+    placeholder.style.display = 'block';
+    placeholder.style.height = `${Math.max(1, element.offsetHeight)}px`;
+    placeholder.style.marginTop = styles.marginTop;
+    placeholder.style.marginRight = styles.marginRight;
+    placeholder.style.marginBottom = styles.marginBottom;
+    placeholder.style.marginLeft = styles.marginLeft;
+  }
+
+  function removeAlbumRootPlaceholder(element) {
+    if (!element || !element.parentElement) return;
+    const placeholder = element.parentElement.querySelector('[data-admin-album-placeholder="true"]');
+    if (placeholder) {
+      placeholder.remove();
+    }
   }
 
   function normalizeColorValue(value) {
@@ -936,10 +1207,7 @@ if (countdownElements.days) {
       const override = state.elementOverrides.get(key);
       setAdminHiddenState(element, override && override.hidden);
       if (!override) return;
-
-      if (element.dataset.adminEditable === 'text') {
-        applyElementStyles(element, override);
-      }
+      applyElementStyles(element, override);
     });
 
     getStaticSections().forEach((section) => {
@@ -1057,21 +1325,459 @@ if (countdownElements.days) {
       const media = document.createElement('div');
       media.className = 'dynamic-page-section-media';
 
-      const image = document.createElement('img');
-      image.src = withCacheBust(section.image_path, section.updated_at);
-      image.alt = section.title;
-      image.dataset.adminSectionId = String(section.id);
-      image.dataset.adminSectionField = 'image_path';
-      image.dataset.adminEditable = 'image';
-      image.dataset.adminImagePath = section.image_path;
+      if (section.image_path) {
+        const image = document.createElement('img');
+        image.src = withCacheBust(section.image_path, section.updated_at);
+        image.alt = section.title;
+        image.dataset.adminSectionId = String(section.id);
+        image.dataset.adminSectionField = 'image_path';
+        image.dataset.adminEditable = 'image';
+        image.dataset.adminImagePath = section.image_path;
+        media.appendChild(image);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'dynamic-page-section-image-placeholder';
+        placeholder.textContent = state.editMode ? 'Click to add an image' : 'Image removed';
+        placeholder.dataset.adminSectionId = String(section.id);
+        placeholder.dataset.adminSectionField = 'image_path';
+        placeholder.dataset.adminEditable = 'image';
+        placeholder.dataset.adminImagePath = '';
+        placeholder.style.minHeight = '220px';
+        placeholder.style.display = 'grid';
+        placeholder.style.placeItems = 'center';
+        placeholder.style.borderRadius = '18px';
+        placeholder.style.border = '1px dashed rgba(255, 210, 98, 0.5)';
+        placeholder.style.color = '#dbe7ff';
+        placeholder.style.background = 'rgba(8, 16, 42, 0.65)';
+        media.appendChild(placeholder);
+      }
 
-      media.appendChild(image);
       card.appendChild(copy);
       card.appendChild(media);
       container.appendChild(card);
       wrapper.appendChild(container);
       host.appendChild(wrapper);
     });
+  }
+
+  function getAlbumsRoot() {
+    if (!isAlbumEnabledPage()) return null;
+    const existing = document.getElementById('media-albums-root');
+    if (existing) {
+      existing.dataset.adminEditable = 'album-root';
+      existing.dataset.adminKey = albumRootElementKey;
+      return existing;
+    }
+
+    const main = document.querySelector('main');
+    const footer = document.querySelector('.footer');
+    if (!main) return null;
+
+    const root = document.createElement('div');
+    root.id = 'media-albums-root';
+    root.className = 'media-albums-root';
+    root.dataset.adminEditable = 'album-root';
+    root.dataset.adminKey = albumRootElementKey;
+    if (footer && footer.parentNode) {
+      footer.parentNode.insertBefore(root, footer);
+    } else {
+      main.appendChild(root);
+    }
+    return root;
+  }
+
+  async function loadAlbumImages(albumId, force) {
+    if (!force && state.albumImagesById.has(albumId)) {
+      return state.albumImagesById.get(albumId);
+    }
+    const items = await fetchAlbumImages(albumId);
+    state.albumImagesById.set(albumId, items);
+    return items;
+  }
+
+  function ensureAlbumViewerModal() {
+    if (state.albumViewerModal) return state.albumViewerModal;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'admin-editor-backdrop';
+    backdrop.innerHTML = `
+      <div class="admin-editor-modal" role="dialog" aria-modal="true" aria-labelledby="album-viewer-title" style="width:min(1200px,100%);max-height:95vh;overflow:auto;">
+        <h2 id="album-viewer-title">Album</h2>
+        <div class="album-viewer-toolbar" style="display:flex;justify-content:space-between;gap:0.6rem;align-items:center;margin:0 0 1rem;flex-wrap:wrap;">
+          <div id="album-viewer-subtitle" style="color:#b8c4e0;"></div>
+          <div style="display:flex;gap:0.5rem;">
+            <button type="button" data-action="upload-photo">Upload Photo</button>
+            <button type="button" data-action="close">Close</button>
+          </div>
+        </div>
+        <div id="album-lightbox" class="album-lightbox" style="display:none;">
+          <button type="button" class="album-lightbox-nav" data-action="lightbox-prev" aria-label="Previous photo">&lsaquo;</button>
+          <div class="album-lightbox-stage">
+            <img id="album-lightbox-image" src="" alt="Album photo" />
+            <div id="album-lightbox-caption" class="album-lightbox-caption"></div>
+          </div>
+          <button type="button" class="album-lightbox-nav" data-action="lightbox-next" aria-label="Next photo">&rsaquo;</button>
+          <button type="button" class="album-lightbox-close" data-action="lightbox-close" aria-label="Close large image">&times;</button>
+        </div>
+        <div id="album-viewer-grid" class="album-photos-grid"></div>
+      </div>
+    `;
+
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop || event.target.dataset.action === 'close') {
+        backdrop.style.display = 'none';
+      }
+    });
+
+    window.addEventListener('keydown', (event) => {
+      if (!state.albumViewerModal || state.albumViewerModal.style.display !== 'flex') return;
+      const lightbox = state.albumViewerModal.querySelector('#album-lightbox');
+      if (!lightbox || lightbox.style.display === 'none') return;
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        navigateAlbumLightbox(1);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        navigateAlbumLightbox(-1);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeAlbumLightbox();
+      }
+    });
+
+    document.body.appendChild(backdrop);
+    state.albumViewerModal = backdrop;
+    return backdrop;
+  }
+
+  async function renderAlbumViewer(albumId) {
+    const album = state.albums.find((item) => item.id === albumId);
+    if (!album) return;
+
+    const modal = ensureAlbumViewerModal();
+    const title = modal.querySelector('#album-viewer-title');
+    const subtitle = modal.querySelector('#album-viewer-subtitle');
+    const grid = modal.querySelector('#album-viewer-grid');
+    const uploadButton = modal.querySelector('[data-action="upload-photo"]');
+    const lightbox = modal.querySelector('#album-lightbox');
+
+    if (lightbox) {
+      const prevButton = lightbox.querySelector('[data-action="lightbox-prev"]');
+      const nextButton = lightbox.querySelector('[data-action="lightbox-next"]');
+      const closeButton = lightbox.querySelector('[data-action="lightbox-close"]');
+      prevButton.onclick = () => navigateAlbumLightbox(-1);
+      nextButton.onclick = () => navigateAlbumLightbox(1);
+      closeButton.onclick = () => closeAlbumLightbox();
+    }
+
+    title.textContent = album.title;
+    subtitle.textContent = album.description || '';
+
+    const images = await loadAlbumImages(albumId, true);
+    state.albumViewerImages = images;
+    state.albumViewerTitle = album.title;
+    state.albumViewerIndex = images.length > 0 ? 0 : -1;
+    closeAlbumLightbox();
+    grid.innerHTML = '';
+
+    images.forEach((image, index) => {
+      const item = document.createElement('article');
+      item.className = 'album-photo-item';
+      item.innerHTML = `
+        <img src="${withCacheBust(image.image_path, image.updated_at)}" alt="${escapeHtml(album.title)}" />
+        <div class="album-photo-caption">${escapeHtml(image.caption || '')}</div>
+      `;
+
+      const photo = item.querySelector('img');
+      if (photo) {
+        photo.style.cursor = 'zoom-in';
+        photo.addEventListener('click', () => {
+          openAlbumLightbox(index);
+        });
+      }
+
+      if (state.isAdmin && state.editMode) {
+        const tools = document.createElement('div');
+        tools.style.display = 'flex';
+        tools.style.gap = '0.35rem';
+        tools.style.padding = '0 0.5rem 0.6rem';
+
+        const captionButton = document.createElement('button');
+        captionButton.type = 'button';
+        captionButton.textContent = 'Caption';
+        captionButton.addEventListener('click', async () => {
+          const nextCaption = window.prompt('Photo caption:', image.caption || '');
+          if (nextCaption === null) return;
+          await updateAlbumImage(albumId, image.id, { caption: nextCaption });
+          await renderAlbumViewer(albumId);
+          await loadMediaAlbums();
+        });
+
+        const coverButton = document.createElement('button');
+        coverButton.type = 'button';
+        coverButton.textContent = 'Set Cover';
+        coverButton.addEventListener('click', async () => {
+          await updateAlbum(albumId, {
+            title: album.title,
+            description: album.description || '',
+            coverImagePath: image.image_path,
+            position: album.position,
+          });
+          await loadMediaAlbums();
+          await renderAlbumViewer(albumId);
+        });
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.textContent = 'Delete';
+        deleteButton.style.color = '#ff9b9b';
+        deleteButton.addEventListener('click', async () => {
+          if (!window.confirm('Delete this photo?')) return;
+          await deleteAlbumImage(albumId, image.id);
+          await renderAlbumViewer(albumId);
+          await loadMediaAlbums();
+        });
+
+        tools.append(captionButton, coverButton, deleteButton);
+        item.appendChild(tools);
+      }
+
+      grid.appendChild(item);
+    });
+
+    uploadButton.style.display = state.isAdmin && state.editMode ? 'inline-flex' : 'none';
+    uploadButton.onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+
+        try {
+          const pathValue = await uploadAdminImage(file, '');
+          const caption = window.prompt('Photo caption (optional):', '') || '';
+          await createAlbumImage(albumId, {
+            imagePath: pathValue,
+            caption,
+            setAsCover: images.length === 0,
+          });
+          await renderAlbumViewer(albumId);
+          await loadMediaAlbums();
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      input.click();
+    };
+
+    modal.style.display = 'flex';
+  }
+
+  function openAlbumLightbox(index) {
+    if (!state.albumViewerModal) return;
+    if (!Array.isArray(state.albumViewerImages) || state.albumViewerImages.length === 0) return;
+
+    const clamped = Math.max(0, Math.min(state.albumViewerImages.length - 1, index));
+    state.albumViewerIndex = clamped;
+    const lightbox = state.albumViewerModal.querySelector('#album-lightbox');
+    if (!lightbox) return;
+
+    lightbox.style.display = 'grid';
+    updateAlbumLightbox();
+  }
+
+  function closeAlbumLightbox() {
+    if (!state.albumViewerModal) return;
+    const lightbox = state.albumViewerModal.querySelector('#album-lightbox');
+    if (!lightbox) return;
+    lightbox.style.display = 'none';
+  }
+
+  function navigateAlbumLightbox(direction) {
+    const total = state.albumViewerImages.length;
+    if (!total) return;
+
+    const current = Number.isInteger(state.albumViewerIndex) ? state.albumViewerIndex : 0;
+    const next = (current + direction + total) % total;
+    state.albumViewerIndex = next;
+    updateAlbumLightbox();
+  }
+
+  function updateAlbumLightbox() {
+    if (!state.albumViewerModal) return;
+    const current = state.albumViewerImages[state.albumViewerIndex];
+    if (!current) return;
+
+    const image = state.albumViewerModal.querySelector('#album-lightbox-image');
+    const caption = state.albumViewerModal.querySelector('#album-lightbox-caption');
+    if (!image || !caption) return;
+
+    image.src = withCacheBust(current.image_path, current.updated_at);
+    image.alt = state.albumViewerTitle || 'Album photo';
+
+    const indexLabel = `${state.albumViewerIndex + 1} / ${state.albumViewerImages.length}`;
+    const captionText = current.caption ? escapeHtml(current.caption) : '';
+    caption.innerHTML = captionText ? `${captionText}<span>${indexLabel}</span>` : `<span>${indexLabel}</span>`;
+  }
+
+  function renderMediaAlbums() {
+    if (!isAlbumEnabledPage()) return;
+
+    const root = getAlbumsRoot();
+    if (!root) return;
+
+    const cards = state.albums.map((album) => {
+      const cover = album.cover_image_path
+        ? `<img src="${withCacheBust(album.cover_image_path, album.updated_at)}" alt="${escapeHtml(album.title)}" />`
+        : '<div class="album-cover-empty">No cover image</div>';
+      const description = album.description ? `<p>${escapeHtml(album.description)}</p>` : '';
+
+      return `
+        <article class="album-card" data-album-id="${album.id}">
+          <button type="button" class="album-cover" data-album-action="open" data-album-id="${album.id}" title="Open album">
+            ${cover}
+          </button>
+          <div class="album-meta">
+            <h3>${escapeHtml(album.title)}</h3>
+            ${description}
+            <p>${album.image_count || 0} photos</p>
+          </div>
+          <div class="album-tools">
+            <button type="button" data-album-action="move-up" data-album-id="${album.id}">Up</button>
+            <button type="button" data-album-action="move-down" data-album-id="${album.id}">Down</button>
+            <button type="button" data-album-action="add-photo" data-album-id="${album.id}">Add Photo</button>
+            <button type="button" data-album-action="manage" data-album-id="${album.id}">Manage</button>
+            <button type="button" data-album-action="edit" data-album-id="${album.id}">Edit</button>
+            <button type="button" data-album-action="delete" data-album-id="${album.id}" style="color:#ff9b9b;">Delete</button>
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    root.innerHTML = `
+      <div class="album-admin-toolbar">
+        <button type="button" data-album-action="create">Create Album</button>
+      </div>
+      <div class="album-grid">
+        ${cards || '<p class="section-intro">No albums yet.</p>'}
+      </div>
+    `;
+  }
+
+  async function loadMediaAlbums() {
+    if (!isAlbumEnabledPage()) return;
+    try {
+      state.albums = await fetchAlbums();
+      renderMediaAlbums();
+    } catch (_error) {
+      state.albums = [];
+      renderMediaAlbums();
+    }
+  }
+
+  function bindAlbumUiEvents() {
+    if (state.albumUiBound) return;
+    state.albumUiBound = true;
+
+    document.addEventListener('click', async (event) => {
+      const trigger = event.target.closest('[data-album-action]');
+      if (!trigger || !isAlbumEnabledPage()) return;
+
+      const action = trigger.dataset.albumAction;
+      const albumId = Number.parseInt(trigger.dataset.albumId || '', 10);
+      const album = state.albums.find((item) => item.id === albumId);
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      try {
+        if (action === 'open' && album) {
+          await renderAlbumViewer(album.id);
+          return;
+        }
+
+        if (!state.isAdmin || !state.editMode) {
+          return;
+        }
+
+        if (action === 'create') {
+          const title = window.prompt('Album title:', '');
+          if (!title) return;
+          const description = window.prompt('Album description (optional):', '') || '';
+          await createAlbum({ title, description });
+          await loadMediaAlbums();
+          return;
+        }
+
+        if (!album) return;
+
+        if (action === 'edit') {
+          const title = window.prompt('Album title:', album.title);
+          if (!title) return;
+          const description = window.prompt('Album description (optional):', album.description || '') || '';
+          await updateAlbum(album.id, {
+            title,
+            description,
+            coverImagePath: album.cover_image_path || '',
+            position: album.position,
+          });
+          await loadMediaAlbums();
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!window.confirm('Delete this album and all photos?')) return;
+          await deleteAlbum(album.id);
+          await loadMediaAlbums();
+          return;
+        }
+
+        if (action === 'move-up' || action === 'move-down') {
+          const ids = state.albums.map((item) => item.id);
+          const currentIndex = ids.indexOf(album.id);
+          if (currentIndex < 0) return;
+
+          const delta = action === 'move-up' ? -1 : 1;
+          const nextIndex = currentIndex + delta;
+          if (nextIndex < 0 || nextIndex >= ids.length) return;
+
+          const [movedId] = ids.splice(currentIndex, 1);
+          ids.splice(nextIndex, 0, movedId);
+          await reorderAlbums(ids);
+          await loadMediaAlbums();
+          return;
+        }
+
+        if (action === 'manage') {
+          await renderAlbumViewer(album.id);
+          return;
+        }
+
+        if (action === 'add-photo') {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+
+            const pathValue = await uploadAdminImage(file, '');
+            const caption = window.prompt('Photo caption (optional):', '') || '';
+            await createAlbumImage(album.id, {
+              imagePath: pathValue,
+              caption,
+              setAsCover: Number(album.image_count || 0) === 0,
+            });
+            await loadMediaAlbums();
+          };
+          input.click();
+        }
+      } catch (error) {
+        alert(error.message);
+      }
+    }, true);
   }
 
   function applyContentItem(item) {
@@ -1085,27 +1791,27 @@ if (countdownElements.days) {
       syncHomeHeroBootImage(item.content_key, item.content_value);
 
       if (element.dataset.adminEditable === 'background-image') {
+        const cssVarName = element.dataset.adminBackgroundVar;
+        const bgVarAuto = element.dataset.adminBgVarAuto === 'true';
+
         if (!item.content_value) {
-          if (element.tagName === 'HEADER') {
-            const cssVarName = element.dataset.adminBackgroundVar;
-            if (cssVarName) {
-              element.style.removeProperty(cssVarName);
-            }
-          } else {
-            element.style.removeProperty('background-image');
-            element.style.removeProperty('background-position');
-            element.style.removeProperty('background-size');
-            element.style.removeProperty('background-repeat');
-          }
+          if (cssVarName) element.style.removeProperty(cssVarName);
+          element.style.removeProperty('background-image');
+          element.style.removeProperty('background-position');
+          element.style.removeProperty('background-size');
+          element.style.removeProperty('background-repeat');
           return;
         }
 
-        const cssVarName = element.dataset.adminBackgroundVar;
-        if (cssVarName && element.tagName === 'HEADER') {
+        if (cssVarName && !bgVarAuto) {
+          // Element's CSS rule already references this var (e.g. home hero, history hero)
           element.style.setProperty(cssVarName, `url("${nextValue}")`);
+          element.style.removeProperty('background-image');
         } else {
+          // Auto-assigned var or no var — set inline so it's always visible
+          if (cssVarName) element.style.setProperty(cssVarName, `url("${nextValue}")`);
           element.style.backgroundImage = `url("${nextValue}")`;
-          element.style.backgroundPosition = 'top center';
+          element.style.backgroundPosition = 'center';
           element.style.backgroundSize = 'cover';
           element.style.backgroundRepeat = 'no-repeat';
         }
@@ -1257,14 +1963,19 @@ if (countdownElements.days) {
         font-size: 0.9rem;
       }
 
-      .admin-format-grid select {
+      .admin-format-grid select,
+      .admin-format-grid input[type="text"] {
         width: 100%;
         padding: 0.75rem 0.9rem;
         border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.06);
-        color: #f5f7ff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: rgba(3, 9, 22, 0.96);
+        color: #ffffff;
         font: inherit;
+      }
+
+      .admin-format-grid input[type="text"]::placeholder {
+        color: rgba(216, 226, 250, 0.78);
       }
 
       .admin-color-row {
@@ -1293,10 +2004,30 @@ if (countdownElements.days) {
 
       body.admin-edit-mode [data-admin-editable="text"],
       body.admin-edit-mode [data-admin-editable="image"],
-      body.admin-edit-mode [data-admin-editable="background-image"] {
+      body.admin-edit-mode [data-admin-editable="background-image"],
+      body.admin-edit-mode [data-admin-editable="album-root"] {
         outline: 2px dashed rgba(255, 210, 98, 0.6);
         outline-offset: 4px;
         cursor: pointer;
+      }
+
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"],
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"],
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"],
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"] {
+        cursor: grab;
+      }
+
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"].admin-is-dragging,
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"].admin-is-dragging,
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"].admin-is-dragging,
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"].admin-is-dragging {
+        cursor: grabbing;
+        opacity: 0.92;
+      }
+
+      body.admin-edit-mode .admin-free-positioned {
+        box-shadow: 0 0 0 2px rgba(102, 204, 255, 0.75);
       }
 
       body.admin-edit-mode .admin-hidden-element {
@@ -1335,11 +2066,15 @@ if (countdownElements.days) {
         margin: 1rem 0;
         padding: 1rem;
         border-radius: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.06);
-        color: #f5f7ff;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: rgba(3, 9, 22, 0.96);
+        color: #ffffff;
         resize: vertical;
         font: inherit;
+      }
+
+      .admin-editor-modal textarea::placeholder {
+        color: rgba(216, 226, 250, 0.78);
       }
 
       .admin-editor-actions {
@@ -1366,6 +2101,12 @@ if (countdownElements.days) {
       .admin-add-section-button:focus-visible {
         border-color: rgba(255, 210, 98, 0.55);
         background: rgba(255, 210, 98, 0.14);
+      }
+
+      .admin-add-section-button.is-active {
+        border-color: rgba(255, 210, 98, 0.75);
+        background: rgba(255, 210, 98, 0.22);
+        color: #ffd262;
       }
 
       .admin-add-section-button svg {
@@ -1516,9 +2257,45 @@ if (countdownElements.days) {
               <button type="button" class="admin-color-reset" id="admin-format-color-reset">Default</button>
             </div>
           </label>
+          <label>Background Color
+            <div class="admin-color-row">
+              <input id="admin-format-bg-color" type="color" value="#ffffff" />
+              <button type="button" class="admin-color-reset" id="admin-format-bg-color-reset">Default</button>
+            </div>
+          </label>
+          <label>Width
+            <input id="admin-format-width" type="text" placeholder="auto, 320px, 50%" />
+          </label>
+          <label>Height
+            <input id="admin-format-height" type="text" placeholder="auto, 180px" />
+          </label>
+          <label>Border Style
+            <select id="admin-format-border-style">
+              <option value="">Default</option>
+              <option value="none">None</option>
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+              <option value="double">Double</option>
+            </select>
+          </label>
+          <label>Border Width
+            <input id="admin-format-border-width" type="text" placeholder="1px, 0" />
+          </label>
+          <label>Border Color
+            <div class="admin-color-row">
+              <input id="admin-format-border-color" type="color" value="#ffffff" />
+              <button type="button" class="admin-color-reset" id="admin-format-border-color-reset">Default</button>
+            </div>
+          </label>
+          <label>Corner Radius
+            <input id="admin-format-radius" type="text" placeholder="0, 8px, 50%" />
+          </label>
         </div>
         <textarea id="admin-editor-textarea"></textarea>
         <div class="admin-editor-actions">
+          <button type="button" class="button secondary" data-action="position-toggle">Enable Free Position</button>
+          <button type="button" class="button secondary" data-action="position-reset">Reset Position</button>
           <button type="button" class="button secondary" data-action="hide">Hide Element</button>
           <button type="button" class="button secondary" data-action="delete" style="color: #ff6b6b;">Delete Element</button>
           <button type="button" class="button secondary" data-action="cancel">Cancel</button>
@@ -1641,23 +2418,52 @@ if (countdownElements.days) {
     const transformSelect = modal.querySelector('#admin-format-transform');
     const colorInput = modal.querySelector('#admin-format-color');
     const colorReset = modal.querySelector('#admin-format-color-reset');
-      const formatGrid = modal.querySelector('.admin-format-grid');
+    const bgColorInput = modal.querySelector('#admin-format-bg-color');
+    const bgColorReset = modal.querySelector('#admin-format-bg-color-reset');
+    const widthInput = modal.querySelector('#admin-format-width');
+    const heightInput = modal.querySelector('#admin-format-height');
+    const borderStyleSelect = modal.querySelector('#admin-format-border-style');
+    const borderWidthInput = modal.querySelector('#admin-format-border-width');
+    const borderColorInput = modal.querySelector('#admin-format-border-color');
+    const borderColorReset = modal.querySelector('#admin-format-border-color-reset');
+    const borderRadiusInput = modal.querySelector('#admin-format-radius');
+    const positionToggleButton = modal.querySelector('[data-action="position-toggle"]');
+    const positionResetButton = modal.querySelector('[data-action="position-reset"]');
+    const formatGrid = modal.querySelector('.admin-format-grid');
     const existingColor = normalizeColorValue(options.formatting.textColor);
+    const existingBgColor = normalizeColorValue(options.formatting.backgroundColor);
+    const existingBorderColor = normalizeColorValue(options.formatting.borderColor);
 
     title.textContent = heading;
     copy.textContent = description;
     textarea.value = initialValue;
-      textarea.style.display = '';
-      formatGrid.style.display = '';
+    textarea.style.display = '';
+    formatGrid.style.display = '';
     alignSelect.value = options.formatting.textAlign || '';
     weightSelect.value = options.formatting.fontWeight || '';
     styleSelect.value = options.formatting.fontStyle || '';
     transformSelect.value = options.formatting.textTransform || '';
     colorInput.value = existingColor || '#ffffff';
+    bgColorInput.value = existingBgColor || '#ffffff';
+    widthInput.value = options.formatting.widthValue || '';
+    heightInput.value = options.formatting.heightValue || '';
+    borderStyleSelect.value = options.formatting.borderStyle || '';
+    borderWidthInput.value = options.formatting.borderWidth || '';
+    borderColorInput.value = existingBorderColor || '#ffffff';
+    borderRadiusInput.value = options.formatting.borderRadius || '';
     colorInput.dataset.custom = existingColor ? 'true' : 'false';
+    bgColorInput.dataset.custom = existingBgColor ? 'true' : 'false';
+    borderColorInput.dataset.custom = existingBorderColor ? 'true' : 'false';
     hideButton.style.display = options.allowHide ? 'inline-flex' : 'none';
     hideButton.textContent = options.hideLabel || 'Hide Element';
-      saveButton.textContent = 'Save';
+    saveButton.textContent = 'Save';
+    if (positionToggleButton) {
+      positionToggleButton.style.display = options.allowPosition ? 'inline-flex' : 'none';
+      positionToggleButton.textContent = options.isFreePositioned ? 'Disable Free Position' : 'Enable Free Position';
+    }
+    if (positionResetButton) {
+      positionResetButton.style.display = options.allowPosition ? 'inline-flex' : 'none';
+    }
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
@@ -1668,6 +2474,52 @@ if (countdownElements.days) {
     colorInput.oninput = () => {
       colorInput.dataset.custom = 'true';
     };
+
+    bgColorReset.onclick = () => {
+      bgColorInput.dataset.custom = 'false';
+    };
+
+    bgColorInput.oninput = () => {
+      bgColorInput.dataset.custom = 'true';
+    };
+
+    borderColorReset.onclick = () => {
+      borderColorInput.dataset.custom = 'false';
+    };
+
+    borderColorInput.oninput = () => {
+      borderColorInput.dataset.custom = 'true';
+    };
+
+    if (positionToggleButton) {
+      positionToggleButton.onclick = async () => {
+        if (!options.onPositionToggle) return;
+        positionToggleButton.disabled = true;
+        try {
+          await options.onPositionToggle();
+          closeAdminModal();
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          positionToggleButton.disabled = false;
+        }
+      };
+    }
+
+    if (positionResetButton) {
+      positionResetButton.onclick = async () => {
+        if (!options.onPositionReset) return;
+        positionResetButton.disabled = true;
+        try {
+          await options.onPositionReset();
+          closeAdminModal();
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          positionResetButton.disabled = false;
+        }
+      };
+    }
 
     hideButton.onclick = async () => {
       if (!options.onHide) return;
@@ -1713,6 +2565,13 @@ if (countdownElements.days) {
           fontStyle: styleSelect.value,
           textTransform: transformSelect.value,
           textColor: colorInput.dataset.custom === 'true' ? colorInput.value : '',
+          backgroundColor: bgColorInput.dataset.custom === 'true' ? bgColorInput.value : '',
+          widthValue: widthInput.value.trim(),
+          heightValue: heightInput.value.trim(),
+          borderStyle: borderStyleSelect.value,
+          borderWidth: borderWidthInput.value.trim(),
+          borderColor: borderColorInput.dataset.custom === 'true' ? borderColorInput.value : '',
+          borderRadius: borderRadiusInput.value.trim(),
         });
         closeAdminModal();
       } catch (error) {
@@ -1738,10 +2597,36 @@ if (countdownElements.days) {
           fontStyle: override.font_style || '',
           textTransform: override.text_transform || '',
           textColor: override.text_color || '',
+          backgroundColor: override.background_color || '',
+          widthValue: override.width_value || '',
+          heightValue: override.height_value || '',
+          borderStyle: override.border_style || '',
+          borderWidth: override.border_width || '',
+          borderColor: override.border_color || '',
+          borderRadius: override.border_radius || '',
         },
         allowHide: true,
         hideLabel: isHidden ? 'Show Element' : 'Hide Element',
         allowDelete: true,
+        allowPosition: true,
+        isFreePositioned: override.position_mode === 'absolute',
+        onPositionToggle: async () => {
+          const isAbsolute = override.position_mode === 'absolute';
+          const item = await saveElementOverride(key, {
+            positionMode: isAbsolute ? 'flow' : 'absolute',
+            posX: isAbsolute ? null : (Number.isFinite(override.pos_x) ? override.pos_x : 12),
+            posY: isAbsolute ? null : (Number.isFinite(override.pos_y) ? override.pos_y : 12),
+          });
+          applyElementStyles(element, item);
+        },
+        onPositionReset: async () => {
+          const item = await saveElementOverride(key, {
+            positionMode: 'flow',
+            posX: null,
+            posY: null,
+          });
+          applyElementStyles(element, item);
+        },
         onHide: async () => {
           await saveElementOverride(key, { hidden: !isHidden });
           setAdminHiddenState(element, !isHidden);
@@ -1772,15 +2657,9 @@ if (countdownElements.days) {
           contentValue: nextValue,
         });
         applyContentItem(item);
-          await saveElementOverride(key, { ...formatting, hidden: false });
+          const savedOverride = await saveElementOverride(key, { ...formatting, hidden: false });
           setAdminHiddenState(element, false);
-          applyElementStyles(element, {
-            text_align: formatting.textAlign,
-            font_weight: formatting.fontWeight,
-            font_style: formatting.fontStyle,
-            text_transform: formatting.textTransform,
-            text_color: formatting.textColor,
-          });
+          applyElementStyles(element, savedOverride);
         },
       }
     );
@@ -1801,8 +2680,16 @@ if (countdownElements.days) {
           fontStyle: '',
           textTransform: '',
           textColor: '',
+          backgroundColor: '',
+          widthValue: '',
+          heightValue: '',
+          borderStyle: '',
+          borderWidth: '',
+          borderColor: '',
+          borderRadius: '',
         },
         allowHide: false,
+        allowPosition: false,
         onSave: async (nextValue) => {
           const item = await updatePageSection(sectionId, field, nextValue);
           upsertPageSection(item);
@@ -1813,40 +2700,274 @@ if (countdownElements.days) {
     );
   }
 
-  async function openImageEditor(element, onUploaded) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
+  async function uploadAdminImage(file, target) {
+    const form = new FormData();
+    form.append('image', file);
+    form.append('target', target || '');
 
-      const form = new FormData();
-      form.append('image', file);
-      form.append('target', (element.dataset.adminImagePath || element.getAttribute('src') || '').split('?')[0]);
+    const token = getStoredToken();
+    const uploadRes = await fetch('/api/admin/upload-image', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const uploadData = await parseApiResponse(uploadRes);
+    if (!uploadRes.ok || !uploadData.path) {
+      throw new Error(uploadData.error || 'Image upload failed');
+    }
+    return uploadData.path;
+  }
 
-      const token = getStoredToken();
-      element.style.opacity = '0.6';
+  function ensureImageEditorModal() {
+    let modal = document.getElementById('admin-image-editor-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'admin-image-editor-modal';
+    modal.className = 'admin-editor-backdrop';
+    modal.innerHTML = `
+      <div class="admin-editor-modal" role="dialog" aria-modal="true" aria-labelledby="admin-image-editor-title">
+        <h2 id="admin-image-editor-title">Edit image</h2>
+        <p id="admin-image-editor-copy">Upload a new image, select one from the library, and adjust border/corners.</p>
+        <div class="admin-format-grid" style="grid-template-columns: 1fr 1fr;">
+          <label>Select existing image
+            <select id="admin-image-library-select"></select>
+          </label>
+          <label>Border Style
+            <select id="admin-image-border-style">
+              <option value="">Default</option>
+              <option value="none">None</option>
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+              <option value="double">Double</option>
+            </select>
+          </label>
+          <label>Border Width
+            <input id="admin-image-border-width" type="text" placeholder="1px, 0" />
+          </label>
+          <label>Border Color
+            <div class="admin-color-row">
+              <input id="admin-image-border-color" type="color" value="#ffffff" />
+              <button type="button" class="admin-color-reset" id="admin-image-border-color-reset">Default</button>
+            </div>
+          </label>
+          <label>Corner Radius
+            <input id="admin-image-border-radius" type="text" placeholder="0, 8px, 50%" />
+          </label>
+          <label id="admin-image-bg-color-wrap" style="display:none;">Background Color
+            <div class="admin-color-row">
+              <input id="admin-image-bg-color" type="color" value="#ffffff" />
+              <button type="button" class="admin-color-reset" id="admin-image-bg-color-reset">Default</button>
+            </div>
+          </label>
+        </div>
+        <div class="admin-editor-actions">
+          <button type="button" class="button secondary" data-action="save-image-style">Save Style</button>
+          <button type="button" class="button secondary" data-action="refresh-images">Refresh</button>
+          <button type="button" class="button secondary" data-action="choose-image">Use Selected</button>
+          <button type="button" class="button secondary" data-action="upload-image">Upload New</button>
+          <button type="button" class="button secondary" data-action="remove-image" style="color: #ff6b6b;">Remove Image</button>
+          <button type="button" class="button secondary" data-action="cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal || event.target.dataset.action === 'cancel') {
+        modal.style.display = 'none';
+      }
+    });
+
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  async function openImageEditor(element, onUploaded, options) {
+    const imageOptions = options || {};
+    const modal = ensureImageEditorModal();
+    const modalTitle = modal.querySelector('#admin-image-editor-title');
+    const modalCopy = modal.querySelector('#admin-image-editor-copy');
+    const select = modal.querySelector('#admin-image-library-select');
+    const saveStyleButton = modal.querySelector('[data-action="save-image-style"]');
+    const refreshButton = modal.querySelector('[data-action="refresh-images"]');
+    const chooseButton = modal.querySelector('[data-action="choose-image"]');
+    const uploadButton = modal.querySelector('[data-action="upload-image"]');
+    const removeButton = modal.querySelector('[data-action="remove-image"]');
+    const borderStyleSelect = modal.querySelector('#admin-image-border-style');
+    const borderWidthInput = modal.querySelector('#admin-image-border-width');
+    const borderColorInput = modal.querySelector('#admin-image-border-color');
+    const borderColorReset = modal.querySelector('#admin-image-border-color-reset');
+    const borderRadiusInput = modal.querySelector('#admin-image-border-radius');
+    const bgColorWrap = modal.querySelector('#admin-image-bg-color-wrap');
+    const bgColorInput = modal.querySelector('#admin-image-bg-color');
+    const bgColorReset = modal.querySelector('#admin-image-bg-color-reset');
+    const key = element.dataset.adminKey;
+    const override = (key && state.elementOverrides.get(key)) || {};
+    const currentPath = (element.dataset.adminImagePath || element.getAttribute('src') || '').split('?')[0];
+    const allowBackgroundColor = Boolean(imageOptions.allowBackgroundColor && key);
+
+    const existingBorderColor = normalizeColorValue(override.border_color || '');
+    const existingBgColor = normalizeColorValue(override.background_color || '');
+    borderStyleSelect.value = override.border_style || '';
+    borderWidthInput.value = override.border_width || '';
+    borderRadiusInput.value = override.border_radius || '';
+    borderColorInput.value = existingBorderColor || '#ffffff';
+    borderColorInput.dataset.custom = existingBorderColor ? 'true' : 'false';
+    bgColorInput.value = existingBgColor || '#ffffff';
+    bgColorInput.dataset.custom = existingBgColor ? 'true' : 'false';
+    bgColorWrap.style.display = allowBackgroundColor ? '' : 'none';
+
+    if (modalTitle) {
+      modalTitle.textContent = allowBackgroundColor ? 'Edit background' : 'Edit image';
+    }
+    if (modalCopy) {
+      modalCopy.textContent = allowBackgroundColor
+        ? 'Choose a background image, set a background color, and adjust style.'
+        : 'Upload a new image, select one from the library, and adjust border/corners.';
+    }
+
+    borderColorReset.onclick = () => {
+      borderColorInput.dataset.custom = 'false';
+    };
+
+    borderColorInput.oninput = () => {
+      borderColorInput.dataset.custom = 'true';
+    };
+
+    bgColorReset.onclick = () => {
+      bgColorInput.dataset.custom = 'false';
+    };
+
+    bgColorInput.oninput = () => {
+      bgColorInput.dataset.custom = 'true';
+    };
+
+    removeButton.style.display = imageOptions.onRemove ? 'inline-flex' : 'none';
+
+    async function loadOptions() {
+      select.innerHTML = '<option value="">Loading images...</option>';
       try {
-        const uploadRes = await fetch('/api/admin/upload-image', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
+        const items = await fetchAdminImageLibrary();
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select an image';
+        select.appendChild(placeholder);
+
+        items.forEach((pathValue) => {
+          const option = document.createElement('option');
+          option.value = pathValue;
+          option.textContent = pathValue;
+          select.appendChild(option);
         });
-        const uploadData = await parseApiResponse(uploadRes);
-        if (!uploadRes.ok || !uploadData.path) {
-          throw new Error(uploadData.error || 'Image upload failed');
+
+        if (currentPath) {
+          select.value = currentPath;
+        }
+      } catch (error) {
+        select.innerHTML = '<option value="">Unable to load images</option>';
+        alert(error.message);
+      }
+    }
+
+    modal.style.display = 'flex';
+    await loadOptions();
+
+    refreshButton.onclick = () => {
+      loadOptions().catch((error) => alert(error.message));
+    };
+
+    saveStyleButton.onclick = async () => {
+      if (!key) {
+        alert('This image does not support style overrides yet.');
+        return;
+      }
+
+      saveStyleButton.disabled = true;
+      try {
+        const stylePatch = {
+          hidden: false,
+          borderStyle: borderStyleSelect.value,
+          borderWidth: borderWidthInput.value.trim(),
+          borderColor: borderColorInput.dataset.custom === 'true' ? borderColorInput.value : '',
+          borderRadius: borderRadiusInput.value.trim(),
+        };
+
+        if (allowBackgroundColor) {
+          stylePatch.backgroundColor = bgColorInput.dataset.custom === 'true' ? bgColorInput.value : '';
         }
 
-        await onUploaded(uploadData.path);
+        const item = await saveElementOverride(key, stylePatch);
+        applyElementStyles(element, item);
       } catch (error) {
         alert(error.message);
       } finally {
+        saveStyleButton.disabled = false;
+      }
+    };
+
+    chooseButton.onclick = async () => {
+      const selectedPath = select.value.trim();
+      if (!selectedPath) {
+        alert('Choose an image from the list.');
+        return;
+      }
+
+      chooseButton.disabled = true;
+      element.style.opacity = '0.6';
+      try {
+        await onUploaded(selectedPath);
+        modal.style.display = 'none';
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        chooseButton.disabled = false;
         element.style.opacity = '';
       }
     };
 
-    input.click();
+    uploadButton.onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+
+        uploadButton.disabled = true;
+        element.style.opacity = '0.6';
+        try {
+          const uploadedPath = await uploadAdminImage(file, currentPath);
+          await onUploaded(uploadedPath);
+          modal.style.display = 'none';
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          uploadButton.disabled = false;
+          element.style.opacity = '';
+        }
+      };
+
+      input.click();
+    };
+
+    removeButton.onclick = async () => {
+      if (!imageOptions.onRemove) return;
+      if (!confirm('Remove this image?')) return;
+
+      removeButton.disabled = true;
+      element.style.opacity = '0.6';
+      try {
+        await imageOptions.onRemove();
+        modal.style.display = 'none';
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        removeButton.disabled = false;
+        element.style.opacity = '';
+      }
+    };
   }
 
   function openStaticImageEditor(element) {
@@ -1857,6 +2978,40 @@ if (countdownElements.days) {
         contentValue: nextPath,
       });
       applyContentItem(item);
+    }, {
+      allowBackgroundColor: element.dataset.adminEditable === 'background-image',
+      onRemove: async () => {
+        const key = element.dataset.adminKey;
+        if (!key) return;
+
+        if (element.dataset.adminEditable === 'background-image') {
+          const item = await saveContentUpdate({
+            contentKey: key,
+            contentType: 'image',
+            contentValue: '',
+          });
+          applyContentItem(item);
+          return;
+        }
+
+        if (isDynamicContentKey(key)) {
+          try {
+            await deleteContentItem(key, 'image');
+          } catch (error) {
+            const message = String(error && error.message ? error.message : '').toLowerCase();
+            if (!message.includes('not found')) {
+              throw error;
+            }
+          }
+
+          element.remove();
+          state.registry.delete(`image:${key}`);
+          return;
+        }
+
+        await saveElementOverride(key, { hidden: true });
+        setAdminHiddenState(element, true);
+      },
     });
   }
 
@@ -1867,6 +3022,15 @@ if (countdownElements.days) {
       const item = await updatePageSection(sectionId, field, nextPath);
       upsertPageSection(item);
       renderPageSections();
+    }, {
+      onRemove: ['background_path', 'image_path'].includes(field)
+        ? async () => {
+          const item = await updatePageSection(sectionId, field, '');
+          upsertPageSection(item);
+          renderPageSections();
+          registerSectionEditing();
+        }
+        : null,
     });
   }
 
@@ -1995,6 +3159,8 @@ if (countdownElements.days) {
     const cancelButton = modal.querySelector('[data-action="cancel"]');
     const hideButton = modal.querySelector('[data-action="hide"]');
     const deleteButton = modal.querySelector('[data-action="delete"]');
+    const positionToggleButton = modal.querySelector('[data-action="position-toggle"]');
+    const positionResetButton = modal.querySelector('[data-action="position-reset"]');
 
     title.textContent = 'Add new text element';
     copy.textContent = 'Enter the text content for this new element.';
@@ -2007,6 +3173,14 @@ if (countdownElements.days) {
     saveButton.disabled = false;
     hideButton.disabled = false;
     deleteButton.disabled = false;
+    if (positionToggleButton) {
+      positionToggleButton.style.display = 'none';
+      positionToggleButton.onclick = null;
+    }
+    if (positionResetButton) {
+      positionResetButton.style.display = 'none';
+      positionResetButton.onclick = null;
+    }
 
     // Clear stale handlers from previous modal usage so Add Text has a single save flow.
     saveButton.onclick = null;
@@ -2285,11 +3459,131 @@ if (countdownElements.days) {
     });
   }
 
+  function setFreeDragMode(nextValue) {
+    state.freeDragMode = Boolean(nextValue);
+    document.body.classList.toggle('admin-free-drag-mode', state.editMode && state.freeDragMode);
+
+    const button = document.getElementById('admin-drag-toggle');
+    if (button) {
+      button.classList.toggle('is-active', state.freeDragMode);
+      button.setAttribute('aria-pressed', String(state.freeDragMode));
+      button.setAttribute('title', state.freeDragMode ? 'Free drag mode is on' : 'Turn on free drag mode');
+    }
+  }
+
+  function findFreeDragTarget(source) {
+    if (!source || !state.editMode || !state.freeDragMode) return null;
+    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="album-root"]');
+    if (!candidate) return null;
+    if (!candidate.dataset.adminKey) return null;
+    if (isInsideAdminUi(candidate)) return null;
+    return candidate;
+  }
+
+  function beginFreeDrag(target, event) {
+    const key = target.dataset.adminKey;
+    if (!key) return;
+
+    const override = state.elementOverrides.get(key) || {};
+    if (target.offsetParent && window.getComputedStyle(target.offsetParent).position === 'static') {
+      target.offsetParent.style.position = 'relative';
+    }
+
+    if (override.position_mode !== 'absolute') {
+      if (target.dataset.adminEditable === 'album-root') {
+        ensureAlbumRootPlaceholder(target);
+      }
+      target.style.position = 'absolute';
+      target.style.left = `${target.offsetLeft}px`;
+      target.style.top = `${target.offsetTop}px`;
+      target.style.zIndex = '9';
+      target.classList.add('admin-free-positioned');
+    }
+
+    const startLeft = Number.parseFloat(target.style.left || `${target.offsetLeft}`) || 0;
+    const startTop = Number.parseFloat(target.style.top || `${target.offsetTop}`) || 0;
+
+    state.draggingElement = target;
+    state.dragStartX = event.clientX;
+    state.dragStartY = event.clientY;
+    state.dragOriginX = startLeft;
+    state.dragOriginY = startTop;
+    target.classList.add('admin-is-dragging');
+
+    const onMove = (moveEvent) => {
+      if (!state.draggingElement) return;
+      const parent = state.draggingElement.offsetParent || state.draggingElement.parentElement;
+      const dx = moveEvent.clientX - state.dragStartX;
+      const dy = moveEvent.clientY - state.dragStartY;
+      const rawX = state.dragOriginX + dx;
+      const rawY = state.dragOriginY + dy;
+
+      let nextX = rawX;
+      let nextY = rawY;
+      if (parent) {
+        const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
+        const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
+        const maxX = Math.max(0, parentWidth - state.draggingElement.offsetWidth);
+        const maxY = Math.max(0, parentHeight - state.draggingElement.offsetHeight);
+        nextX = Math.max(0, Math.min(maxX, rawX));
+        nextY = Math.max(0, Math.min(maxY, rawY));
+      }
+
+      state.draggingElement.style.left = `${Math.round(nextX)}px`;
+      state.draggingElement.style.top = `${Math.round(nextY)}px`;
+    };
+
+    const onUp = async () => {
+      window.removeEventListener('pointermove', onMove);
+      const dragged = state.draggingElement;
+      state.draggingElement = null;
+      if (!dragged) return;
+
+      dragged.classList.remove('admin-is-dragging');
+      const posX = Number.parseInt(dragged.style.left || '0', 10) || 0;
+      const posY = Number.parseInt(dragged.style.top || '0', 10) || 0;
+
+      try {
+        const item = await saveElementOverride(key, {
+          hidden: false,
+          positionMode: 'absolute',
+          posX,
+          posY,
+        });
+        applyElementStyles(dragged, item);
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+  }
+
+  function bindFreeDragHandlers() {
+    if (state.freeDragHandlersBound) return;
+    state.freeDragHandlersBound = true;
+
+    document.addEventListener('pointerdown', (event) => {
+      if (!state.editMode || !state.freeDragMode) return;
+      if (event.button !== 0) return;
+
+      const target = findFreeDragTarget(event.target);
+      if (!target) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      beginFreeDrag(target, event);
+    }, true);
+  }
+
   function setEditMode(nextValue) {
     state.editMode = nextValue;
     document.body.classList.toggle('admin-edit-mode', nextValue);
+    document.body.classList.toggle('admin-free-drag-mode', nextValue && state.freeDragMode);
     applyElementOverrides();
     registerSectionEditing();
+    renderMediaAlbums();
     const toggleButton = document.getElementById('admin-edit-toggle');
     if (toggleButton) {
       toggleButton.classList.toggle('is-active', nextValue);
@@ -2345,7 +3639,20 @@ if (countdownElements.days) {
       </svg>
     `;
 
-    controls.replaceChildren(button, addButton);
+    const dragButton = document.createElement('button');
+    dragButton.id = 'admin-drag-toggle';
+    dragButton.type = 'button';
+    dragButton.className = 'admin-add-section-button';
+    dragButton.setAttribute('aria-label', 'Toggle free drag mode');
+    dragButton.setAttribute('aria-pressed', 'false');
+    dragButton.setAttribute('title', 'Turn on free drag mode');
+    dragButton.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M13 6V11H18V13H13V18H11V13H6V11H11V6H13ZM4 4H9V2H2V9H4V4ZM15 2V4H20V9H22V2H15ZM20 20H15V22H22V15H20V20ZM4 15H2V22H9V20H4V15Z" />
+      </svg>
+    `;
+
+    controls.replaceChildren(button, addButton, dragButton);
 
     const logoutLink = document.getElementById('nav-logout-link');
     if (logoutLink) {
@@ -2358,9 +3665,15 @@ if (countdownElements.days) {
       setEditMode(!state.editMode);
     });
     addButton.addEventListener('click', openAddSectionModal);
+    dragButton.addEventListener('click', () => {
+      setFreeDragMode(!state.freeDragMode);
+    });
+
+    bindFreeDragHandlers();
 
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
+      if (state.freeDragMode) return;
       if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
@@ -2430,6 +3743,7 @@ if (countdownElements.days) {
 
   async function initEditableContent() {
     initContactForm();
+    bindAlbumUiEvents();
 
     if (!isPageEditable()) {
       initHeaderState();
@@ -2437,6 +3751,7 @@ if (countdownElements.days) {
     }
 
     initHeaderState();
+    await loadMediaAlbums();
     await loadPageSections();
     registerEditableElements();
     await loadSavedContent();
@@ -2445,7 +3760,9 @@ if (countdownElements.days) {
     await loadElementOverrides();
 
     const profile = await fetchCurrentProfile();
-    if (!profile || profile.role !== 'admin') return;
+    state.isAdmin = Boolean(profile && profile.role === 'admin');
+    if (!state.isAdmin) return;
+    renderMediaAlbums();
 
     ensureAdminStyles();
     attachAdminNavButton();

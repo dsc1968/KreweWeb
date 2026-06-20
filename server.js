@@ -115,6 +115,81 @@ function normalizePagePath(rawPath) {
   return pathname.startsWith('/') ? pathname : `/${pathname}`;
 }
 
+const ADMIN_EDIT_EXCLUDED_PAGES = new Set([
+  '/dashboard.html',
+  '/user-management.html',
+]);
+
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const LENGTH_VALUE_PATTERN = /^(?:-?\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw)|0)$/;
+const BORDER_STYLE_VALUES = new Set(['none', 'solid', 'dashed', 'dotted', 'double']);
+
+function isAdminEditablePagePath(pagePath) {
+  return !ADMIN_EDIT_EXCLUDED_PAGES.has(pagePath);
+}
+
+function validateEditablePagePath(res, pagePath) {
+  if (!isAdminEditablePagePath(pagePath)) {
+    res.status(403).json({ error: 'Editing is disabled for this page' });
+    return false;
+  }
+  return true;
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (!HEX_COLOR_PATTERN.test(normalized)) return null;
+  return normalized.toLowerCase();
+}
+
+function normalizeLengthValue(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return LENGTH_VALUE_PATTERN.test(normalized) ? normalized : null;
+}
+
+function normalizeBorderStyle(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  return BORDER_STYLE_VALUES.has(normalized) ? normalized : null;
+}
+
+function normalizePositionMode(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return ['flow', 'absolute'].includes(normalized) ? normalized : null;
+}
+
+function normalizeCoordinate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const clamped = Math.max(-10000, Math.min(10000, parsed));
+  return Math.round(clamped);
+}
+
+function listImagesInDirectory(baseDir, currentDir = baseDir, files = []) {
+  const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  entries.forEach((entry) => {
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      listImagesInDirectory(baseDir, fullPath, files);
+      return;
+    }
+
+    const extension = path.extname(entry.name).toLowerCase();
+    if (!['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'].includes(extension)) return;
+    const relativePath = path.relative(baseDir, fullPath).split(path.sep).join('/');
+    files.push(`/assets/images/${relativePath}`);
+  });
+  return files;
+}
+
 async function ensureContentTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS content_blocks (
@@ -138,6 +213,16 @@ async function ensureContentTable() {
       font_style TEXT,
       text_transform TEXT,
       text_color TEXT,
+      background_color TEXT,
+      width_value TEXT,
+      height_value TEXT,
+      border_style TEXT,
+      border_width TEXT,
+      border_color TEXT,
+      border_radius TEXT,
+      position_mode TEXT,
+      pos_x INTEGER,
+      pos_y INTEGER,
       position INTEGER,
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -148,6 +233,56 @@ async function ensureContentTable() {
   await pool.query(`
     ALTER TABLE element_overrides
     ADD COLUMN IF NOT EXISTS text_color TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS background_color TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS width_value TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS height_value TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS border_style TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS border_width TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS border_color TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS border_radius TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS position_mode TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS pos_x INTEGER
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS pos_y INTEGER
   `);
 
   await pool.query(`
@@ -163,6 +298,43 @@ async function ensureContentTable() {
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
     )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS photo_albums (
+      id SERIAL PRIMARY KEY,
+      page_path TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      cover_image_path TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS album_images (
+      id SERIAL PRIMARY KEY,
+      album_id INTEGER NOT NULL REFERENCES photo_albums(id) ON DELETE CASCADE,
+      image_path TEXT NOT NULL,
+      caption TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS photo_albums_page_position_idx
+    ON photo_albums (page_path, position)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS album_images_album_position_idx
+    ON album_images (album_id, position)
   `);
 
   await pool.query(`
@@ -332,6 +504,56 @@ app.get('/api/page-sections', async (req, res) => {
   }
 });
 
+app.get('/api/albums', async (req, res) => {
+  const pagePath = normalizePagePath(req.query.page);
+
+  try {
+    const result = await pool.query(
+      `SELECT
+        a.id,
+        a.page_path,
+        a.title,
+        a.description,
+        COALESCE(a.cover_image_path, MIN(i.image_path)) AS cover_image_path,
+        a.position,
+        a.created_at,
+        a.updated_at,
+        COUNT(i.id)::INTEGER AS image_count
+      FROM photo_albums a
+      LEFT JOIN album_images i ON i.album_id = a.id
+      WHERE a.page_path = $1
+      GROUP BY a.id
+      ORDER BY a.position ASC, a.id ASC`,
+      [pagePath]
+    );
+    res.json({ pagePath, items: result.rows });
+  } catch (error) {
+    console.error('Failed to fetch albums', error);
+    res.status(500).json({ error: 'Unable to fetch albums' });
+  }
+});
+
+app.get('/api/albums/:albumId/images', async (req, res) => {
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0) {
+    return res.status(400).json({ error: 'Valid album id is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, album_id, image_path, caption, position, created_at, updated_at
+      FROM album_images
+      WHERE album_id = $1
+      ORDER BY position ASC, id ASC`,
+      [albumId]
+    );
+    res.json({ albumId, items: result.rows });
+  } catch (error) {
+    console.error('Failed to fetch album images', error);
+    res.status(500).json({ error: 'Unable to fetch album images' });
+  }
+});
+
 app.get('/api/calendar-events', async (req, res) => {
   const pagePath = normalizePagePath(req.query.page);
 
@@ -355,7 +577,9 @@ app.get('/api/element-overrides', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color, position, updated_at
+            `SELECT page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+              background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+              position_mode, pos_x, pos_y, position, updated_at
        FROM element_overrides
        WHERE page_path = $1
        ORDER BY position ASC NULLS LAST, updated_at ASC`,
@@ -381,10 +605,23 @@ app.post('/api/admin/upload-image', authenticateToken, upload.single('image'), (
   res.json({ path: rel });
 });
 
+app.get('/api/admin/images', authenticateToken, (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const images = listImagesInDirectory(imagesDir).sort((left, right) => left.localeCompare(right));
+    res.json({ items: images });
+  } catch (error) {
+    console.error('Failed to list images', error);
+    res.status(500).json({ error: 'Unable to list images' });
+  }
+});
+
 app.put('/api/admin/content', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const { contentKey, contentType, contentValue } = req.body;
 
   if (!contentKey || typeof contentKey !== 'string') {
@@ -425,6 +662,7 @@ app.put('/api/admin/calendar-events', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const dayOfMonth = Number.parseInt(req.body.dayOfMonth, 10);
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
 
@@ -461,6 +699,7 @@ app.delete('/api/admin/calendar-events', authenticateToken, async (req, res) => 
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const dayOfMonth = Number.parseInt(req.body.dayOfMonth, 10);
 
   if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
@@ -492,6 +731,7 @@ app.delete('/api/admin/content', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const { contentKey, contentType } = req.body;
 
   if (!contentKey || typeof contentKey !== 'string') {
@@ -523,6 +763,7 @@ app.post('/api/admin/content/new', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const { parentKey, contentType, contentValue } = req.body;
 
   if (!parentKey || typeof parentKey !== 'string') {
@@ -565,6 +806,7 @@ app.post('/api/admin/page-sections', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
   const body = typeof req.body.body === 'string' ? req.body.body.trim() : '';
 
@@ -609,6 +851,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
   const elementKey = typeof req.body.elementKey === 'string' ? req.body.elementKey.trim() : '';
   if (!elementKey) {
     return res.status(400).json({ error: 'Element key is required' });
@@ -619,13 +862,27 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   const fontWeight = typeof req.body.fontWeight === 'string' && req.body.fontWeight ? req.body.fontWeight : null;
   const fontStyle = typeof req.body.fontStyle === 'string' && req.body.fontStyle ? req.body.fontStyle : null;
   const textTransform = typeof req.body.textTransform === 'string' && req.body.textTransform ? req.body.textTransform : null;
-  const textColor = typeof req.body.textColor === 'string' && req.body.textColor ? req.body.textColor : null;
+  const textColor = normalizeHexColor(req.body.textColor);
+  const backgroundColor = normalizeHexColor(req.body.backgroundColor);
+  const widthValue = normalizeLengthValue(req.body.widthValue);
+  const heightValue = normalizeLengthValue(req.body.heightValue);
+  const borderStyle = normalizeBorderStyle(req.body.borderStyle);
+  const borderWidth = normalizeLengthValue(req.body.borderWidth);
+  const borderColor = normalizeHexColor(req.body.borderColor);
+  const borderRadius = normalizeLengthValue(req.body.borderRadius);
+  const positionMode = normalizePositionMode(req.body.positionMode);
+  const posX = normalizeCoordinate(req.body.posX);
+  const posY = normalizeCoordinate(req.body.posY);
   const position = Number.isInteger(req.body.position) ? req.body.position : null;
 
   try {
     const result = await pool.query(
-      `INSERT INTO element_overrides (page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color, position, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
+      `INSERT INTO element_overrides (
+        page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+        background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+        position_mode, pos_x, pos_y, position, updated_at, updated_by
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), $20)
        ON CONFLICT (page_path, element_key)
        DO UPDATE SET
          hidden = EXCLUDED.hidden,
@@ -634,11 +891,44 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          font_style = EXCLUDED.font_style,
          text_transform = EXCLUDED.text_transform,
          text_color = EXCLUDED.text_color,
+         background_color = EXCLUDED.background_color,
+         width_value = EXCLUDED.width_value,
+         height_value = EXCLUDED.height_value,
+         border_style = EXCLUDED.border_style,
+         border_width = EXCLUDED.border_width,
+         border_color = EXCLUDED.border_color,
+         border_radius = EXCLUDED.border_radius,
+         position_mode = EXCLUDED.position_mode,
+         pos_x = EXCLUDED.pos_x,
+         pos_y = EXCLUDED.pos_y,
          position = EXCLUDED.position,
          updated_at = NOW(),
          updated_by = EXCLUDED.updated_by
-       RETURNING page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color, position, updated_at`,
-      [pagePath, elementKey, hidden, textAlign, fontWeight, fontStyle, textTransform, textColor, position, req.user.userId]
+       RETURNING page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+                 background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+                 position_mode, pos_x, pos_y, position, updated_at`,
+      [
+        pagePath,
+        elementKey,
+        hidden,
+        textAlign,
+        fontWeight,
+        fontStyle,
+        textTransform,
+        textColor,
+        backgroundColor,
+        widthValue,
+        heightValue,
+        borderStyle,
+        borderWidth,
+        borderColor,
+        borderRadius,
+        positionMode,
+        posX,
+        posY,
+        position,
+        req.user.userId,
+      ]
     );
     res.json({ item: result.rows[0] });
   } catch (error) {
@@ -669,11 +959,18 @@ app.put('/api/admin/page-sections/:sectionId', authenticateToken, async (req, re
     return res.status(400).json({ error: 'Unsupported section field' });
   }
 
-  if (!value && field !== 'background_path') {
+  if (!value && !['background_path', 'image_path'].includes(field)) {
     return res.status(400).json({ error: 'Section value is required' });
   }
 
   try {
+    const sectionLookup = await pool.query('SELECT page_path FROM page_sections WHERE id = $1', [sectionId]);
+    if (sectionLookup.rowCount === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    if (!validateEditablePagePath(res, normalizePagePath(sectionLookup.rows[0].page_path))) return;
+
     const result = await pool.query(
       `UPDATE page_sections
        SET ${field} = $1, updated_at = NOW()
@@ -702,6 +999,13 @@ app.delete('/api/admin/page-sections/:sectionId', authenticateToken, async (req,
   }
 
   try {
+    const sectionLookup = await pool.query('SELECT page_path FROM page_sections WHERE id = $1', [sectionId]);
+    if (sectionLookup.rowCount === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    if (!validateEditablePagePath(res, normalizePagePath(sectionLookup.rows[0].page_path))) return;
+
     const result = await pool.query('DELETE FROM page_sections WHERE id = $1 RETURNING id', [sectionId]);
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Section not found' });
@@ -728,6 +1032,15 @@ app.put('/api/admin/page-sections/reorder', authenticateToken, async (req, res) 
 
   const client = await pool.connect();
   try {
+    const pagePathLookup = await client.query(
+      'SELECT DISTINCT page_path FROM page_sections WHERE id = ANY($1::int[])',
+      [cleanIds]
+    );
+    const blocked = pagePathLookup.rows.some((row) => !isAdminEditablePagePath(normalizePagePath(row.page_path)));
+    if (blocked) {
+      return res.status(403).json({ error: 'Editing is disabled for one or more selected pages' });
+    }
+
     await client.query('BEGIN');
     for (let index = 0; index < cleanIds.length; index += 1) {
       await client.query('UPDATE page_sections SET position = $1, updated_at = NOW() WHERE id = $2', [index + 1, cleanIds[index]]);
@@ -738,6 +1051,340 @@ app.put('/api/admin/page-sections/reorder', authenticateToken, async (req, res) 
     await client.query('ROLLBACK');
     console.error('Failed to reorder page sections', error);
     res.status(500).json({ error: 'Unable to reorder page sections' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/admin/albums', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
+
+  const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+  const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+  const coverImagePath = typeof req.body.coverImagePath === 'string' ? req.body.coverImagePath.trim() : '';
+
+  if (!title) {
+    return res.status(400).json({ error: 'Album title is required' });
+  }
+
+  try {
+    const positionResult = await pool.query(
+      'SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM photo_albums WHERE page_path = $1',
+      [pagePath]
+    );
+    const nextPosition = positionResult.rows[0].next_position;
+
+    const result = await pool.query(
+      `INSERT INTO photo_albums (page_path, title, description, cover_image_path, position, created_by, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      RETURNING id, page_path, title, description, cover_image_path, position, created_at, updated_at`,
+      [pagePath, title, description || null, coverImagePath || null, nextPosition, req.user.userId]
+    );
+    res.status(201).json({ item: result.rows[0] });
+  } catch (error) {
+    console.error('Failed to create album', error);
+    res.status(500).json({ error: 'Unable to create album' });
+  }
+});
+
+app.put('/api/admin/albums/:albumId(\\d+)', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0) {
+    return res.status(400).json({ error: 'Valid album id is required' });
+  }
+
+  const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+  const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+  const coverImagePath = typeof req.body.coverImagePath === 'string' ? req.body.coverImagePath.trim() : '';
+  const position = Number.isInteger(req.body.position) ? req.body.position : null;
+
+  if (!title) {
+    return res.status(400).json({ error: 'Album title is required' });
+  }
+
+  try {
+    const lookup = await pool.query('SELECT page_path, position FROM photo_albums WHERE id = $1', [albumId]);
+    if (lookup.rowCount === 0) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const pagePath = normalizePagePath(lookup.rows[0].page_path);
+    if (!validateEditablePagePath(res, pagePath)) return;
+
+    const result = await pool.query(
+      `UPDATE photo_albums
+      SET title = $1,
+          description = $2,
+          cover_image_path = $3,
+          position = $4,
+          updated_at = NOW()
+      WHERE id = $5
+      RETURNING id, page_path, title, description, cover_image_path, position, created_at, updated_at`,
+      [title, description || null, coverImagePath || null, position || lookup.rows[0].position, albumId]
+    );
+
+    res.json({ item: result.rows[0] });
+  } catch (error) {
+    console.error('Failed to update album', error);
+    res.status(500).json({ error: 'Unable to update album' });
+  }
+});
+
+app.delete('/api/admin/albums/:albumId(\\d+)', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0) {
+    return res.status(400).json({ error: 'Valid album id is required' });
+  }
+
+  try {
+    const lookup = await pool.query('SELECT page_path FROM photo_albums WHERE id = $1', [albumId]);
+    if (lookup.rowCount === 0) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const pagePath = normalizePagePath(lookup.rows[0].page_path);
+    if (!validateEditablePagePath(res, pagePath)) return;
+
+    await pool.query('DELETE FROM photo_albums WHERE id = $1', [albumId]);
+    res.json({ deleted: true, id: albumId });
+  } catch (error) {
+    console.error('Failed to delete album', error);
+    res.status(500).json({ error: 'Unable to delete album' });
+  }
+});
+
+async function handleAlbumReorder(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
+
+  const orderedIds = Array.isArray(req.body.orderedIds) ? req.body.orderedIds : [];
+  const cleanIds = orderedIds
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  if (cleanIds.length === 0) {
+    return res.status(400).json({ error: 'Ordered album ids are required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const ownership = await client.query(
+      'SELECT id FROM photo_albums WHERE page_path = $1 AND id = ANY($2::int[])',
+      [pagePath, cleanIds]
+    );
+    if (ownership.rowCount !== cleanIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Album list contains invalid ids for this page' });
+    }
+
+    for (let index = 0; index < cleanIds.length; index += 1) {
+      await client.query(
+        'UPDATE photo_albums SET position = $1, updated_at = NOW() WHERE id = $2',
+        [index + 1, cleanIds[index]]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ updated: true, orderedIds: cleanIds });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to reorder albums', error);
+    res.status(500).json({ error: 'Unable to reorder albums' });
+  } finally {
+    client.release();
+  }
+}
+
+app.put('/api/admin/albums-reorder', authenticateToken, handleAlbumReorder);
+
+// Backward-compatible path for clients that still call the legacy endpoint.
+app.put('/api/admin/albums/reorder', authenticateToken, handleAlbumReorder);
+
+app.post('/api/admin/albums/:albumId(\\d+)/images', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0) {
+    return res.status(400).json({ error: 'Valid album id is required' });
+  }
+
+  const imagePath = typeof req.body.imagePath === 'string' ? req.body.imagePath.trim() : '';
+  const caption = typeof req.body.caption === 'string' ? req.body.caption.trim() : '';
+  const setAsCover = Boolean(req.body.setAsCover);
+
+  if (!imagePath) {
+    return res.status(400).json({ error: 'Image path is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const albumLookup = await client.query(
+      'SELECT page_path, cover_image_path FROM photo_albums WHERE id = $1 FOR UPDATE',
+      [albumId]
+    );
+    if (albumLookup.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const pagePath = normalizePagePath(albumLookup.rows[0].page_path);
+    if (!isAdminEditablePagePath(pagePath)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Editing is disabled for this page' });
+    }
+
+    const positionResult = await client.query(
+      'SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM album_images WHERE album_id = $1',
+      [albumId]
+    );
+    const nextPosition = positionResult.rows[0].next_position;
+
+    const imageResult = await client.query(
+      `INSERT INTO album_images (album_id, image_path, caption, position, created_by, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING id, album_id, image_path, caption, position, created_at, updated_at`,
+      [albumId, imagePath, caption || null, nextPosition, req.user.userId]
+    );
+
+    if (setAsCover || !albumLookup.rows[0].cover_image_path) {
+      await client.query('UPDATE photo_albums SET cover_image_path = $1, updated_at = NOW() WHERE id = $2', [imagePath, albumId]);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ item: imageResult.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to create album image', error);
+    res.status(500).json({ error: 'Unable to create album image' });
+  } finally {
+    client.release();
+  }
+});
+
+app.put('/api/admin/albums/:albumId(\\d+)/images/:imageId(\\d+)', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  const imageId = Number.parseInt(req.params.imageId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0 || !Number.isInteger(imageId) || imageId <= 0) {
+    return res.status(400).json({ error: 'Valid album and image ids are required' });
+  }
+
+  const caption = typeof req.body.caption === 'string' ? req.body.caption.trim() : null;
+  const imagePath = typeof req.body.imagePath === 'string' ? req.body.imagePath.trim() : null;
+  const setAsCover = Boolean(req.body.setAsCover);
+  const position = Number.isInteger(req.body.position) ? req.body.position : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const albumLookup = await client.query('SELECT page_path FROM photo_albums WHERE id = $1 FOR UPDATE', [albumId]);
+    if (albumLookup.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const pagePath = normalizePagePath(albumLookup.rows[0].page_path);
+    if (!isAdminEditablePagePath(pagePath)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Editing is disabled for this page' });
+    }
+
+    const current = await client.query('SELECT image_path, caption, position FROM album_images WHERE id = $1 AND album_id = $2', [imageId, albumId]);
+    if (current.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const nextImagePath = imagePath !== null ? imagePath : current.rows[0].image_path;
+    const nextCaption = caption !== null ? caption : current.rows[0].caption;
+    const nextPosition = position || current.rows[0].position;
+
+    const result = await client.query(
+      `UPDATE album_images
+      SET image_path = $1, caption = $2, position = $3, updated_at = NOW()
+      WHERE id = $4 AND album_id = $5
+      RETURNING id, album_id, image_path, caption, position, created_at, updated_at`,
+      [nextImagePath, nextCaption, nextPosition, imageId, albumId]
+    );
+
+    if (setAsCover) {
+      await client.query('UPDATE photo_albums SET cover_image_path = $1, updated_at = NOW() WHERE id = $2', [nextImagePath, albumId]);
+    }
+
+    await client.query('COMMIT');
+    res.json({ item: result.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to update album image', error);
+    res.status(500).json({ error: 'Unable to update album image' });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/albums/:albumId(\\d+)/images/:imageId(\\d+)', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const albumId = Number.parseInt(req.params.albumId, 10);
+  const imageId = Number.parseInt(req.params.imageId, 10);
+  if (!Number.isInteger(albumId) || albumId <= 0 || !Number.isInteger(imageId) || imageId <= 0) {
+    return res.status(400).json({ error: 'Valid album and image ids are required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const albumLookup = await client.query('SELECT page_path, cover_image_path FROM photo_albums WHERE id = $1 FOR UPDATE', [albumId]);
+    if (albumLookup.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    const pagePath = normalizePagePath(albumLookup.rows[0].page_path);
+    if (!isAdminEditablePagePath(pagePath)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Editing is disabled for this page' });
+    }
+
+    const deleted = await client.query(
+      'DELETE FROM album_images WHERE id = $1 AND album_id = $2 RETURNING image_path',
+      [imageId, albumId]
+    );
+    if (deleted.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    if (albumLookup.rows[0].cover_image_path === deleted.rows[0].image_path) {
+      const nextCover = await client.query(
+        'SELECT image_path FROM album_images WHERE album_id = $1 ORDER BY position ASC, id ASC LIMIT 1',
+        [albumId]
+      );
+      await client.query(
+        'UPDATE photo_albums SET cover_image_path = $1, updated_at = NOW() WHERE id = $2',
+        [nextCover.rowCount ? nextCover.rows[0].image_path : null, albumId]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ deleted: true, id: imageId });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to delete album image', error);
+    res.status(500).json({ error: 'Unable to delete album image' });
   } finally {
     client.release();
   }
