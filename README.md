@@ -217,6 +217,8 @@ If that still fails, repair the owner manually (replace names if you changed def
 ```bash
 sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.element_overrides OWNER TO \"krewe_db_user\";"
 sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.content_blocks OWNER TO \"krewe_db_user\";"
+sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.pending_registrations OWNER TO \"krewe_db_user\";"
+sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.page_sections OWNER TO \"krewe_db_user\";"
 ```
 
 Then run:

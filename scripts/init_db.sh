@@ -20,6 +20,12 @@ REQUIRED_PUBLIC_TABLES=(
   photo_albums
   album_images
 )
+PERMISSION_CRITICAL_PUBLIC_TABLES=(
+  page_sections
+  element_overrides
+  content_blocks
+  pending_registrations
+)
 
 echo "== Krewe Mystique DB initializer =="
 
@@ -228,9 +234,10 @@ BEGIN
 END $$;
 SQL
 
-  # Explicit grants for runtime-managed tables.
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.element_overrides TO \"$DB_USER\";"
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.content_blocks TO \"$DB_USER\";"
+    # Explicit grants for permission-critical runtime tables.
+    for table_name in "${PERMISSION_CRITICAL_PUBLIC_TABLES[@]}"; do
+      sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.\"$table_name\" TO \"$DB_USER\";"
+    done
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
@@ -244,6 +251,11 @@ BEGIN
   EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', '$DB_USER');
 END $$;
 SQL
+
+  # Attempt explicit grants for permission-critical runtime tables.
+  for table_name in "${PERMISSION_CRITICAL_PUBLIC_TABLES[@]}"; do
+    PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.\"$table_name\" TO \"$DB_USER\";" || true
+  done
 fi
 
 echo "-> Verifying ownership of all non-system tables..."
