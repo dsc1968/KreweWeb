@@ -898,6 +898,7 @@ if (countdownElements.days) {
     document.querySelectorAll(editableContainerSelector).forEach((element) => {
       if (isInsideAdminUi(element)) return;
       if (isInsideSiteMenu(element)) return;
+      if (element.classList.contains('container')) return;
       if (element.closest('.admin-section-tools, .admin-editor-backdrop, .site-header, .footer')) return;
       if (element.id === 'dynamic-page-sections') return;
       if (element.dataset.adminDynamicSection === 'true') return;
@@ -4520,6 +4521,7 @@ if (countdownElements.days) {
 
   function findFreeDragTarget(source) {
     if (!source || !state.editMode) return null;
+    if (isInsideAdminUi(source)) return null;
     const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
