@@ -101,11 +101,9 @@ echo "-> Ensuring schema ownership and applying db-init.sql as '$DB_USER'..."
 if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$DB_USER\";" || true
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -f db-init.sql
-  OWNER=postgres
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$DB_USER\";" || true
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -f db-init.sql
-  OWNER=$(whoami)
 fi
 
 if [ "$USE_SUDO_POSTGRES" = true ]; then
@@ -219,14 +217,9 @@ SQL
   done
 fi
 
-  # Reassign ownership only for non-system owners.
-  echo "-> Reassigning owned objects from '$OWNER' to '$DB_USER' (if safe)"
+  # Re-apply grants and default privileges for app objects.
+  echo "-> Re-applying grants for schema 'public'..."
 if [ "$USE_SUDO_POSTGRES" = true ]; then
-    if [ "$OWNER" != "postgres" ] && [[ "$OWNER" != pg_* ]]; then
-      sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
-    else
-      echo "-> Skipping REASSIGN OWNED for system role '$OWNER'."
-    fi
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 DO $$
 DECLARE
@@ -244,11 +237,6 @@ SQL
       sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.\"$table_name\" TO \"$DB_USER\";"
     done
 else
-    if [ "$OWNER" != "postgres" ] && [[ "$OWNER" != pg_* ]]; then
-      psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
-    else
-      echo "-> Skipping REASSIGN OWNED for system role '$OWNER'."
-    fi
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
 DO $$
 DECLARE

@@ -139,7 +139,7 @@ This project includes a helper script that does the following:
 - writes a `.env` file with the connection details
 - creates a default admin user (first run)
 
-If the database already exists, `npm run init-db` reapplies ownership and permissions for app tables/sequences in the `public` schema, skips system/extension-managed objects, and skips system-role ownership reassignment.
+If the database already exists, `npm run init-db` reapplies ownership and permissions for app tables/sequences in the `public` schema and skips system/extension-managed objects. It does not run global role reassignment.
 
 It explicitly enforces owner `krewe_db_user` (or your configured `DB_USER`) for required tables including:
 
