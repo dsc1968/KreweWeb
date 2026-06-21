@@ -94,69 +94,46 @@ else
 fi
 
 if [ "$USE_SUDO_POSTGRES" = true ]; then
-  echo "-> Reassigning objects from all owners to '$DB_USER'..."
+  echo "-> Repairing ownership of app objects in schema 'public' to '$DB_USER'..."
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 DO $$
 DECLARE
   r RECORD;
 BEGIN
-  FOR r IN
-    SELECT DISTINCT pg_get_userbyid(owner_oid) AS owner_name
-    FROM (
-      SELECT relowner AS owner_oid FROM pg_class
-      UNION
-      SELECT nspowner AS owner_oid FROM pg_namespace
-      UNION
-      SELECT proowner AS owner_oid FROM pg_proc
-    ) owners
-    WHERE pg_get_userbyid(owner_oid) IS NOT NULL
-      AND pg_get_userbyid(owner_oid) <> 'postgres'
-      AND pg_get_userbyid(owner_oid) NOT LIKE 'pg_%'
-      AND pg_get_userbyid(owner_oid) <> '$DB_USER'
-  LOOP
-    EXECUTE format('REASSIGN OWNED BY %I TO %I', r.owner_name, '$DB_USER');
-  END LOOP;
-END $$;
-SQL
-
-  echo "-> Repairing ownership of all non-system schemas, tables, and sequences to '$DB_USER'..."
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
-DO $$
-DECLARE
-  r RECORD;
-BEGIN
-  FOR r IN
-    SELECT nspname
-    FROM pg_namespace
-    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%'
-      AND nspname NOT LIKE 'pg_toast_temp_%'
-  LOOP
-    EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.nspname, '$DB_USER');
-  END LOOP;
+  EXECUTE format('ALTER SCHEMA %I OWNER TO %I', 'public', '$DB_USER');
 
   FOR r IN
-    SELECT n.nspname AS schemaname, c.relname AS relname
+    SELECT c.relname AS relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p', 'f')
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND n.nspname NOT LIKE 'pg_temp_%'
-      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'f')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        WHERE d.classid = 'pg_class'::regclass
+          AND d.objid = c.oid
+          AND d.deptype = 'e'
+      )
   LOOP
-    EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+    EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.relname, '$DB_USER');
   END LOOP;
 
   FOR r IN
-    SELECT n.nspname AS schemaname, c.relname AS relname
+    SELECT c.relname AS relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind = 'S'
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND n.nspname NOT LIKE 'pg_temp_%'
-      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'S'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        WHERE d.classid = 'pg_class'::regclass
+          AND d.objid = c.oid
+          AND d.deptype = 'e'
+      )
   LOOP
-    EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.relname, '$DB_USER');
   END LOOP;
 END $$;
 SQL
@@ -172,32 +149,42 @@ DECLARE
   r RECORD;
 BEGIN
   FOR r IN
-    SELECT n.nspname AS schemaname, c.relname AS relname
+    SELECT c.relname AS relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p', 'f')
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND n.nspname NOT LIKE 'pg_temp_%'
-      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'f')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        WHERE d.classid = 'pg_class'::regclass
+          AND d.objid = c.oid
+          AND d.deptype = 'e'
+      )
   LOOP
     BEGIN
-      EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+      EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.relname, '$DB_USER');
     EXCEPTION WHEN insufficient_privilege THEN
       NULL;
     END;
   END LOOP;
 
   FOR r IN
-    SELECT n.nspname AS schemaname, c.relname AS relname
+    SELECT c.relname AS relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind = 'S'
-      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND n.nspname NOT LIKE 'pg_temp_%'
-      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'S'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        WHERE d.classid = 'pg_class'::regclass
+          AND d.objid = c.oid
+          AND d.deptype = 'e'
+      )
   LOOP
     BEGIN
-      EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+      EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.relname, '$DB_USER');
     EXCEPTION WHEN insufficient_privilege THEN
       NULL;
     END;
@@ -213,21 +200,12 @@ if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 DO $$
 DECLARE
-  r RECORD;
 BEGIN
-  FOR r IN
-    SELECT nspname
-    FROM pg_namespace
-    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%'
-      AND nspname NOT LIKE 'pg_toast_temp_%'
-  LOOP
-    EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT ALL PRIVILEGES ON TABLES TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I', r.nspname, '$DB_USER');
-  END LOOP;
+  EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO %I', '$DB_USER');
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', '$DB_USER');
 END $$;
 SQL
 
@@ -239,21 +217,12 @@ else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
 DO $$
 DECLARE
-  r RECORD;
 BEGIN
-  FOR r IN
-    SELECT nspname
-    FROM pg_namespace
-    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%'
-      AND nspname NOT LIKE 'pg_toast_temp_%'
-  LOOP
-    EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT ALL PRIVILEGES ON TABLES TO %I', r.nspname, '$DB_USER');
-    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I', r.nspname, '$DB_USER');
-  END LOOP;
+  EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', '$DB_USER');
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO %I', '$DB_USER');
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', '$DB_USER');
 END $$;
 SQL
 fi
@@ -264,9 +233,14 @@ SELECT n.nspname || '.' || c.relname || ' -> ' || pg_get_userbyid(c.relowner)
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p', 'f')
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-  AND n.nspname NOT LIKE 'pg_temp_%'
-  AND n.nspname NOT LIKE 'pg_toast_temp_%'
+  AND n.nspname = 'public'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM pg_depend d
+    WHERE d.classid = 'pg_class'::regclass
+      AND d.objid = c.oid
+      AND d.deptype = 'e'
+  )
   AND pg_get_userbyid(c.relowner) <> '$DB_USER'
 ORDER BY 1;
 SQL

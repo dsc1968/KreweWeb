@@ -139,7 +139,7 @@ This project includes a helper script that does the following:
 - writes a `.env` file with the connection details
 - creates a default admin user (first run)
 
-If the database already exists, `npm run init-db` reapplies ownership and permissions for app schemas, tables, and sequences.
+If the database already exists, `npm run init-db` reapplies ownership and permissions for app tables/sequences in the `public` schema and skips system/extension-managed objects.
 
 Run it from the project root:
 
