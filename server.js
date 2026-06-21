@@ -227,6 +227,7 @@ async function ensureContentTable() {
       opacity_value TEXT,
       text_color TEXT,
       background_color TEXT,
+      background_opacity_value TEXT,
       width_value TEXT,
       height_value TEXT,
       border_style TEXT,
@@ -271,6 +272,11 @@ async function ensureContentTable() {
   await pool.query(`
     ALTER TABLE element_overrides
     ADD COLUMN IF NOT EXISTS background_color TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS background_opacity_value TEXT
   `);
 
   await pool.query(`
@@ -611,7 +617,7 @@ app.get('/api/element-overrides', async (req, res) => {
   try {
     const result = await pool.query(
             `SELECT page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
-              background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+              background_color, background_opacity_value, width_value, height_value, border_style, border_width, border_color, border_radius,
               position_mode, pos_x, pos_y, position, updated_at
        FROM element_overrides
        WHERE page_path = $1
@@ -979,6 +985,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   const opacityValue = normalizeOpacityValue(req.body.opacityValue);
   const textColor = normalizeHexColor(req.body.textColor);
   const backgroundColor = normalizeHexColor(req.body.backgroundColor);
+  const backgroundOpacityValue = normalizeOpacityValue(req.body.backgroundOpacityValue);
   const widthValue = normalizeLengthValue(req.body.widthValue);
   const heightValue = normalizeLengthValue(req.body.heightValue);
   const borderStyle = normalizeBorderStyle(req.body.borderStyle);
@@ -994,10 +1001,10 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO element_overrides (
         page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
-        background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+        background_color, background_opacity_value, width_value, height_value, border_style, border_width, border_color, border_radius,
         position_mode, pos_x, pos_y, position, updated_at, updated_by
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), $24)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), $25)
        ON CONFLICT (page_path, element_key)
        DO UPDATE SET
          hidden = EXCLUDED.hidden,
@@ -1011,6 +1018,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          opacity_value = EXCLUDED.opacity_value,
          text_color = EXCLUDED.text_color,
          background_color = EXCLUDED.background_color,
+         background_opacity_value = EXCLUDED.background_opacity_value,
          width_value = EXCLUDED.width_value,
          height_value = EXCLUDED.height_value,
          border_style = EXCLUDED.border_style,
@@ -1024,7 +1032,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          updated_at = NOW(),
          updated_by = EXCLUDED.updated_by
       RETURNING page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
-                 background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
+             background_color, background_opacity_value, width_value, height_value, border_style, border_width, border_color, border_radius,
                  position_mode, pos_x, pos_y, position, updated_at`,
       [
         pagePath,
@@ -1040,6 +1048,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
         opacityValue,
         textColor,
         backgroundColor,
+        backgroundOpacityValue,
         widthValue,
         heightValue,
         borderStyle,
