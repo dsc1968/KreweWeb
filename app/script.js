@@ -2914,8 +2914,13 @@ if (countdownElements.days) {
             return;
           }
 
-          await saveElementOverride(key, { hidden: true });
-          setAdminHiddenState(element, true);
+          await saveContentUpdate({
+            contentKey: key,
+            contentType: 'text',
+            contentValue: '',
+          });
+          element.remove();
+          state.registry.delete(`text:${key}`);
         },
         onSave: async (nextValue, formatting) => {
           const item = await saveContentUpdate({
@@ -3285,8 +3290,13 @@ if (countdownElements.days) {
           return;
         }
 
-        await saveElementOverride(key, { hidden: true });
-        setAdminHiddenState(element, true);
+        await saveContentUpdate({
+          contentKey: key,
+          contentType: 'image',
+          contentValue: '',
+        });
+        element.remove();
+        state.registry.delete(`image:${key}`);
       },
     });
   }
