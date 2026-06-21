@@ -173,6 +173,15 @@ function normalizeCoordinate(value) {
   return Math.round(clamped);
 }
 
+function normalizeOpacityValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const clamped = Math.max(0, Math.min(1, parsed));
+  return String(Math.round(clamped * 1000) / 1000);
+}
+
 function listImagesInDirectory(baseDir, currentDir = baseDir, files = []) {
   const entries = fs.readdirSync(currentDir, { withFileTypes: true });
   entries.forEach((entry) => {
@@ -215,6 +224,7 @@ async function ensureContentTable() {
       font_style TEXT,
       text_transform TEXT,
       font_size TEXT,
+      opacity_value TEXT,
       text_color TEXT,
       background_color TEXT,
       width_value TEXT,
@@ -241,6 +251,11 @@ async function ensureContentTable() {
   await pool.query(`
     ALTER TABLE element_overrides
     ADD COLUMN IF NOT EXISTS font_size TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS opacity_value TEXT
   `);
 
   await pool.query(`
@@ -595,7 +610,7 @@ app.get('/api/element-overrides', async (req, res) => {
 
   try {
     const result = await pool.query(
-            `SELECT page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+            `SELECT page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
               background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
               position_mode, pos_x, pos_y, position, updated_at
        FROM element_overrides
@@ -961,6 +976,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   const fontStyle = typeof req.body.fontStyle === 'string' && req.body.fontStyle ? req.body.fontStyle : null;
   const textTransform = typeof req.body.textTransform === 'string' && req.body.textTransform ? req.body.textTransform : null;
   const fontSize = normalizeLengthValue(req.body.fontSize);
+  const opacityValue = normalizeOpacityValue(req.body.opacityValue);
   const textColor = normalizeHexColor(req.body.textColor);
   const backgroundColor = normalizeHexColor(req.body.backgroundColor);
   const widthValue = normalizeLengthValue(req.body.widthValue);
@@ -977,11 +993,11 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO element_overrides (
-        page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+        page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
         background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
         position_mode, pos_x, pos_y, position, updated_at, updated_by
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), $23)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), $24)
        ON CONFLICT (page_path, element_key)
        DO UPDATE SET
          hidden = EXCLUDED.hidden,
@@ -992,6 +1008,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          font_style = EXCLUDED.font_style,
          text_transform = EXCLUDED.text_transform,
          font_size = EXCLUDED.font_size,
+         opacity_value = EXCLUDED.opacity_value,
          text_color = EXCLUDED.text_color,
          background_color = EXCLUDED.background_color,
          width_value = EXCLUDED.width_value,
@@ -1006,7 +1023,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          position = EXCLUDED.position,
          updated_at = NOW(),
          updated_by = EXCLUDED.updated_by
-       RETURNING page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+      RETURNING page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, opacity_value, text_color,
                  background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
                  position_mode, pos_x, pos_y, position, updated_at`,
       [
@@ -1020,6 +1037,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
         fontStyle,
         textTransform,
         fontSize,
+        opacityValue,
         textColor,
         backgroundColor,
         widthValue,

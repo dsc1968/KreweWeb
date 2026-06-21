@@ -444,6 +444,7 @@ if (countdownElements.days) {
       fontStyle: patch.fontStyle ?? current.font_style ?? null,
       textTransform: patch.textTransform ?? current.text_transform ?? null,
       fontSize: patch.fontSize ?? current.font_size ?? null,
+      opacityValue: patch.opacityValue ?? current.opacity_value ?? null,
       textColor: patch.textColor ?? current.text_color ?? null,
       backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
       widthValue: patch.widthValue ?? current.width_value ?? null,
@@ -926,6 +927,7 @@ if (countdownElements.days) {
     element.style.fontStyle = override.font_style || '';
     element.style.textTransform = override.text_transform || '';
     element.style.fontSize = override.font_size || '';
+    element.style.opacity = override.opacity_value || '';
     element.style.color = override.text_color || '';
     element.style.backgroundColor = override.background_color || '';
     element.style.width = override.width_value || '';
@@ -2574,6 +2576,9 @@ if (countdownElements.days) {
           <label>Font Size
             <input id="admin-format-font-size" type="text" placeholder="16px, 1.125rem" />
           </label>
+          <label>Opacity
+            <input id="admin-format-opacity" type="text" placeholder="1, 0.85, 0.5" />
+          </label>
           <label>Text Color
             <div class="admin-color-row">
               <input id="admin-format-color" type="color" value="#ffffff" />
@@ -2741,6 +2746,7 @@ if (countdownElements.days) {
     const styleSelect = modal.querySelector('#admin-format-style');
     const transformSelect = modal.querySelector('#admin-format-transform');
     const fontSizeInput = modal.querySelector('#admin-format-font-size');
+    const opacityInput = modal.querySelector('#admin-format-opacity');
     const colorInput = modal.querySelector('#admin-format-color');
     const colorReset = modal.querySelector('#admin-format-color-reset');
     const bgColorInput = modal.querySelector('#admin-format-bg-color');
@@ -2771,6 +2777,7 @@ if (countdownElements.days) {
     styleSelect.value = options.formatting.fontStyle || '';
     transformSelect.value = options.formatting.textTransform || '';
     fontSizeInput.value = options.formatting.fontSize || '';
+    opacityInput.value = options.formatting.opacityValue || '';
     colorInput.value = existingColor || '#ffffff';
     bgColorInput.value = existingBgColor || '#ffffff';
     widthInput.value = options.formatting.widthValue || '';
@@ -2896,6 +2903,7 @@ if (countdownElements.days) {
           fontStyle: styleSelect.value,
           textTransform: transformSelect.value,
           fontSize: fontSizeInput.value.trim(),
+          opacityValue: opacityInput.value.trim(),
           textColor: colorInput.dataset.custom === 'true' ? colorInput.value : '',
           backgroundColor: bgColorInput.dataset.custom === 'true' ? bgColorInput.value : '',
           widthValue: widthInput.value.trim(),
@@ -2935,6 +2943,7 @@ if (countdownElements.days) {
           fontStyle: override.font_style || '',
           textTransform: override.text_transform || '',
           fontSize: override.font_size || '',
+          opacityValue: override.opacity_value || '',
           textColor: override.text_color || '',
           backgroundColor: override.background_color || '',
           widthValue: override.width_value || '',
@@ -3023,6 +3032,7 @@ if (countdownElements.days) {
           fontStyle: override.font_style || '',
           textTransform: override.text_transform || '',
           fontSize: override.font_size || '',
+          opacityValue: override.opacity_value || '',
           textColor: override.text_color || '',
           backgroundColor: override.background_color || '',
           widthValue: override.width_value || '',
@@ -3289,6 +3299,7 @@ if (countdownElements.days) {
         fontStyle: sourceOverride.font_style,
         textTransform: sourceOverride.text_transform,
         fontSize: sourceOverride.font_size,
+        opacityValue: sourceOverride.opacity_value,
         textColor: sourceOverride.text_color,
         backgroundColor: sourceOverride.background_color,
         widthValue: sourceOverride.width_value,
@@ -3413,6 +3424,7 @@ if (countdownElements.days) {
           fontStyle: '',
           textTransform: '',
           fontSize: '',
+          opacityValue: '',
           textColor: '',
           backgroundColor: '',
           widthValue: '',
@@ -3489,6 +3501,9 @@ if (countdownElements.days) {
           <label>Corner Radius
             <input id="admin-image-border-radius" type="text" placeholder="0, 8px, 50%" />
           </label>
+          <label>Opacity
+            <input id="admin-image-opacity" type="text" placeholder="1, 0.85, 0.5" />
+          </label>
           <label id="admin-image-bg-color-wrap" style="display:none;">Background Color
             <div class="admin-color-row">
               <input id="admin-image-bg-color" type="color" value="#ffffff" />
@@ -3533,6 +3548,7 @@ if (countdownElements.days) {
     const borderColorInput = modal.querySelector('#admin-image-border-color');
     const borderColorReset = modal.querySelector('#admin-image-border-color-reset');
     const borderRadiusInput = modal.querySelector('#admin-image-border-radius');
+    const opacityInput = modal.querySelector('#admin-image-opacity');
     const bgColorWrap = modal.querySelector('#admin-image-bg-color-wrap');
     const bgColorInput = modal.querySelector('#admin-image-bg-color');
     const bgColorReset = modal.querySelector('#admin-image-bg-color-reset');
@@ -3546,6 +3562,7 @@ if (countdownElements.days) {
     borderStyleSelect.value = override.border_style || '';
     borderWidthInput.value = override.border_width || '';
     borderRadiusInput.value = override.border_radius || '';
+    opacityInput.value = override.opacity_value || '';
     borderColorInput.value = existingBorderColor || '#ffffff';
     borderColorInput.dataset.custom = existingBorderColor ? 'true' : 'false';
     bgColorInput.value = existingBgColor || '#ffffff';
@@ -3626,6 +3643,7 @@ if (countdownElements.days) {
           borderWidth: borderWidthInput.value.trim(),
           borderColor: borderColorInput.dataset.custom === 'true' ? borderColorInput.value : '',
           borderRadius: borderRadiusInput.value.trim(),
+          opacityValue: opacityInput.value.trim(),
         };
 
         if (allowBackgroundColor) {
