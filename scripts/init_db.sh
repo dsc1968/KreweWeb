@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# init_db.sh version: 2026.06.21.1
+# Includes: public-schema ownership repair, required-table owner enforcement,
+# and no global REASSIGN OWNED role reassignment.
+
 # Initializes Postgres role, database, applies schema, and writes .env
 # Usage: ./scripts/init_db.sh [db_password]
+
+SCRIPT_VERSION="2026.06.21.1"
 
 DB_NAME=${DB_NAME:-krewe_db}
 DB_USER=${DB_USER:-krewe_db_user}
@@ -27,7 +33,7 @@ PERMISSION_CRITICAL_PUBLIC_TABLES=(
   pending_registrations
 )
 
-echo "== Krewe Mystique DB initializer =="
+echo "== Krewe Mystique DB initializer (v$SCRIPT_VERSION) =="
 
 if ! command -v psql >/dev/null 2>&1; then
   echo "Error: psql not found. Install PostgreSQL client tools and retry." >&2
