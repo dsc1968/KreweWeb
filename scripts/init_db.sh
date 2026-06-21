@@ -94,8 +94,31 @@ else
 fi
 
 if [ "$USE_SUDO_POSTGRES" = true ]; then
+  echo "-> Reassigning objects from all owners to '$DB_USER'..."
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT DISTINCT pg_get_userbyid(owner_oid) AS owner_name
+    FROM (
+      SELECT relowner AS owner_oid FROM pg_class
+      UNION
+      SELECT nspowner AS owner_oid FROM pg_namespace
+      UNION
+      SELECT proowner AS owner_oid FROM pg_proc
+    ) owners
+    WHERE pg_get_userbyid(owner_oid) IS NOT NULL
+      AND pg_get_userbyid(owner_oid) <> '$DB_USER'
+  LOOP
+    EXECUTE format('REASSIGN OWNED BY %I TO %I', r.owner_name, '$DB_USER');
+  END LOOP;
+END $$;
+SQL
+
   echo "-> Repairing ownership of all non-system schemas, tables, and sequences to '$DB_USER'..."
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 DO $$
 DECLARE
   r RECORD;
@@ -137,8 +160,8 @@ END $$;
 SQL
 
   # Explicitly enforce owner for the two runtime-migration tables.
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.element_overrides OWNER TO \"$DB_USER\";" || true
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.content_blocks OWNER TO \"$DB_USER\";" || true
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.element_overrides OWNER TO \"$DB_USER\";"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.content_blocks OWNER TO \"$DB_USER\";"
 else
   echo "-> Attempting ownership reapply as '$DB_USER' (limited without postgres admin access)..."
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" <<SQL || true
@@ -207,8 +230,8 @@ END $$;
 SQL
 
   # Explicit grants for runtime-managed tables.
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.element_overrides TO \"$DB_USER\";" || true
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.content_blocks TO \"$DB_USER\";" || true
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.element_overrides TO \"$DB_USER\";"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.content_blocks TO \"$DB_USER\";"
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
