@@ -163,6 +163,8 @@ curl http://localhost:8000/api/status
 
 If the server is working, the command will return a small status response in your terminal.
 
+If you see `must be owner of table element_overrides` when starting the app, run `npm run init-db` again and allow sudo access when prompted. The initializer now repairs ownership of existing tables and sequences so the configured DB app user owns them.
+
 ## Optional: demo accounts for local testing
 
 After the server is running, you can create demo accounts for development:

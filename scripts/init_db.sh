@@ -27,10 +27,22 @@ else
   echo
 fi
 
+USE_SUDO_POSTGRES=false
+if command -v sudo >/dev/null 2>&1; then
+  echo "-> Checking postgres administrative access (sudo may prompt for your password)..."
+  if sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1" >/dev/null; then
+    USE_SUDO_POSTGRES=true
+  fi
+fi
+
+if [ "$USE_SUDO_POSTGRES" = false ]; then
+  echo "-> Proceeding without postgres sudo access; ownership repair may be limited."
+fi
+
 # helper to run psql as the postgres superuser if possible
 run_psql() {
   local sql="$1"
-  if sudo -n true 2>/dev/null; then
+  if [ "$USE_SUDO_POSTGRES" = true ]; then
     sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "$sql"
   else
     psql -v ON_ERROR_STOP=1 --no-psqlrc -c "$sql"
@@ -38,7 +50,7 @@ run_psql() {
 }
 
 echo "-> Creating role '$DB_USER' (or updating password)..."
-if sudo -n true 2>/dev/null; then
+if [ "$USE_SUDO_POSTGRES" = true ]; then
   EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | tr -d '[:space:]' || echo)
 else
   EXISTS=$(psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | tr -d '[:space:]' || echo)
@@ -52,7 +64,7 @@ else
 fi
 
 echo "-> Creating database '$DB_NAME' (if not exists) and setting owner to '$DB_USER'..."
-if sudo -n true 2>/dev/null; then
+if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
 else
@@ -61,7 +73,7 @@ else
 fi
 
 echo "-> Ensuring schema ownership and applying db-init.sql as '$DB_USER'..."
-if sudo -n true 2>/dev/null; then
+if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$DB_USER\";" || true
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -f db-init.sql
   OWNER=postgres
@@ -71,9 +83,27 @@ else
   OWNER=$(whoami)
 fi
 
+if [ "$USE_SUDO_POSTGRES" = true ]; then
+  echo "-> Repairing ownership of existing public tables/sequences to '$DB_USER'..."
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', r.schemaname, r.tablename, '$DB_USER');
+  END LOOP;
+
+  FOR r IN SELECT sequence_schema, sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public' LOOP
+    EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I', r.sequence_schema, r.sequence_name, '$DB_USER');
+  END LOOP;
+END $$;
+SQL
+fi
+
 # Reassign ownership of any objects created by the schema to the DB user
 echo "-> Reassigning owned objects from '$OWNER' to '$DB_USER' (if any)"
-if sudo -n true 2>/dev/null; then
+if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON SCHEMA public TO \"$DB_USER\";" || true
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"$DB_USER\";" || true
@@ -97,7 +127,7 @@ if [ "$CREATE_DEFAULT_ADMIN" = "true" ]; then
     echo "Warning: could not generate password hash for default admin."
     echo "         Make sure dependencies are installed (run: npm install), then run npm run init-db again."
   else
-    if sudo -n true 2>/dev/null; then
+    if [ "$USE_SUDO_POSTGRES" = true ]; then
       sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 INSERT INTO users (email, full_name, role, password_hash)
 VALUES ('$DEFAULT_ADMIN_EMAIL', '$DEFAULT_ADMIN_NAME', 'admin', '$ADMIN_HASH')
