@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# init_db.sh version: 2026.06.21.1
+# init_db.sh version: 2026.06.21.2
 # Includes: public-schema ownership repair, required-table owner enforcement,
 # and no global REASSIGN OWNED role reassignment.
 
 # Initializes Postgres role, database, applies schema, and writes .env
 # Usage: ./scripts/init_db.sh [db_password]
 
-SCRIPT_VERSION="2026.06.21.1"
+SCRIPT_VERSION="2026.06.21.2"
 
 DB_NAME=${DB_NAME:-krewe_db}
 DB_USER=${DB_USER:-krewe_db_user}
@@ -115,7 +115,7 @@ fi
 if [ "$USE_SUDO_POSTGRES" = true ]; then
   echo "-> Repairing ownership of app objects in schema 'public' to '$DB_USER'..."
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
-DO $$
+DO \$\$
 DECLARE
   r RECORD;
 BEGIN
@@ -154,7 +154,7 @@ BEGIN
   LOOP
     EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.relname, '$DB_USER');
   END LOOP;
-END $$;
+END \$\$;
 SQL
 
   # Explicitly enforce owner for permission-critical runtime tables.
@@ -169,7 +169,7 @@ SQL
 else
   echo "-> Attempting ownership reapply as '$DB_USER' (limited without postgres admin access)..."
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" <<SQL || true
-DO $$
+DO \$\$
 DECLARE
   r RECORD;
 BEGIN
@@ -214,7 +214,7 @@ BEGIN
       NULL;
     END;
   END LOOP;
-END $$;
+END \$\$;
 SQL
 
   echo "-> Attempting owner enforcement on required public tables as '$DB_USER'..."
@@ -227,7 +227,7 @@ fi
   echo "-> Re-applying grants for schema 'public'..."
 if [ "$USE_SUDO_POSTGRES" = true ]; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
-DO $$
+DO \$\$
 DECLARE
 BEGIN
   EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA public TO %I', '$DB_USER');
@@ -235,7 +235,7 @@ BEGIN
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', '$DB_USER');
   EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO %I', '$DB_USER');
   EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', '$DB_USER');
-END $$;
+END \$\$;
 SQL
 
     # Explicit grants for permission-critical runtime tables.
@@ -244,7 +244,7 @@ SQL
     done
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
-DO $$
+DO \$\$
 DECLARE
 BEGIN
   EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA public TO %I', '$DB_USER');
@@ -252,7 +252,7 @@ BEGIN
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', '$DB_USER');
   EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO %I', '$DB_USER');
   EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO %I', '$DB_USER');
-END $$;
+END \$\$;
 SQL
 
   # Attempt explicit grants for permission-critical runtime tables.
