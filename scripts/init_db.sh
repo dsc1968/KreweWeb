@@ -65,10 +65,20 @@ fi
 
 echo "-> Creating database '$DB_NAME' (if not exists) and setting owner to '$DB_USER'..."
 if [ "$USE_SUDO_POSTGRES" = true ]; then
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | tr -d '[:space:]' || echo)
+  if [ "$DB_EXISTS" != "1" ]; then
+    sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  else
+    echo "-> Database '$DB_NAME' already exists. Reapplying ownership and permissions..."
+  fi
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
 else
-  psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  DB_EXISTS=$(psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | tr -d '[:space:]' || echo)
+  if [ "$DB_EXISTS" != "1" ]; then
+    psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  else
+    echo "-> Database '$DB_NAME' already exists. Reapplying ownership and permissions..."
+  fi
   psql -v ON_ERROR_STOP=1 --no-psqlrc -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
 fi
 
@@ -125,6 +135,50 @@ BEGIN
   END LOOP;
 END $$;
 SQL
+
+  # Explicitly enforce owner for the two runtime-migration tables.
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.element_overrides OWNER TO \"$DB_USER\";" || true
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.content_blocks OWNER TO \"$DB_USER\";" || true
+else
+  echo "-> Attempting ownership reapply as '$DB_USER' (limited without postgres admin access)..."
+  PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" <<SQL || true
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT n.nspname AS schemaname, c.relname AS relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p', 'f')
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+      AND n.nspname NOT LIKE 'pg_temp_%'
+      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+  LOOP
+    BEGIN
+      EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+    EXCEPTION WHEN insufficient_privilege THEN
+      NULL;
+    END;
+  END LOOP;
+
+  FOR r IN
+    SELECT n.nspname AS schemaname, c.relname AS relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'S'
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+      AND n.nspname NOT LIKE 'pg_temp_%'
+      AND n.nspname NOT LIKE 'pg_toast_temp_%'
+  LOOP
+    BEGIN
+      EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I', r.schemaname, r.relname, '$DB_USER');
+    EXCEPTION WHEN insufficient_privilege THEN
+      NULL;
+    END;
+  END LOOP;
+END $$;
+SQL
 fi
 
 # Reassign ownership of any objects created by the schema to the DB user
@@ -151,6 +205,10 @@ BEGIN
   END LOOP;
 END $$;
 SQL
+
+  # Explicit grants for runtime-managed tables.
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.element_overrides TO \"$DB_USER\";" || true
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.content_blocks TO \"$DB_USER\";" || true
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
@@ -175,14 +233,26 @@ END $$;
 SQL
 fi
 
-echo "-> Verifying ownership of key tables..."
-ELEMENT_OWNER=$(PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT tableowner FROM pg_tables WHERE schemaname='public' AND tablename='element_overrides';" | tr -d '[:space:]' || true)
-if [ -n "$ELEMENT_OWNER" ] && [ "$ELEMENT_OWNER" != "$DB_USER" ]; then
-  echo "Error: element_overrides is owned by '$ELEMENT_OWNER' instead of '$DB_USER'." >&2
-  echo "This prevents startup migrations from running." >&2
-  echo "Repair ownership with a postgres admin account, then rerun npm run init-db:" >&2
+echo "-> Verifying ownership of all non-system tables..."
+NOT_OWNED_TABLES=$(PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -tA <<SQL
+SELECT n.nspname || '.' || c.relname || ' -> ' || pg_get_userbyid(c.relowner)
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p', 'f')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND n.nspname NOT LIKE 'pg_temp_%'
+  AND n.nspname NOT LIKE 'pg_toast_temp_%'
+  AND pg_get_userbyid(c.relowner) <> '$DB_USER'
+ORDER BY 1;
+SQL
+)
+
+if [ -n "$NOT_OWNED_TABLES" ]; then
+  echo "Error: one or more tables are not owned by '$DB_USER':" >&2
+  echo "$NOT_OWNED_TABLES" >&2
+  echo "Repair ownership with postgres admin access and rerun npm run init-db:" >&2
   echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER TABLE public.element_overrides OWNER TO \\\"$DB_USER\\\";\"" >&2
-  echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER SEQUENCE public.element_overrides_position_seq OWNER TO \\\"$DB_USER\\\";\"  # if sequence exists" >&2
+  echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER TABLE public.content_blocks OWNER TO \\\"$DB_USER\\\";\"" >&2
   exit 1
 fi
 
