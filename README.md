@@ -72,13 +72,22 @@ If PostgreSQL is already installed, this command will simply confirm it.
 
 ### 6. Get the project files onto your computer
 
-Move into the folder where you want the project to live, then clone or copy the repository there.
+For server installs, place the app under `/srv` instead of a user home directory.
+
+Create the folder and give your current user access:
+
+```bash
+sudo mkdir -p /srv/kreweweb
+sudo chown -R "$USER":"$USER" /srv/kreweweb
+```
+
+Then clone the repository into `/srv/kreweweb`.
 
 Example using Git:
 
 ```bash
-git clone https://github.com/dsc1968/KreweWeb.git
-cd Krewe
+git clone https://github.com/dsc1968/KreweWeb.git /srv/kreweweb/Krewe
+cd /srv/kreweweb/Krewe
 ```
 
 If you already have the folder open in VS Code, just open a terminal in that folder and continue.
@@ -100,7 +109,7 @@ This project includes a helper script that does the following:
 - creates a PostgreSQL role
 - creates the database
 - applies the schema from `db-init.sql`
-- applies the schema as the DB app user so that user owns the tables
+- applies the schema as the DB app user and repairs ownership for all app tables
 - writes a `.env` file with the connection details
 - creates a default admin user (first run)
 
@@ -257,6 +266,60 @@ sudo certbot renew --dry-run
 ```
 
 If that command works, your certificate should renew automatically.
+
+## Optional: start app automatically on server startup (systemd)
+
+Use this on Ubuntu servers so the app starts automatically after reboot.
+
+### 1. Find full paths for node and npm
+
+```bash
+which node
+which npm
+```
+
+Typical result is `/usr/bin/node` and `/usr/bin/npm`.
+
+### 2. Create a systemd service file
+
+Create `/etc/systemd/system/krewe.service`:
+
+```ini
+[Unit]
+Description=Krewe Web App
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=doug
+WorkingDirectory=/srv/kreweweb/Krewe
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Replace `User` and `WorkingDirectory` with your server values.
+
+### 3. Enable and start the service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable krewe.service
+sudo systemctl start krewe.service
+```
+
+### 4. Check status and logs
+
+```bash
+sudo systemctl status krewe.service
+sudo journalctl -u krewe.service -f
+```
+
+If the service is active and running, the app will auto-start on reboot.
 
 ## If you only want the front-end
 
