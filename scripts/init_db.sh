@@ -54,16 +54,20 @@ fi
 echo "-> Creating database '$DB_NAME' (if not exists) and setting owner to '$DB_USER'..."
 if sudo -n true 2>/dev/null; then
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
 else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || psql -v ON_ERROR_STOP=1 --no-psqlrc -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  psql -v ON_ERROR_STOP=1 --no-psqlrc -c "ALTER DATABASE \"$DB_NAME\" OWNER TO \"$DB_USER\";"
 fi
 
-echo "-> Applying schema from db-init.sql to '$DB_NAME' (ensure owner is $DB_USER)..."
+echo "-> Ensuring schema ownership and applying db-init.sql as '$DB_USER'..."
 if sudo -n true 2>/dev/null; then
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -f db-init.sql
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$DB_USER\";" || true
+  PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -f db-init.sql
   OWNER=postgres
 else
-  psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -f db-init.sql
+  psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$DB_USER\";" || true
+  PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -f db-init.sql
   OWNER=$(whoami)
 fi
 

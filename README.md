@@ -100,6 +100,7 @@ This project includes a helper script that does the following:
 - creates a PostgreSQL role
 - creates the database
 - applies the schema from `db-init.sql`
+- applies the schema as the DB app user so that user owns the tables
 - writes a `.env` file with the connection details
 - creates a default admin user (first run)
 
