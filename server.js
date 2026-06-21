@@ -208,6 +208,7 @@ async function ensureContentTable() {
       page_path TEXT NOT NULL,
       element_key TEXT NOT NULL,
       hidden BOOLEAN NOT NULL DEFAULT FALSE,
+      deleted BOOLEAN NOT NULL DEFAULT FALSE,
       text_align TEXT,
       font_family TEXT,
       font_weight TEXT,
@@ -245,6 +246,11 @@ async function ensureContentTable() {
   await pool.query(`
     ALTER TABLE element_overrides
     ADD COLUMN IF NOT EXISTS font_family TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE
   `);
 
   await pool.query(`
@@ -589,7 +595,7 @@ app.get('/api/element-overrides', async (req, res) => {
 
   try {
     const result = await pool.query(
-          `SELECT page_path, element_key, hidden, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+            `SELECT page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
               background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
               position_mode, pos_x, pos_y, position, updated_at
        FROM element_overrides
@@ -948,6 +954,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   }
 
   const hidden = Boolean(req.body.hidden);
+  const deleted = Boolean(req.body.deleted);
   const textAlign = typeof req.body.textAlign === 'string' && req.body.textAlign ? req.body.textAlign : null;
   const fontFamily = typeof req.body.fontFamily === 'string' && req.body.fontFamily.trim() ? req.body.fontFamily.trim() : null;
   const fontWeight = typeof req.body.fontWeight === 'string' && req.body.fontWeight ? req.body.fontWeight : null;
@@ -970,14 +977,15 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO element_overrides (
-        page_path, element_key, hidden, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+        page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
         background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
         position_mode, pos_x, pos_y, position, updated_at, updated_by
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), $22)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), $23)
        ON CONFLICT (page_path, element_key)
        DO UPDATE SET
          hidden = EXCLUDED.hidden,
+         deleted = EXCLUDED.deleted,
          text_align = EXCLUDED.text_align,
          font_family = EXCLUDED.font_family,
          font_weight = EXCLUDED.font_weight,
@@ -998,13 +1006,14 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          position = EXCLUDED.position,
          updated_at = NOW(),
          updated_by = EXCLUDED.updated_by
-       RETURNING page_path, element_key, hidden, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
+       RETURNING page_path, element_key, hidden, deleted, text_align, font_family, font_weight, font_style, text_transform, font_size, text_color,
                  background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
                  position_mode, pos_x, pos_y, position, updated_at`,
       [
         pagePath,
         elementKey,
         hidden,
+        deleted,
         textAlign,
         fontFamily,
         fontWeight,

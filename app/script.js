@@ -42,6 +42,7 @@ if (countdownElements.days) {
 (function () {
   const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, em, i, b, blockquote, li, button, label, figcaption, td, th, dt, dd, div, div[data-admin-editable-target="text"]';
   const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,em,i,b,blockquote,li,button,label,figcaption,td,th,dt,dd,div,div[data-admin-editable-target="text"]';
+  const editableContainerSelector = 'main section, main article, main aside, main div';
   const state = {
     pagePath: normalizePagePath(window.location.pathname),
     profilePromise: null,
@@ -66,6 +67,8 @@ if (countdownElements.days) {
     dragOriginX: 0,
     dragOriginY: 0,
     suppressEditClickUntil: 0,
+    elementToolbar: null,
+    selectedEditableElement: null,
     draggedTextElement: null,
     isAdmin: false,
     albums: [],
@@ -434,6 +437,7 @@ if (countdownElements.days) {
       pagePath: state.pagePath,
       elementKey,
       hidden: patch.hidden ?? current.hidden ?? false,
+      deleted: patch.deleted ?? current.deleted ?? false,
       textAlign: patch.textAlign ?? current.text_align ?? null,
       fontFamily: patch.fontFamily ?? current.font_family ?? null,
       fontWeight: patch.fontWeight ?? current.font_weight ?? null,
@@ -739,7 +743,7 @@ if (countdownElements.days) {
   }
 
   function isInsideAdminUi(element) {
-    return Boolean(element.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-editor-backdrop, .admin-section-tools'));
+    return Boolean(element.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-editor-backdrop, .admin-section-tools, .admin-element-toolbar'));
   }
 
   function hasNestedEditableText(element) {
@@ -891,6 +895,22 @@ if (countdownElements.days) {
       state.registry.set(`image:${key}`, element);
     });
 
+    document.querySelectorAll(editableContainerSelector).forEach((element) => {
+      if (isInsideAdminUi(element)) return;
+      if (isInsideSiteMenu(element)) return;
+      if (element.closest('.admin-section-tools, .admin-editor-backdrop, .site-header, .footer')) return;
+      if (element.id === 'dynamic-page-sections') return;
+      if (element.dataset.adminDynamicSection === 'true') return;
+      if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(element).display === 'none') return;
+      if (element.dataset.adminEditable === 'text' || element.dataset.adminEditable === 'image' || element.dataset.adminEditable === 'background-image' || element.dataset.adminEditable === 'album-root') return;
+
+      const key = buildContentKey(element, 'container');
+      element.dataset.adminEditable = 'container';
+      element.dataset.adminKey = key;
+      state.registry.set(`container:${key}`, element);
+    });
+
     const albumsRoot = getAlbumsRoot();
     if (albumsRoot && albumsRoot.dataset.adminKey) {
       state.registry.set(`album-root:${albumsRoot.dataset.adminKey}`, albumsRoot);
@@ -987,10 +1007,15 @@ if (countdownElements.days) {
     }
   }
 
-  function setAdminHiddenState(element, hidden) {
+  function setAdminHiddenState(element, hidden, deleted) {
     if (!element) return;
     rememberInlineDisplay(element);
     element.classList.toggle('admin-hidden-element', Boolean(hidden));
+    element.classList.toggle('admin-deleted-element', Boolean(deleted));
+    if (deleted) {
+      element.style.display = 'none';
+      return;
+    }
     if (hidden) {
       if (state.editMode) {
         element.style.display = element.dataset.adminOriginalDisplay || '';
@@ -1305,7 +1330,7 @@ if (countdownElements.days) {
       const key = element.dataset.adminKey;
       if (!key) return;
       const override = state.elementOverrides.get(key);
-      setAdminHiddenState(element, override && override.hidden);
+      setAdminHiddenState(element, override && override.hidden, override && override.deleted);
       if (!override) return;
       applyElementStyles(element, override);
     });
@@ -1313,7 +1338,7 @@ if (countdownElements.days) {
     getStaticSections().forEach((section) => {
       const key = section.dataset.adminStaticSectionKey;
       const override = key ? state.elementOverrides.get(key) : null;
-      setAdminHiddenState(section, override && override.hidden);
+      setAdminHiddenState(section, override && override.hidden, override && override.deleted);
     });
 
     applySectionSizeOverrides();
@@ -2174,6 +2199,7 @@ if (countdownElements.days) {
       body.admin-edit-mode [data-admin-editable="text"],
       body.admin-edit-mode [data-admin-editable="image"],
       body.admin-edit-mode [data-admin-editable="background-image"],
+      body.admin-edit-mode [data-admin-editable="container"],
       body.admin-edit-mode [data-admin-editable="album-root"] {
         outline: 2px dashed rgba(255, 210, 98, 0.6);
         outline-offset: 4px;
@@ -2183,6 +2209,7 @@ if (countdownElements.days) {
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"],
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="container"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"] {
         cursor: grab;
       }
@@ -2190,6 +2217,7 @@ if (countdownElements.days) {
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"].admin-is-dragging,
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="container"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"].admin-is-dragging {
         cursor: grabbing;
         opacity: 0.92;
@@ -2206,6 +2234,7 @@ if (countdownElements.days) {
 
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="image"],
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="background-image"],
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="container"],
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="album-root"] {
         z-index: 8 !important;
       }
@@ -2378,6 +2407,40 @@ if (countdownElements.days) {
 
       .admin-section-tool.dragging {
         opacity: 0.65;
+      }
+
+      .admin-element-toolbar {
+        position: fixed;
+        z-index: 10030;
+        display: none;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.45rem;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(2, 8, 22, 0.95);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      .admin-element-toolbar button {
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.08);
+        color: #f5f7ff;
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      .admin-element-toolbar button:hover,
+      .admin-element-toolbar button:focus-visible {
+        border-color: rgba(255, 210, 98, 0.55);
+        background: rgba(255, 210, 98, 0.14);
+      }
+
+      .admin-element-toolbar button[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
 
       body.admin-edit-mode .admin-empty-section-field {
@@ -2697,8 +2760,9 @@ if (countdownElements.days) {
 
     title.textContent = heading;
     copy.textContent = description;
+    const showTextInput = options.showTextInput !== false;
     textarea.value = initialValue;
-    textarea.style.display = '';
+    textarea.style.display = showTextInput ? '' : 'none';
     formatGrid.style.display = '';
     alignSelect.value = options.formatting.textAlign || '';
     familySelect.value = options.formatting.fontFamily || '';
@@ -2727,8 +2791,10 @@ if (countdownElements.days) {
     if (positionResetButton) {
       positionResetButton.style.display = options.allowPosition ? 'inline-flex' : 'none';
     }
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    if (showTextInput) {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
 
     colorReset.onclick = () => {
       colorInput.dataset.custom = 'false';
@@ -2815,14 +2881,14 @@ if (countdownElements.days) {
 
     saveButton.onclick = async () => {
       const nextValue = textarea.value.trim();
-      if (!nextValue) {
+      if (showTextInput && !nextValue) {
         alert('Text cannot be empty.');
         return;
       }
 
       saveButton.disabled = true;
       try {
-        await options.onSave(nextValue, {
+        const formatting = {
           textAlign: alignSelect.value,
           fontFamily: familySelect.value,
           fontWeight: weightSelect.value,
@@ -2837,7 +2903,12 @@ if (countdownElements.days) {
           borderWidth: borderWidthInput.value.trim(),
           borderColor: borderColorInput.dataset.custom === 'true' ? borderColorInput.value : '',
           borderRadius: borderRadiusInput.value.trim(),
-        });
+        };
+        if (showTextInput) {
+          await options.onSave(nextValue, formatting);
+        } else if (options.onSaveFormatting) {
+          await options.onSaveFormatting(formatting);
+        }
         closeAdminModal();
       } catch (error) {
         alert(error.message);
@@ -2895,8 +2966,8 @@ if (countdownElements.days) {
           applyElementStyles(element, item);
         },
         onHide: async () => {
-          await saveElementOverride(key, { hidden: !isHidden });
-          setAdminHiddenState(element, !isHidden);
+          await saveElementOverride(key, { hidden: !isHidden, deleted: false });
+          setAdminHiddenState(element, !isHidden, false);
         },
         onDelete: async () => {
           if (isDynamicContentKey(key)) {
@@ -2914,11 +2985,7 @@ if (countdownElements.days) {
             return;
           }
 
-          await saveContentUpdate({
-            contentKey: key,
-            contentType: 'text',
-            contentValue: '',
-          });
+          await saveElementOverride(key, { hidden: true, deleted: true });
           element.remove();
           state.registry.delete(`text:${key}`);
         },
@@ -2929,12 +2996,403 @@ if (countdownElements.days) {
           contentValue: nextValue,
         });
         applyContentItem(item);
-          const savedOverride = await saveElementOverride(key, { ...formatting, hidden: false });
-          setAdminHiddenState(element, false);
+          const savedOverride = await saveElementOverride(key, { ...formatting, hidden: false, deleted: false });
+          setAdminHiddenState(element, false, false);
           applyElementStyles(element, savedOverride);
         },
       }
     );
+  }
+
+  function openContainerEditor(element) {
+    const key = element.dataset.adminKey;
+    const override = (key && state.elementOverrides.get(key)) || {};
+    const isHidden = Boolean(override.hidden);
+
+    openTextModal(
+      '',
+      'Edit container',
+      'Adjust styles, visibility, positioning, and delete this container if needed.',
+      {
+        showTextInput: false,
+        formatting: {
+          textAlign: override.text_align || '',
+          fontFamily: override.font_family || '',
+          fontWeight: override.font_weight || '',
+          fontStyle: override.font_style || '',
+          textTransform: override.text_transform || '',
+          fontSize: override.font_size || '',
+          textColor: override.text_color || '',
+          backgroundColor: override.background_color || '',
+          widthValue: override.width_value || '',
+          heightValue: override.height_value || '',
+          borderStyle: override.border_style || '',
+          borderWidth: override.border_width || '',
+          borderColor: override.border_color || '',
+          borderRadius: override.border_radius || '',
+        },
+        allowHide: true,
+        hideLabel: isHidden ? 'Show Element' : 'Hide Element',
+        allowDelete: true,
+        allowPosition: true,
+        isFreePositioned: override.position_mode === 'absolute',
+        onPositionToggle: async () => {
+          const isAbsolute = override.position_mode === 'absolute';
+          const item = await saveElementOverride(key, {
+            positionMode: isAbsolute ? 'flow' : 'absolute',
+            posX: isAbsolute ? null : (Number.isFinite(override.pos_x) ? override.pos_x : 12),
+            posY: isAbsolute ? null : (Number.isFinite(override.pos_y) ? override.pos_y : 12),
+            deleted: false,
+          });
+          applyElementStyles(element, item);
+        },
+        onPositionReset: async () => {
+          const item = await saveElementOverride(key, {
+            positionMode: 'flow',
+            posX: null,
+            posY: null,
+            deleted: false,
+          });
+          applyElementStyles(element, item);
+        },
+        onHide: async () => {
+          await saveElementOverride(key, { hidden: !isHidden, deleted: false });
+          setAdminHiddenState(element, !isHidden, false);
+        },
+        onDelete: async () => {
+          await saveElementOverride(key, { hidden: true, deleted: true });
+          element.remove();
+          state.registry.delete(`container:${key}`);
+        },
+        onSaveFormatting: async (formatting) => {
+          const item = await saveElementOverride(key, {
+            ...formatting,
+            hidden: false,
+            deleted: false,
+          });
+          setAdminHiddenState(element, false, false);
+          applyElementStyles(element, item);
+        },
+      }
+    );
+  }
+
+  function getSelectedEditableElement() {
+    const element = state.selectedEditableElement;
+    if (!element || !document.body.contains(element)) return null;
+    if (!element.dataset || !element.dataset.adminEditable) return null;
+    return element;
+  }
+
+  function getParentEditableElement(element) {
+    if (!element) return null;
+    let current = element.parentElement;
+    while (current) {
+      if (current.dataset && current.dataset.adminEditable && !isInsideAdminUi(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function hideElementToolbar() {
+    if (!state.elementToolbar) return;
+    state.elementToolbar.style.display = 'none';
+    state.selectedEditableElement = null;
+  }
+
+  function ensureElementToolbar() {
+    if (state.elementToolbar) return state.elementToolbar;
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'admin-element-toolbar';
+    toolbar.innerHTML = `
+      <button type="button" data-action="edit">Edit</button>
+      <button type="button" data-action="style">Style</button>
+      <button type="button" data-action="parent">Parent</button>
+      <button type="button" data-action="move">Move</button>
+      <button type="button" data-action="duplicate">Duplicate</button>
+      <button type="button" data-action="delete" style="color:#ff9b9b;">Delete</button>
+    `;
+
+    toolbar.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const element = getSelectedEditableElement();
+      if (!element) {
+        hideElementToolbar();
+        return;
+      }
+
+      const action = button.dataset.action;
+      try {
+        if (action === 'edit' || action === 'style') {
+          hideElementToolbar();
+          openEditorForSelectedElement(element, action);
+          return;
+        }
+
+        if (action === 'move') {
+          await enableMoveForElement(element);
+          hideElementToolbar();
+          return;
+        }
+
+        if (action === 'parent') {
+          const parent = getParentEditableElement(element);
+          if (!parent) return;
+          const rect = parent.getBoundingClientRect();
+          const centerX = rect.left + (rect.width / 2);
+          const topY = rect.top;
+          showElementToolbarFor(parent, centerX, topY);
+          return;
+        }
+
+        if (action === 'duplicate') {
+          await duplicateSelectedElement(element);
+          hideElementToolbar();
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!window.confirm('Delete this selected element?')) return;
+          await deleteSelectedElement(element);
+          hideElementToolbar();
+        }
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    document.body.appendChild(toolbar);
+    state.elementToolbar = toolbar;
+    return toolbar;
+  }
+
+  function openEditorForSelectedElement(element, action) {
+    if (!element) return;
+    const editableType = element.dataset.adminEditable;
+
+    if (element.dataset.adminSectionField && editableType === 'text') {
+      openSectionTextEditor(element);
+      return;
+    }
+
+    if (element.dataset.adminSectionField && (editableType === 'image' || editableType === 'background-image')) {
+      openSectionImageEditor(element);
+      return;
+    }
+
+    if (editableType === 'text') {
+      openTextEditor(element);
+      return;
+    }
+
+    if (editableType === 'image' || editableType === 'background-image') {
+      openStaticImageEditor(element);
+      return;
+    }
+
+    if (editableType === 'container') {
+      openContainerEditor(element);
+      return;
+    }
+
+    if (editableType === 'album-root') {
+      if (action === 'style') {
+        openContainerEditor(element);
+      } else {
+        alert('Use album controls to manage album content.');
+      }
+    }
+  }
+
+  async function enableMoveForElement(element) {
+    const key = element.dataset.adminKey;
+    if (!key) return;
+    const override = state.elementOverrides.get(key) || {};
+    const item = await saveElementOverride(key, {
+      hidden: false,
+      deleted: false,
+      positionMode: 'absolute',
+      posX: Number.isFinite(override.pos_x) ? override.pos_x : element.offsetLeft,
+      posY: Number.isFinite(override.pos_y) ? override.pos_y : element.offsetTop,
+    });
+    applyElementStyles(element, item);
+  }
+
+  async function duplicateSelectedElement(element) {
+    if (!element) return;
+    if (element.dataset.adminSectionField) {
+      throw new Error('Duplicate is not supported for section field elements.');
+    }
+
+    const editableType = element.dataset.adminEditable;
+    if (!['text', 'image'].includes(editableType)) {
+      throw new Error('Duplicate is supported for text and image elements.');
+    }
+
+    const hostSection = getHostSectionForElement(element);
+    const parentKey = getSectionParentKey(hostSection);
+    if (!parentKey) {
+      throw new Error('Unable to determine parent section for duplicate.');
+    }
+
+    const contentType = editableType === 'text' ? 'text' : 'image';
+    const contentValue = editableType === 'text'
+      ? (element.textContent || '').trim()
+      : ((element.dataset.adminImagePath || element.getAttribute('src') || '').split('?')[0]);
+    if (!contentValue) {
+      throw new Error('Nothing to duplicate for this element.');
+    }
+
+    const item = await createNewContentElement(parentKey, contentType, contentValue);
+    const sectionHost = getSectionContentHost(hostSection) || hostSection;
+    if (!sectionHost) throw new Error('Unable to place duplicated element.');
+
+    let newElement;
+    if (contentType === 'text') {
+      newElement = document.createElement('p');
+      newElement.textContent = contentValue;
+      newElement.style.marginTop = '1rem';
+      newElement.dataset.adminEditable = 'text';
+      newElement.dataset.adminKey = item.content_key;
+    } else {
+      newElement = document.createElement('img');
+      newElement.src = contentValue;
+      newElement.alt = element.alt || 'Duplicated image';
+      newElement.style.marginTop = '1rem';
+      newElement.style.maxWidth = '100%';
+      newElement.style.borderRadius = '8px';
+      newElement.dataset.adminEditable = 'image';
+      newElement.dataset.adminKey = item.content_key;
+      newElement.dataset.adminImagePath = contentValue;
+    }
+
+    sectionHost.appendChild(newElement);
+    state.registry.set(`${contentType}:${item.content_key}`, newElement);
+
+    const sourceKey = element.dataset.adminKey;
+    const sourceOverride = sourceKey ? state.elementOverrides.get(sourceKey) : null;
+    if (sourceOverride) {
+      const copiedOverride = await saveElementOverride(item.content_key, {
+        hidden: false,
+        deleted: false,
+        textAlign: sourceOverride.text_align,
+        fontFamily: sourceOverride.font_family,
+        fontWeight: sourceOverride.font_weight,
+        fontStyle: sourceOverride.font_style,
+        textTransform: sourceOverride.text_transform,
+        fontSize: sourceOverride.font_size,
+        textColor: sourceOverride.text_color,
+        backgroundColor: sourceOverride.background_color,
+        widthValue: sourceOverride.width_value,
+        heightValue: sourceOverride.height_value,
+        borderStyle: sourceOverride.border_style,
+        borderWidth: sourceOverride.border_width,
+        borderColor: sourceOverride.border_color,
+        borderRadius: sourceOverride.border_radius,
+      });
+      applyElementStyles(newElement, copiedOverride);
+    }
+
+    registerEditableElements();
+    applyElementOverrides();
+    registerSectionEditing();
+  }
+
+  async function deleteSelectedElement(element) {
+    if (!element) return;
+    const editableType = element.dataset.adminEditable;
+
+    if (editableType === 'text') {
+      if (element.dataset.adminSectionField) {
+        throw new Error('Delete is not supported for section title/body fields.');
+      }
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      if (isDynamicContentKey(key)) {
+        await deleteContentItem(key, 'text');
+      } else {
+        await saveElementOverride(key, { hidden: true, deleted: true });
+      }
+      element.remove();
+      state.registry.delete(`text:${key}`);
+      return;
+    }
+
+    if (editableType === 'image' || editableType === 'background-image') {
+      if (element.dataset.adminSectionField) {
+        if (['background_path', 'image_path'].includes(element.dataset.adminSectionField)) {
+          const sectionId = Number.parseInt(element.dataset.adminSectionId, 10);
+          const item = await updatePageSection(sectionId, element.dataset.adminSectionField, '');
+          upsertPageSection(item);
+          renderPageSections();
+          registerSectionEditing();
+          return;
+        }
+        throw new Error('Delete is not supported for this section field.');
+      }
+
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      if (isDynamicContentKey(key)) {
+        await deleteContentItem(key, 'image');
+      } else {
+        await saveElementOverride(key, { hidden: true, deleted: true });
+      }
+      element.remove();
+      state.registry.delete(`image:${key}`);
+      return;
+    }
+
+    if (editableType === 'container') {
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      await saveElementOverride(key, { hidden: true, deleted: true });
+      element.remove();
+      state.registry.delete(`container:${key}`);
+      return;
+    }
+
+    throw new Error('Delete is not supported for this element type.');
+  }
+
+  function showElementToolbarFor(element, clientX, clientY) {
+    if (!state.editMode || !element) return;
+    const toolbar = ensureElementToolbar();
+    state.selectedEditableElement = element;
+
+    const type = element.dataset.adminEditable || '';
+    const isSectionField = Boolean(element.dataset.adminSectionField);
+    const duplicateAllowed = !isSectionField && (type === 'text' || type === 'image');
+    const deleteAllowed = type !== 'album-root' && !(isSectionField && type === 'text');
+    const parentAllowed = Boolean(getParentEditableElement(element));
+
+    const parentButton = toolbar.querySelector('button[data-action="parent"]');
+    const duplicateButton = toolbar.querySelector('button[data-action="duplicate"]');
+    const deleteButton = toolbar.querySelector('button[data-action="delete"]');
+    if (parentButton) parentButton.disabled = !parentAllowed;
+    if (duplicateButton) duplicateButton.disabled = !duplicateAllowed;
+    if (deleteButton) deleteButton.disabled = !deleteAllowed;
+
+    toolbar.style.display = 'inline-flex';
+    const x = Number.isFinite(clientX) ? clientX : 0;
+    const y = Number.isFinite(clientY) ? clientY : 0;
+    toolbar.style.left = `${Math.max(8, x + 10)}px`;
+    toolbar.style.top = `${Math.max(8, y + 10)}px`;
+
+    const rect = toolbar.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) {
+      toolbar.style.left = `${Math.max(8, window.innerWidth - rect.width - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight - 8) {
+      toolbar.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`;
+    }
   }
 
   function openSectionTextEditor(element) {
@@ -3290,11 +3748,7 @@ if (countdownElements.days) {
           return;
         }
 
-        await saveContentUpdate({
-          contentKey: key,
-          contentType: 'image',
-          contentValue: '',
-        });
+        await saveElementOverride(key, { hidden: true, deleted: true });
         element.remove();
         state.registry.delete(`image:${key}`);
       },
@@ -3426,9 +3880,9 @@ if (countdownElements.days) {
     const key = section.dataset.adminStaticSectionKey;
     if (!key) return;
     const override = state.elementOverrides.get(key) || {};
-    const nextHidden = !override.hidden;
-    await saveElementOverride(key, { hidden: nextHidden });
-    setAdminHiddenState(section, nextHidden);
+    const nextDeleted = !Boolean(override.deleted);
+    await saveElementOverride(key, { hidden: nextDeleted, deleted: nextDeleted });
+    setAdminHiddenState(section, nextDeleted, nextDeleted);
     ensureSectionTools(section, 'static');
   }
 
@@ -4043,7 +4497,7 @@ if (countdownElements.days) {
         : null;
       removeButton.textContent = kind === 'dynamic'
         ? 'Delete'
-        : (override && override.hidden ? 'Show' : 'Hide');
+        : 'Delete';
     }
   }
 
@@ -4066,7 +4520,7 @@ if (countdownElements.days) {
 
   function findFreeDragTarget(source) {
     if (!source || !state.editMode) return null;
-    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="album-root"]');
+    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
     if (isInsideAdminUi(candidate)) return null;
@@ -4106,7 +4560,7 @@ if (countdownElements.days) {
 
   function clearFreeDragCursors() {
     document.body.style.cursor = '';
-    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="album-root"]').forEach((element) => {
+    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="album-root"]').forEach((element) => {
       element.style.cursor = '';
     });
   }
@@ -4308,6 +4762,7 @@ if (countdownElements.days) {
     document.body.classList.toggle('admin-free-drag-mode', nextValue);
     if (!nextValue) {
       clearFreeDragCursors();
+      hideElementToolbar();
     }
     applyElementOverrides();
     registerSectionEditing();
@@ -4385,16 +4840,30 @@ if (countdownElements.days) {
     addButton.addEventListener('click', openAddSectionModal);
 
     bindFreeDragHandlers();
+    ensureElementToolbar();
+
+    window.addEventListener('resize', () => {
+      hideElementToolbar();
+    });
+    window.addEventListener('scroll', () => {
+      hideElementToolbar();
+    }, true);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        hideElementToolbar();
+      }
+    });
 
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
-      if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools')) return;
+      if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools, .admin-element-toolbar')) return;
 
       const siteNavLink = event.target.closest('.site-nav a');
       if (siteNavLink) {
         event.preventDefault();
         event.stopPropagation();
+        hideElementToolbar();
         return;
       }
 
@@ -4402,6 +4871,7 @@ if (countdownElements.days) {
       if (calendarCell) {
         event.preventDefault();
         event.stopPropagation();
+        hideElementToolbar();
         editCalendarCell(calendarCell).catch((error) => alert(error.message));
         return;
       }
@@ -4410,56 +4880,20 @@ if (countdownElements.days) {
       if (removeButton) {
         event.preventDefault();
         event.stopPropagation();
+        hideElementToolbar();
         removeSection(Number.parseInt(removeButton.dataset.adminRemoveSection, 10));
         return;
       }
 
-      const sectionTextElement = event.target.closest('[data-admin-section-field][data-admin-editable="text"]');
-      if (sectionTextElement) {
+      const editableTarget = event.target.closest('[data-admin-editable]');
+      if (editableTarget) {
         event.preventDefault();
         event.stopPropagation();
-        openSectionTextEditor(sectionTextElement);
+        showElementToolbarFor(editableTarget, event.clientX, event.clientY);
         return;
       }
 
-      const textElement = event.target.closest('[data-admin-editable="text"]');
-      if (textElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openTextEditor(textElement);
-        return;
-      }
-
-      const sectionImageElement = event.target.closest('[data-admin-section-field][data-admin-editable="image"]');
-      if (sectionImageElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openSectionImageEditor(sectionImageElement);
-        return;
-      }
-
-      const sectionBackgroundElement = event.target.closest('[data-admin-section-field="background_path"][data-admin-editable="background-image"]');
-      if (sectionBackgroundElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openSectionImageEditor(sectionBackgroundElement);
-        return;
-      }
-
-      const image = event.target.closest('[data-admin-editable="image"]');
-      if (image) {
-        event.preventDefault();
-        event.stopPropagation();
-        openStaticImageEditor(image);
-        return;
-      }
-
-      const backgroundElement = event.target.closest('[data-admin-editable="background-image"]');
-      if (backgroundElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openStaticImageEditor(backgroundElement);
-      }
+      hideElementToolbar();
     }, true);
   }
 

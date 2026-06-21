@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS element_overrides (
   page_path TEXT NOT NULL,
   element_key TEXT NOT NULL,
   hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  deleted BOOLEAN NOT NULL DEFAULT FALSE,
   text_align TEXT,
   font_family TEXT,
   font_weight TEXT,
