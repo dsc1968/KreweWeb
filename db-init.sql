@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS element_overrides (
   opacity_value TEXT,
   text_color TEXT,
   background_color TEXT,
+  background_opacity_value TEXT,
   width_value TEXT,
   height_value TEXT,
   border_style TEXT,
