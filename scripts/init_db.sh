@@ -11,6 +11,15 @@ CREATE_DEFAULT_ADMIN=${CREATE_DEFAULT_ADMIN:-true}
 DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@krewe.local}
 DEFAULT_ADMIN_NAME=${DEFAULT_ADMIN_NAME:-Admin User}
 DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin123}
+REQUIRED_PUBLIC_TABLES=(
+  users
+  pending_registrations
+  content_blocks
+  element_overrides
+  page_sections
+  photo_albums
+  album_images
+)
 
 echo "== Krewe Mystique DB initializer =="
 
@@ -141,6 +150,11 @@ SQL
   # Explicitly enforce owner for the two runtime-migration tables.
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.element_overrides OWNER TO \"$DB_USER\";"
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.content_blocks OWNER TO \"$DB_USER\";"
+
+  echo "-> Enforcing owner '$DB_USER' on required public tables..."
+  for table_name in "${REQUIRED_PUBLIC_TABLES[@]}"; do
+    sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.\"$table_name\" OWNER TO \"$DB_USER\";"
+  done
 else
   echo "-> Attempting ownership reapply as '$DB_USER' (limited without postgres admin access)..."
   PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" <<SQL || true
@@ -191,6 +205,11 @@ BEGIN
   END LOOP;
 END $$;
 SQL
+
+  echo "-> Attempting owner enforcement on required public tables as '$DB_USER'..."
+  for table_name in "${REQUIRED_PUBLIC_TABLES[@]}"; do
+    PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.\"$table_name\" OWNER TO \"$DB_USER\";" || true
+  done
 fi
 
 # Reassign ownership of any objects created by the schema to the DB user
@@ -252,6 +271,23 @@ if [ -n "$NOT_OWNED_TABLES" ]; then
   echo "Repair ownership with postgres admin access and rerun npm run init-db:" >&2
   echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER TABLE public.element_overrides OWNER TO \\\"$DB_USER\\\";\"" >&2
   echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER TABLE public.content_blocks OWNER TO \\\"$DB_USER\\\";\"" >&2
+  exit 1
+fi
+
+echo "-> Verifying required public tables are owned by '$DB_USER'..."
+NOT_OWNED_REQUIRED=$(PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -tA <<SQL
+SELECT tablename || ' -> ' || tableowner
+FROM pg_tables
+WHERE schemaname = 'public'
+  AND tablename = ANY (ARRAY['users','pending_registrations','content_blocks','element_overrides','page_sections','photo_albums','album_images'])
+  AND tableowner <> '$DB_USER'
+ORDER BY 1;
+SQL
+)
+
+if [ -n "$NOT_OWNED_REQUIRED" ]; then
+  echo "Error: one or more required public tables are not owned by '$DB_USER':" >&2
+  echo "$NOT_OWNED_REQUIRED" >&2
   exit 1
 fi
 

@@ -141,6 +141,16 @@ This project includes a helper script that does the following:
 
 If the database already exists, `npm run init-db` reapplies ownership and permissions for app tables/sequences in the `public` schema and skips system/extension-managed objects.
 
+It explicitly enforces owner `krewe_db_user` (or your configured `DB_USER`) for required tables including:
+
+- `public.element_overrides`
+- `public.content_blocks`
+- `public.users`
+- `public.pending_registrations`
+- `public.page_sections`
+- `public.photo_albums`
+- `public.album_images`
+
 Run it from the project root:
 
 ```bash
