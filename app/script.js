@@ -841,7 +841,7 @@ if (countdownElements.days) {
 
     getStaticSections().forEach((section) => {
       if (isInsideAdminUi(section)) return;
-      if (section.classList.contains('admin-hidden-element')) return;
+      if (!state.editMode && section.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(section).display === 'none') return;
 
       const key = buildContentKey(section, 'image');
@@ -856,7 +856,7 @@ if (countdownElements.days) {
       if (isInsideSiteMenu(element)) return;
       if (element.tagName === 'DIV' && !hasDirectTextNode(element)) return;
       if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
-      if (element.classList.contains('admin-hidden-element')) return;
+      if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
       if (element.querySelector('img, input, textarea, select')) return;
       if (hasNestedEditableText(element) && element.tagName !== 'LI') return;
@@ -871,7 +871,7 @@ if (countdownElements.days) {
       if (isInsideAdminUi(element)) return;
       if (isInsideSiteMenu(element)) return;
       if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
-      if (element.classList.contains('admin-hidden-element')) return;
+      if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
       const key = buildContentKey(element, 'image');
       element.dataset.adminEditable = 'image';
@@ -883,7 +883,7 @@ if (countdownElements.days) {
       if (isInsideAdminUi(element)) return;
       if (isInsideSiteMenu(element)) return;
       if (element.closest('[data-admin-dynamic-section]')) return;
-      if (element.classList.contains('admin-hidden-element')) return;
+      if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
       const key = buildContentKey(element, 'image');
       element.dataset.adminEditable = 'background-image';
@@ -992,6 +992,10 @@ if (countdownElements.days) {
     rememberInlineDisplay(element);
     element.classList.toggle('admin-hidden-element', Boolean(hidden));
     if (hidden) {
+      if (state.editMode) {
+        element.style.display = element.dataset.adminOriginalDisplay || '';
+        return;
+      }
       element.style.display = 'none';
       return;
     }
@@ -4462,10 +4466,11 @@ if (countdownElements.days) {
     await loadMediaAlbums();
     await loadPageSections();
     registerEditableElements();
+    await loadElementOverrides();
     await loadSavedContent();
+    applyElementOverrides();
     initializeCalendarUi();
     await loadCalendarEvents();
-    await loadElementOverrides();
 
     const profile = await fetchCurrentProfile();
     state.isAdmin = Boolean(profile && profile.role === 'admin');
