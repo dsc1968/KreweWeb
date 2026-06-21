@@ -153,9 +153,10 @@ BEGIN
 END $$;
 SQL
 
-  # Explicitly enforce owner for the two runtime-migration tables.
+  # Explicitly enforce owner for permission-critical runtime tables.
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.element_overrides OWNER TO \"$DB_USER\";"
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.content_blocks OWNER TO \"$DB_USER\";"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER TABLE IF EXISTS public.pending_registrations OWNER TO \"$DB_USER\";"
 
   echo "-> Enforcing owner '$DB_USER' on required public tables..."
   for table_name in "${REQUIRED_PUBLIC_TABLES[@]}"; do
@@ -218,10 +219,14 @@ SQL
   done
 fi
 
-# Reassign ownership of any objects created by the schema to the DB user
-echo "-> Reassigning owned objects from '$OWNER' to '$DB_USER' (if any)"
+  # Reassign ownership only for non-system owners.
+  echo "-> Reassigning owned objects from '$OWNER' to '$DB_USER' (if safe)"
 if [ "$USE_SUDO_POSTGRES" = true ]; then
-  sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
+    if [ "$OWNER" != "postgres" ] && [[ "$OWNER" != pg_* ]]; then
+      sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
+    else
+      echo "-> Skipping REASSIGN OWNED for system role '$OWNER'."
+    fi
   sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
 DO $$
 DECLARE
@@ -239,7 +244,11 @@ SQL
       sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON TABLE public.\"$table_name\" TO \"$DB_USER\";"
     done
 else
-  psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
+    if [ "$OWNER" != "postgres" ] && [[ "$OWNER" != pg_* ]]; then
+      psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "REASSIGN OWNED BY \"$OWNER\" TO \"$DB_USER\";" || true
+    else
+      echo "-> Skipping REASSIGN OWNED for system role '$OWNER'."
+    fi
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL || true
 DO $$
 DECLARE
