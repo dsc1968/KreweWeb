@@ -7,6 +7,10 @@ set -euo pipefail
 DB_NAME=${DB_NAME:-krewe_db}
 DB_USER=${DB_USER:-krewe_db_user}
 PORT=${PORT:-8000}
+CREATE_DEFAULT_ADMIN=${CREATE_DEFAULT_ADMIN:-true}
+DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@krewe.local}
+DEFAULT_ADMIN_NAME=${DEFAULT_ADMIN_NAME:-Admin User}
+DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin123}
 
 echo "== Krewe Mystique DB initializer =="
 
@@ -81,6 +85,32 @@ else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO \"$DB_USER\";" || true
 fi
 
+if [ "$CREATE_DEFAULT_ADMIN" = "true" ]; then
+  echo "-> Ensuring default admin account exists..."
+  ADMIN_HASH=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync(process.argv[1], 10));" "$DEFAULT_ADMIN_PASSWORD" 2>/dev/null || true)
+
+  if [ -z "$ADMIN_HASH" ]; then
+    echo "Warning: could not generate password hash for default admin."
+    echo "         Make sure dependencies are installed (run: npm install), then run npm run init-db again."
+  else
+    if sudo -n true 2>/dev/null; then
+      sudo -u postgres psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
+INSERT INTO users (email, full_name, role, password_hash)
+VALUES ('$DEFAULT_ADMIN_EMAIL', '$DEFAULT_ADMIN_NAME', 'admin', '$ADMIN_HASH')
+ON CONFLICT (email) DO NOTHING;
+SQL
+    else
+      psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" <<SQL
+INSERT INTO users (email, full_name, role, password_hash)
+VALUES ('$DEFAULT_ADMIN_EMAIL', '$DEFAULT_ADMIN_NAME', 'admin', '$ADMIN_HASH')
+ON CONFLICT (email) DO NOTHING;
+SQL
+    fi
+  fi
+else
+  echo "-> Skipping default admin creation (CREATE_DEFAULT_ADMIN=$CREATE_DEFAULT_ADMIN)."
+fi
+
 ENV_FILE=.env
 if [ -f "$ENV_FILE" ]; then
   echo "Warning: $ENV_FILE already exists. It will be backed up to $ENV_FILE.bak"
@@ -97,6 +127,12 @@ JWT_SECRET=$JWT_SECRET
 EOF
 
 echo "Done. .env created and DB initialized."
+if [ "$CREATE_DEFAULT_ADMIN" = "true" ] && [ -n "${ADMIN_HASH:-}" ]; then
+  echo "Bootstrap admin credentials:"
+  echo "  - Email: $DEFAULT_ADMIN_EMAIL"
+  echo "  - Password: $DEFAULT_ADMIN_PASSWORD"
+  echo "  - Change this password after first login."
+fi
 echo
 echo "Next steps:"
 echo "  - Start server: npm start"

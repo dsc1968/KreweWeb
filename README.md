@@ -101,6 +101,7 @@ This project includes a helper script that does the following:
 - creates the database
 - applies the schema from `db-init.sql`
 - writes a `.env` file with the connection details
+- creates a default admin user (first run)
 
 Run it from the project root:
 
@@ -119,6 +120,23 @@ npm run init-db -- yourpassword
 That is easier, but it is less secure because the password may be visible in your shell history.
 
 If a `.env` file already exists, the script keeps a backup as `.env.bak`.
+
+Default admin credentials created by `npm run init-db`:
+
+- Email: `admin@krewe.local`
+- Password: `admin123`
+
+Change this password after your first login.
+
+To customize or skip bootstrap admin creation:
+
+```bash
+# Custom bootstrap admin
+DEFAULT_ADMIN_EMAIL=owner@example.com DEFAULT_ADMIN_PASSWORD=ChangeMeNow123 npm run init-db
+
+# Skip bootstrap admin creation
+CREATE_DEFAULT_ADMIN=false npm run init-db
+```
 
 ### 9. Start the app
 
@@ -159,6 +177,8 @@ curl -X POST http://localhost:8000/api/dev/seed
 ```
 
 This is development-only. Do not use demo accounts in production.
+
+Note: the initializer already creates a starter admin account (`admin@krewe.local` / `admin123`), so running the seed step is optional.
 
 ## Optional: set up HTTPS with Let's Encrypt
 
