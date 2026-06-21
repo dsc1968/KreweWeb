@@ -59,13 +59,13 @@ if (countdownElements.days) {
     calendarMonth: null,
     calendarDefaultYear: 2027,
     calendarDefaultMonth: 2,
-    freeDragMode: false,
     freeDragHandlersBound: false,
     draggingElement: null,
     dragStartX: 0,
     dragStartY: 0,
     dragOriginX: 0,
     dragOriginY: 0,
+    suppressEditClickUntil: 0,
     draggedTextElement: null,
     isAdmin: false,
     albums: [],
@@ -78,6 +78,9 @@ if (countdownElements.days) {
   };
   const albumRootElementKey = 'media-albums-root|container';
   const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
+  const resizeEdgeThreshold = 10;
+  const minResizableWidth = 40;
+  const minResizableHeight = 32;
 
   function isPageEditable() {
     return !nonEditablePagePaths.has(state.pagePath);
@@ -432,6 +435,7 @@ if (countdownElements.days) {
       elementKey,
       hidden: patch.hidden ?? current.hidden ?? false,
       textAlign: patch.textAlign ?? current.text_align ?? null,
+      fontFamily: patch.fontFamily ?? current.font_family ?? null,
       fontWeight: patch.fontWeight ?? current.font_weight ?? null,
       fontStyle: patch.fontStyle ?? current.font_style ?? null,
       textTransform: patch.textTransform ?? current.text_transform ?? null,
@@ -847,6 +851,7 @@ if (countdownElements.days) {
   function applyElementStyles(element, override) {
     if (!element || !override) return;
     element.style.textAlign = override.text_align || '';
+    element.style.fontFamily = override.font_family || '';
     element.style.fontWeight = override.font_weight || '';
     element.style.fontStyle = override.font_style || '';
     element.style.textTransform = override.text_transform || '';
@@ -1656,8 +1661,8 @@ if (countdownElements.days) {
             caption,
             setAsCover: images.length === 0,
           });
-          await renderAlbumViewer(albumId);
           await loadMediaAlbums();
+          modal.style.display = 'none';
         } catch (error) {
           alert(error.message);
         }
@@ -2424,6 +2429,16 @@ if (countdownElements.days) {
               <option value="700">Bold</option>
             </select>
           </label>
+          <label>Font Family
+            <select id="admin-format-family">
+              <option value="">Default</option>
+              <option value="Georgia, \"Times New Roman\", serif">Serif (Georgia)</option>
+              <option value="\"Trebuchet MS\", \"Lucida Grande\", \"Lucida Sans Unicode\", sans-serif">Trebuchet</option>
+              <option value="\"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif">Segoe UI</option>
+              <option value="\"Courier New\", Courier, monospace">Monospace (Courier)</option>
+              <option value="\"Brush Script MT\", \"Comic Sans MS\", cursive">Script</option>
+            </select>
+          </label>
           <label>Style
             <select id="admin-format-style">
               <option value="">Default</option>
@@ -2604,6 +2619,7 @@ if (countdownElements.days) {
     const hideButton = modal.querySelector('[data-action="hide"]');
     const deleteButton = modal.querySelector('[data-action="delete"]');
     const alignSelect = modal.querySelector('#admin-format-align');
+    const familySelect = modal.querySelector('#admin-format-family');
     const weightSelect = modal.querySelector('#admin-format-weight');
     const styleSelect = modal.querySelector('#admin-format-style');
     const transformSelect = modal.querySelector('#admin-format-transform');
@@ -2632,6 +2648,7 @@ if (countdownElements.days) {
     textarea.style.display = '';
     formatGrid.style.display = '';
     alignSelect.value = options.formatting.textAlign || '';
+    familySelect.value = options.formatting.fontFamily || '';
     weightSelect.value = options.formatting.fontWeight || '';
     styleSelect.value = options.formatting.fontStyle || '';
     transformSelect.value = options.formatting.textTransform || '';
@@ -2754,6 +2771,7 @@ if (countdownElements.days) {
       try {
         await options.onSave(nextValue, {
           textAlign: alignSelect.value,
+          fontFamily: familySelect.value,
           fontWeight: weightSelect.value,
           fontStyle: styleSelect.value,
           textTransform: transformSelect.value,
@@ -2787,6 +2805,7 @@ if (countdownElements.days) {
       {
         formatting: {
           textAlign: override.text_align || '',
+          fontFamily: override.font_family || '',
           fontWeight: override.font_weight || '',
           fontStyle: override.font_style || '',
           textTransform: override.text_transform || '',
@@ -2872,6 +2891,7 @@ if (countdownElements.days) {
       {
         formatting: {
           textAlign: '',
+          fontFamily: '',
           fontWeight: '',
           fontStyle: '',
           textTransform: '',
@@ -3448,7 +3468,7 @@ if (countdownElements.days) {
 
   function setTextElementDraggableState(element) {
     if (!element) return;
-    element.draggable = state.editMode && state.freeDragMode && isDynamicTextElement(element);
+    element.draggable = state.editMode && isDynamicTextElement(element);
   }
 
   function registerTextDrag(element) {
@@ -3464,7 +3484,7 @@ if (countdownElements.days) {
     element.dataset.adminTextDragBound = 'true';
 
     element.addEventListener('dragstart', (event) => {
-      if (!state.editMode || !state.freeDragMode) {
+      if (!state.editMode) {
         event.preventDefault();
         return;
       }
@@ -3977,24 +3997,8 @@ if (countdownElements.days) {
     });
   }
 
-  function setFreeDragMode(nextValue) {
-    state.freeDragMode = Boolean(nextValue);
-    document.body.classList.toggle('admin-free-drag-mode', state.editMode && state.freeDragMode);
-
-    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
-      setTextElementDraggableState(element);
-    });
-
-    const button = document.getElementById('admin-drag-toggle');
-    if (button) {
-      button.classList.toggle('is-active', state.freeDragMode);
-      button.setAttribute('aria-pressed', String(state.freeDragMode));
-      button.setAttribute('title', state.freeDragMode ? 'Free drag mode is on' : 'Turn on free drag mode');
-    }
-  }
-
   function findFreeDragTarget(source) {
-    if (!source || !state.editMode || !state.freeDragMode) return null;
+    if (!source || !state.editMode) return null;
     const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
@@ -4002,11 +4006,47 @@ if (countdownElements.days) {
     return candidate;
   }
 
-  function beginFreeDrag(target, event) {
-    const key = target.dataset.adminKey;
-    if (!key) return;
+  function getResizeEdges(target, event) {
+    if (!target || !event) return null;
 
-    const override = state.elementOverrides.get(key) || {};
+    const rect = target.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+
+    const nearLeft = event.clientX - rect.left <= resizeEdgeThreshold;
+    const nearRight = rect.right - event.clientX <= resizeEdgeThreshold;
+    const nearTop = event.clientY - rect.top <= resizeEdgeThreshold;
+    const nearBottom = rect.bottom - event.clientY <= resizeEdgeThreshold;
+
+    const horizontal = nearLeft ? 'w' : (nearRight ? 'e' : '');
+    const vertical = nearTop ? 'n' : (nearBottom ? 's' : '');
+    const edges = `${vertical}${horizontal}`;
+    return edges || null;
+  }
+
+  function getCursorForEdges(edges) {
+    switch (edges) {
+      case 'n': return 'n-resize';
+      case 's': return 's-resize';
+      case 'e': return 'e-resize';
+      case 'w': return 'w-resize';
+      case 'ne': return 'ne-resize';
+      case 'nw': return 'nw-resize';
+      case 'se': return 'se-resize';
+      case 'sw': return 'sw-resize';
+      default: return 'move';
+    }
+  }
+
+  function clearFreeDragCursors() {
+    document.body.style.cursor = '';
+    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="album-root"]').forEach((element) => {
+      element.style.cursor = '';
+    });
+  }
+
+  function ensureAbsoluteForFreeDrag(target, override) {
+    if (!target) return;
+
     if (target.offsetParent && window.getComputedStyle(target.offsetParent).position === 'static') {
       target.offsetParent.style.position = 'relative';
     }
@@ -4021,9 +4061,24 @@ if (countdownElements.days) {
       target.style.zIndex = target.dataset.adminEditable === 'text' ? '12' : '8';
       target.classList.add('admin-free-positioned');
     }
+  }
+
+  function beginFreeDrag(target, event) {
+    const key = target.dataset.adminKey;
+    if (!key) return;
+
+    const override = state.elementOverrides.get(key) || {};
+    ensureAbsoluteForFreeDrag(target, override);
+
+    const resizeEdges = getResizeEdges(target, event);
+    const isResizeAction = Boolean(resizeEdges);
+    const activeCursor = isResizeAction ? getCursorForEdges(resizeEdges) : 'move';
 
     const startLeft = Number.parseFloat(target.style.left || `${target.offsetLeft}`) || 0;
     const startTop = Number.parseFloat(target.style.top || `${target.offsetTop}`) || 0;
+    const startWidth = Math.max(minResizableWidth, target.offsetWidth);
+    const startHeight = Math.max(minResizableHeight, target.offsetHeight);
+    let didMove = false;
 
     state.draggingElement = target;
     state.dragStartX = event.clientX;
@@ -4031,28 +4086,84 @@ if (countdownElements.days) {
     state.dragOriginX = startLeft;
     state.dragOriginY = startTop;
     target.classList.add('admin-is-dragging');
+    document.body.style.cursor = activeCursor;
 
     const onMove = (moveEvent) => {
       if (!state.draggingElement) return;
       const parent = state.draggingElement.offsetParent || state.draggingElement.parentElement;
       const dx = moveEvent.clientX - state.dragStartX;
       const dy = moveEvent.clientY - state.dragStartY;
-      const rawX = state.dragOriginX + dx;
-      const rawY = state.dragOriginY + dy;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        didMove = true;
+      }
+      let nextX = state.dragOriginX;
+      let nextY = state.dragOriginY;
+      let nextWidth = startWidth;
+      let nextHeight = startHeight;
 
-      let nextX = rawX;
-      let nextY = rawY;
-      if (parent) {
-        const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
-        const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
-        const maxX = Math.max(0, parentWidth - state.draggingElement.offsetWidth);
-        const maxY = Math.max(0, parentHeight - state.draggingElement.offsetHeight);
-        nextX = Math.max(0, Math.min(maxX, rawX));
-        nextY = Math.max(0, Math.min(maxY, rawY));
+      if (!isResizeAction) {
+        const rawX = state.dragOriginX + dx;
+        const rawY = state.dragOriginY + dy;
+        nextX = rawX;
+        nextY = rawY;
+        if (parent) {
+          const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
+          const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
+          const maxX = Math.max(0, parentWidth - state.draggingElement.offsetWidth);
+          const maxY = Math.max(0, parentHeight - state.draggingElement.offsetHeight);
+          nextX = Math.max(0, Math.min(maxX, rawX));
+          nextY = Math.max(0, Math.min(maxY, rawY));
+        }
+      } else {
+        if (resizeEdges.includes('e')) nextWidth = startWidth + dx;
+        if (resizeEdges.includes('s')) nextHeight = startHeight + dy;
+        if (resizeEdges.includes('w')) {
+          nextWidth = startWidth - dx;
+          nextX = state.dragOriginX + dx;
+        }
+        if (resizeEdges.includes('n')) {
+          nextHeight = startHeight - dy;
+          nextY = state.dragOriginY + dy;
+        }
+
+        nextWidth = Math.max(minResizableWidth, nextWidth);
+        nextHeight = Math.max(minResizableHeight, nextHeight);
+
+        if (resizeEdges.includes('w')) {
+          nextX = state.dragOriginX + (startWidth - nextWidth);
+        }
+        if (resizeEdges.includes('n')) {
+          nextY = state.dragOriginY + (startHeight - nextHeight);
+        }
+
+        if (parent) {
+          const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
+          const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
+
+          if (nextX < 0) {
+            const overflowX = 0 - nextX;
+            nextX = 0;
+            nextWidth = Math.max(minResizableWidth, nextWidth - overflowX);
+          }
+          if (nextY < 0) {
+            const overflowY = 0 - nextY;
+            nextY = 0;
+            nextHeight = Math.max(minResizableHeight, nextHeight - overflowY);
+          }
+
+          const maxWidth = Math.max(minResizableWidth, parentWidth - nextX);
+          const maxHeight = Math.max(minResizableHeight, parentHeight - nextY);
+          nextWidth = Math.min(nextWidth, maxWidth);
+          nextHeight = Math.min(nextHeight, maxHeight);
+        }
       }
 
       state.draggingElement.style.left = `${Math.round(nextX)}px`;
       state.draggingElement.style.top = `${Math.round(nextY)}px`;
+      if (isResizeAction) {
+        state.draggingElement.style.width = `${Math.round(nextWidth)}px`;
+        state.draggingElement.style.height = `${Math.round(nextHeight)}px`;
+      }
     };
 
     const onUp = async () => {
@@ -4062,16 +4173,26 @@ if (countdownElements.days) {
       if (!dragged) return;
 
       dragged.classList.remove('admin-is-dragging');
+      document.body.style.cursor = '';
+      if (didMove || isResizeAction) {
+        state.suppressEditClickUntil = Date.now() + 250;
+      }
       const posX = Number.parseInt(dragged.style.left || '0', 10) || 0;
       const posY = Number.parseInt(dragged.style.top || '0', 10) || 0;
 
       try {
-        const item = await saveElementOverride(key, {
+        const patch = {
           hidden: false,
           positionMode: 'absolute',
           posX,
           posY,
-        });
+        };
+        if (isResizeAction) {
+          patch.widthValue = `${Math.max(minResizableWidth, Math.round(dragged.offsetWidth))}px`;
+          patch.heightValue = `${Math.max(minResizableHeight, Math.round(dragged.offsetHeight))}px`;
+        }
+
+        const item = await saveElementOverride(key, patch);
         applyElementStyles(dragged, item);
       } catch (error) {
         alert(error.message);
@@ -4086,8 +4207,23 @@ if (countdownElements.days) {
     if (state.freeDragHandlersBound) return;
     state.freeDragHandlersBound = true;
 
+    document.addEventListener('pointermove', (event) => {
+      if (!state.editMode || state.draggingElement) return;
+
+      const target = findFreeDragTarget(event.target);
+      if (!target) {
+        document.body.style.cursor = '';
+        return;
+      }
+
+      const edges = getResizeEdges(target, event);
+      const cursor = getCursorForEdges(edges || '');
+      target.style.cursor = cursor;
+      document.body.style.cursor = cursor;
+    }, true);
+
     document.addEventListener('pointerdown', (event) => {
-      if (!state.editMode || !state.freeDragMode) return;
+      if (!state.editMode) return;
       if (event.button !== 0) return;
 
       const target = findFreeDragTarget(event.target);
@@ -4102,7 +4238,10 @@ if (countdownElements.days) {
   function setEditMode(nextValue) {
     state.editMode = nextValue;
     document.body.classList.toggle('admin-edit-mode', nextValue);
-    document.body.classList.toggle('admin-free-drag-mode', nextValue && state.freeDragMode);
+    document.body.classList.toggle('admin-free-drag-mode', nextValue);
+    if (!nextValue) {
+      clearFreeDragCursors();
+    }
     applyElementOverrides();
     registerSectionEditing();
     document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
@@ -4164,20 +4303,7 @@ if (countdownElements.days) {
       </svg>
     `;
 
-    const dragButton = document.createElement('button');
-    dragButton.id = 'admin-drag-toggle';
-    dragButton.type = 'button';
-    dragButton.className = 'admin-add-section-button';
-    dragButton.setAttribute('aria-label', 'Toggle free drag mode');
-    dragButton.setAttribute('aria-pressed', 'false');
-    dragButton.setAttribute('title', 'Turn on free drag mode');
-    dragButton.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M13 6V11H18V13H13V18H11V13H6V11H11V6H13ZM4 4H9V2H2V9H4V4ZM15 2V4H20V9H22V2H15ZM20 20H15V22H22V15H20V20ZM4 15H2V22H9V20H4V15Z" />
-      </svg>
-    `;
-
-    controls.replaceChildren(button, addButton, dragButton);
+    controls.replaceChildren(button, addButton);
 
     const logoutLink = document.getElementById('nav-logout-link');
     if (logoutLink) {
@@ -4190,15 +4316,12 @@ if (countdownElements.days) {
       setEditMode(!state.editMode);
     });
     addButton.addEventListener('click', openAddSectionModal);
-    dragButton.addEventListener('click', () => {
-      setFreeDragMode(!state.freeDragMode);
-    });
 
     bindFreeDragHandlers();
 
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
-      if (state.freeDragMode) return;
+      if (Date.now() < state.suppressEditClickUntil) return;
       if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
