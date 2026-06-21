@@ -40,8 +40,8 @@ if (countdownElements.days) {
 }
 
 (function () {
-  const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, li, button, label, figcaption, td, th, div[data-admin-editable-target="text"]';
-  const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,li,button,label,figcaption,td,th,div[data-admin-editable-target="text"]';
+  const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, em, i, b, blockquote, li, button, label, figcaption, td, th, dt, dd, div, div[data-admin-editable-target="text"]';
+  const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,em,i,b,blockquote,li,button,label,figcaption,td,th,dt,dd,div,div[data-admin-editable-target="text"]';
   const state = {
     pagePath: normalizePagePath(window.location.pathname),
     profilePromise: null,
@@ -746,6 +746,20 @@ if (countdownElements.days) {
     return Array.from(element.children).some((child) => child.matches(leafTextSelector));
   }
 
+  function hasDirectTextNode(element) {
+    if (!element) return false;
+    return Array.from(element.childNodes).some((node) => (
+      node.nodeType === Node.TEXT_NODE && String(node.textContent || '').trim().length > 0
+    ));
+  }
+
+  function isInsideSiteMenu(element) {
+    if (!element || !(element instanceof Element)) return false;
+    const menuHost = element.closest('.site-nav');
+    if (!menuHost) return false;
+    return !isInsideAdminUi(element);
+  }
+
   function getNthOfType(element) {
     let index = 1;
     let sibling = element.previousElementSibling;
@@ -778,6 +792,37 @@ if (countdownElements.days) {
     return Array.from(main.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection);
   }
 
+  function getStaticSectionToolTargets() {
+    const main = document.querySelector('main');
+    if (!main) return [];
+    return Array.from(main.querySelectorAll('section')).filter((element) => {
+      if (element.dataset.adminDynamicSection === 'true') return false;
+      if (element.closest('[data-admin-dynamic-section="true"]')) return false;
+      return true;
+    });
+  }
+
+  function ensureStaticSectionKey(section, fallbackIndex) {
+    if (!section) return;
+    if (!section.dataset.adminStaticSectionKey) {
+      const fallbackKey = Number.isInteger(fallbackIndex) ? `static-section:${fallbackIndex}` : buildContentKey(section, 'section');
+      section.dataset.adminStaticSectionKey = section.id ? `static-section:${section.id}` : fallbackKey;
+    }
+    section.dataset.adminSectionType = 'static';
+    if (!section.dataset.adminBackgroundVar) {
+      section.dataset.adminBackgroundVar = '--admin-section-bg';
+      section.dataset.adminBgVarAuto = 'true';
+    }
+  }
+
+  async function persistStaticSectionOrderForParent(parentElement) {
+    if (!parentElement) return;
+    const siblings = Array.from(parentElement.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection);
+    await Promise.all(
+      siblings.map((section, index) => saveElementOverride(section.dataset.adminStaticSectionKey, { position: index + 1, hidden: false }))
+    );
+  }
+
   function assignStaticSectionKeys() {
     getStaticSections().forEach((section, index) => {
       const key = section.id ? `static-section:${section.id}` : `static-section:${index}`;
@@ -808,6 +853,8 @@ if (countdownElements.days) {
     document.querySelectorAll(editableTextSelector).forEach((element) => {
       if (!element.textContent.trim()) return;
       if (isInsideAdminUi(element)) return;
+      if (isInsideSiteMenu(element)) return;
+      if (element.tagName === 'DIV' && !hasDirectTextNode(element)) return;
       if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
       if (element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
@@ -822,6 +869,7 @@ if (countdownElements.days) {
 
     document.querySelectorAll('img').forEach((element) => {
       if (isInsideAdminUi(element)) return;
+      if (isInsideSiteMenu(element)) return;
       if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
       if (element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
@@ -833,6 +881,7 @@ if (countdownElements.days) {
 
     document.querySelectorAll('[data-admin-background-var]').forEach((element) => {
       if (isInsideAdminUi(element)) return;
+      if (isInsideSiteMenu(element)) return;
       if (element.closest('[data-admin-dynamic-section]')) return;
       if (element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
@@ -3370,7 +3419,7 @@ if (countdownElements.days) {
   }
 
   async function persistStaticSectionOrder() {
-    const sections = getStaticSections();
+    const sections = getStaticSectionToolTargets();
     await Promise.all(
       sections.map((section, index) => saveElementOverride(section.dataset.adminStaticSectionKey, { position: index + 1, hidden: false }))
     );
@@ -3392,7 +3441,10 @@ if (countdownElements.days) {
     if (!section || !Number.isInteger(delta) || delta === 0) return;
 
     if (kind === 'static') {
-      const sections = getStaticSections();
+      const parent = section.parentElement;
+      const sections = parent
+        ? Array.from(parent.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection)
+        : [];
       const index = sections.indexOf(section);
       const nextIndex = index + delta;
       if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return;
@@ -3407,7 +3459,7 @@ if (countdownElements.days) {
         main.insertBefore(target, section);
       }
 
-      persistStaticSectionOrder().catch((error) => alert(error.message));
+      persistStaticSectionOrderForParent(main).catch((error) => alert(error.message));
       return;
     }
 
@@ -3557,7 +3609,7 @@ if (countdownElements.days) {
         targetSection.parentNode.insertBefore(draggedElement, targetSection);
       }
 
-      persistStaticSectionOrder().catch((error) => alert(error.message));
+      persistStaticSectionOrderForParent(targetSection.parentNode).catch((error) => alert(error.message));
       return;
     }
 
@@ -3982,7 +4034,8 @@ if (countdownElements.days) {
   }
 
   function registerSectionEditing() {
-    getStaticSections().forEach((section) => {
+    getStaticSectionToolTargets().forEach((section, index) => {
+      ensureStaticSectionKey(section, index);
       ensureSectionTools(section, 'static');
       registerSectionDrag(section, 'static');
     });
@@ -3999,7 +4052,7 @@ if (countdownElements.days) {
 
   function findFreeDragTarget(source) {
     if (!source || !state.editMode) return null;
-    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="album-root"]');
+    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
     if (isInsideAdminUi(candidate)) return null;
@@ -4039,7 +4092,7 @@ if (countdownElements.days) {
 
   function clearFreeDragCursors() {
     document.body.style.cursor = '';
-    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="album-root"]').forEach((element) => {
+    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="album-root"]').forEach((element) => {
       element.style.cursor = '';
     });
   }
@@ -4323,6 +4376,13 @@ if (countdownElements.days) {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
       if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools')) return;
+
+      const siteNavLink = event.target.closest('.site-nav a');
+      if (siteNavLink) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
       if (calendarCell) {
