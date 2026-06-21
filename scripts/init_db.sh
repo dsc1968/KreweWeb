@@ -110,6 +110,8 @@ BEGIN
       SELECT proowner AS owner_oid FROM pg_proc
     ) owners
     WHERE pg_get_userbyid(owner_oid) IS NOT NULL
+      AND pg_get_userbyid(owner_oid) <> 'postgres'
+      AND pg_get_userbyid(owner_oid) NOT LIKE 'pg_%'
       AND pg_get_userbyid(owner_oid) <> '$DB_USER'
   LOOP
     EXECUTE format('REASSIGN OWNED BY %I TO %I', r.owner_name, '$DB_USER');
