@@ -649,9 +649,6 @@ app.put('/api/admin/content', authenticateToken, async (req, res) => {
   }
 
   const normalizedContentValue = contentValue.trim();
-  if (contentType === 'text' && !normalizedContentValue) {
-    return res.status(400).json({ error: 'Content value is required' });
-  }
 
   try {
     const result = await pool.query(
