@@ -66,6 +66,7 @@ if (countdownElements.days) {
     dragStartY: 0,
     dragOriginX: 0,
     dragOriginY: 0,
+    draggedTextElement: null,
     isAdmin: false,
     albums: [],
     albumImagesById: new Map(),
@@ -434,6 +435,7 @@ if (countdownElements.days) {
       fontWeight: patch.fontWeight ?? current.font_weight ?? null,
       fontStyle: patch.fontStyle ?? current.font_style ?? null,
       textTransform: patch.textTransform ?? current.text_transform ?? null,
+      fontSize: patch.fontSize ?? current.font_size ?? null,
       textColor: patch.textColor ?? current.text_color ?? null,
       backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
       widthValue: patch.widthValue ?? current.width_value ?? null,
@@ -480,6 +482,28 @@ if (countdownElements.days) {
       throw new Error(data.error || 'Unable to reorder sections');
     }
     return data;
+  }
+
+  async function moveContentBlock(oldContentKey, newParentKey, contentType) {
+    const token = getStoredToken();
+    const res = await fetch('/api/admin/content/move', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        pagePath: state.pagePath,
+        oldContentKey,
+        newParentKey,
+        contentType,
+      }),
+    });
+    const data = await parseApiResponse(res);
+    if (!res.ok) {
+      throw new Error(data.error || 'Unable to move content');
+    }
+    return data.item;
   }
 
   async function createAlbum(payload) {
@@ -766,10 +790,23 @@ if (countdownElements.days) {
     state.registry.clear();
     assignStaticSectionKeys();
 
+    getStaticSections().forEach((section) => {
+      if (isInsideAdminUi(section)) return;
+      if (section.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(section).display === 'none') return;
+
+      const key = buildContentKey(section, 'image');
+      section.dataset.adminEditable = 'background-image';
+      section.dataset.adminKey = key;
+      state.registry.set(`image:${key}`, section);
+    });
+
     document.querySelectorAll(editableTextSelector).forEach((element) => {
       if (!element.textContent.trim()) return;
       if (isInsideAdminUi(element)) return;
-      if (element.closest('[data-admin-dynamic-section]')) return;
+      if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
+      if (element.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(element).display === 'none') return;
       if (element.querySelector('img, input, textarea, select')) return;
       if (hasNestedEditableText(element) && element.tagName !== 'LI') return;
 
@@ -781,7 +818,9 @@ if (countdownElements.days) {
 
     document.querySelectorAll('img').forEach((element) => {
       if (isInsideAdminUi(element)) return;
-      if (element.closest('[data-admin-dynamic-section]')) return;
+      if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
+      if (element.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(element).display === 'none') return;
       const key = buildContentKey(element, 'image');
       element.dataset.adminEditable = 'image';
       element.dataset.adminKey = key;
@@ -791,6 +830,8 @@ if (countdownElements.days) {
     document.querySelectorAll('[data-admin-background-var]').forEach((element) => {
       if (isInsideAdminUi(element)) return;
       if (element.closest('[data-admin-dynamic-section]')) return;
+      if (element.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(element).display === 'none') return;
       const key = buildContentKey(element, 'image');
       element.dataset.adminEditable = 'background-image';
       element.dataset.adminKey = key;
@@ -809,6 +850,7 @@ if (countdownElements.days) {
     element.style.fontWeight = override.font_weight || '';
     element.style.fontStyle = override.font_style || '';
     element.style.textTransform = override.text_transform || '';
+    element.style.fontSize = override.font_size || '';
     element.style.color = override.text_color || '';
     element.style.backgroundColor = override.background_color || '';
     element.style.width = override.width_value || '';
@@ -831,7 +873,7 @@ if (countdownElements.days) {
       element.style.left = `${Number.isFinite(override.pos_x) ? override.pos_x : 0}px`;
       element.style.top = `${Number.isFinite(override.pos_y) ? override.pos_y : 0}px`;
       element.style.margin = '0';
-      element.style.zIndex = '9';
+      element.style.zIndex = element.dataset.adminEditable === 'text' ? '12' : '8';
     } else {
       if (element.dataset.adminEditable === 'album-root') {
         removeAlbumRootPlaceholder(element);
@@ -895,7 +937,7 @@ if (countdownElements.days) {
     if (!element) return;
     rememberInlineDisplay(element);
     element.classList.toggle('admin-hidden-element', Boolean(hidden));
-    if (hidden && !state.editMode) {
+    if (hidden) {
       element.style.display = 'none';
       return;
     }
@@ -1215,13 +1257,39 @@ if (countdownElements.days) {
       const override = key ? state.elementOverrides.get(key) : null;
       setAdminHiddenState(section, override && override.hidden);
     });
+
+    applySectionSizeOverrides();
+  }
+
+  function getSectionResizeKey(section) {
+    if (!section) return '';
+    if (section.dataset.adminDynamicSection === 'true') {
+      const sectionId = Number.parseInt(section.dataset.adminSectionId || '', 10);
+      return Number.isInteger(sectionId) ? `dynamic-section:${sectionId}` : '';
+    }
+    return section.dataset.adminStaticSectionKey || '';
+  }
+
+  function applySectionSizeOverrides() {
+    const sections = [
+      ...getStaticSections(),
+      ...Array.from(document.querySelectorAll('[data-admin-dynamic-section="true"]')),
+    ];
+
+    sections.forEach((section) => {
+      const key = getSectionResizeKey(section);
+      const override = key ? state.elementOverrides.get(key) : null;
+      const heightValue = override && override.height_value ? override.height_value : '';
+      section.style.minHeight = heightValue || '';
+      section.dataset.adminResizeKey = key || '';
+    });
   }
 
   function applyStaticSectionOrder() {
     const main = document.querySelector('main');
     if (!main) return;
 
-    const host = document.getElementById('dynamic-page-sections');
+    const footer = document.querySelector('.footer');
     const sections = getStaticSections();
     const sorted = sections.slice().sort((left, right) => {
       const leftOverride = state.elementOverrides.get(left.dataset.adminStaticSectionKey);
@@ -1231,7 +1299,7 @@ if (countdownElements.days) {
       return leftPosition - rightPosition;
     });
 
-    const anchor = host || document.querySelector('.footer');
+    const anchor = footer;
     sorted.forEach((section) => {
       if (anchor && anchor.parentNode === main) {
         main.insertBefore(section, anchor);
@@ -1262,8 +1330,12 @@ if (countdownElements.days) {
       host.id = 'dynamic-page-sections';
     }
 
-    if (footer && footer.parentNode) {
-      footer.parentNode.insertBefore(host, footer);
+    if (!host.parentNode) {
+      if (footer && footer.parentNode) {
+        footer.parentNode.insertBefore(host, footer);
+      } else {
+        main.appendChild(host);
+      }
     } else if (host.parentNode !== main) {
       main.appendChild(host);
     }
@@ -1275,6 +1347,7 @@ if (countdownElements.days) {
       wrapper.className = 'section dynamic-page-section';
       wrapper.dataset.adminDynamicSection = 'true';
       wrapper.dataset.adminSectionId = String(section.id);
+      wrapper.dataset.adminResizeKey = `dynamic-section:${section.id}`;
       wrapper.dataset.adminSectionField = 'background_path';
       wrapper.dataset.adminEditable = 'background-image';
       wrapper.dataset.adminImagePath = section.background_path || '';
@@ -1288,76 +1361,96 @@ if (countdownElements.days) {
       const container = document.createElement('div');
       container.className = 'container';
 
-      const card = document.createElement('div');
-      card.className = 'dynamic-page-section-card grid-two';
+      const contentHost = document.createElement('div');
+      contentHost.className = 'dynamic-page-section-content-host';
 
-      const copy = document.createElement('div');
-      copy.className = 'dynamic-page-section-copy';
+      const hasCoreContent = Boolean(section.title || section.body || section.image_path);
 
-      const tag = document.createElement('span');
-      tag.className = 'section-tag';
-      tag.textContent = 'Custom Section';
+      if (hasCoreContent) {
+        const card = document.createElement('div');
+        card.className = `dynamic-page-section-card${section.image_path ? ' grid-two' : ''}`;
 
-      const title = document.createElement('h2');
-      title.dataset.adminSectionId = String(section.id);
-      title.dataset.adminSectionField = 'title';
-      title.dataset.adminEditable = 'text';
-      title.textContent = section.title;
+        const copy = document.createElement('div');
+        copy.className = 'dynamic-page-section-copy';
 
-      const body = document.createElement('p');
-      body.className = 'section-copy';
-      body.dataset.adminSectionId = String(section.id);
-      body.dataset.adminSectionField = 'body';
-      body.dataset.adminEditable = 'text';
-      body.textContent = section.body;
+        const tag = document.createElement('span');
+        tag.className = 'section-tag';
+        tag.textContent = 'Custom Section';
+        copy.appendChild(tag);
 
-      const removeButton = document.createElement('button');
-      removeButton.type = 'button';
-      removeButton.className = 'button secondary admin-remove-section';
-      removeButton.dataset.adminRemoveSection = String(section.id);
-      removeButton.textContent = 'Remove Section';
+        if (section.title) {
+          const title = document.createElement('h2');
+          title.dataset.adminSectionId = String(section.id);
+          title.dataset.adminSectionField = 'title';
+          title.dataset.adminEditable = 'text';
+          title.dataset.adminSectionEmpty = 'false';
+          title.textContent = section.title;
+          copy.appendChild(title);
+        }
 
-      copy.appendChild(tag);
-      copy.appendChild(title);
-      copy.appendChild(body);
-      copy.appendChild(removeButton);
+        if (section.body) {
+          const body = document.createElement('p');
+          body.className = 'section-copy';
+          body.dataset.adminSectionId = String(section.id);
+          body.dataset.adminSectionField = 'body';
+          body.dataset.adminEditable = 'text';
+          body.dataset.adminSectionEmpty = 'false';
+          body.textContent = section.body;
+          copy.appendChild(body);
+        }
 
-      const media = document.createElement('div');
-      media.className = 'dynamic-page-section-media';
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'button secondary admin-remove-section';
+        removeButton.dataset.adminRemoveSection = String(section.id);
+        removeButton.textContent = 'Remove Section';
+        copy.appendChild(removeButton);
 
-      if (section.image_path) {
-        const image = document.createElement('img');
-        image.src = withCacheBust(section.image_path, section.updated_at);
-        image.alt = section.title;
-        image.dataset.adminSectionId = String(section.id);
-        image.dataset.adminSectionField = 'image_path';
-        image.dataset.adminEditable = 'image';
-        image.dataset.adminImagePath = section.image_path;
-        media.appendChild(image);
-      } else {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'dynamic-page-section-image-placeholder';
-        placeholder.textContent = state.editMode ? 'Click to add an image' : 'Image removed';
-        placeholder.dataset.adminSectionId = String(section.id);
-        placeholder.dataset.adminSectionField = 'image_path';
-        placeholder.dataset.adminEditable = 'image';
-        placeholder.dataset.adminImagePath = '';
-        placeholder.style.minHeight = '220px';
-        placeholder.style.display = 'grid';
-        placeholder.style.placeItems = 'center';
-        placeholder.style.borderRadius = '18px';
-        placeholder.style.border = '1px dashed rgba(255, 210, 98, 0.5)';
-        placeholder.style.color = '#dbe7ff';
-        placeholder.style.background = 'rgba(8, 16, 42, 0.65)';
-        media.appendChild(placeholder);
+        card.appendChild(copy);
+
+        if (section.image_path) {
+          const media = document.createElement('div');
+          media.className = 'dynamic-page-section-media';
+
+          const image = document.createElement('img');
+          image.src = withCacheBust(section.image_path, section.updated_at);
+          image.alt = section.title || 'Custom section image';
+          image.dataset.adminSectionId = String(section.id);
+          image.dataset.adminSectionField = 'image_path';
+          image.dataset.adminEditable = 'image';
+          image.dataset.adminImagePath = section.image_path;
+          media.appendChild(image);
+
+          card.appendChild(media);
+        }
+
+        contentHost.appendChild(card);
       }
 
-      card.appendChild(copy);
-      card.appendChild(media);
-      container.appendChild(card);
+      container.appendChild(contentHost);
       wrapper.appendChild(container);
       host.appendChild(wrapper);
     });
+
+    applySectionSizeOverrides();
+  }
+
+  function placeDynamicSectionsHostRelative(staticSectionKey, insertPosition) {
+    if (!staticSectionKey) return;
+    const main = document.querySelector('main');
+    const host = document.getElementById('dynamic-page-sections');
+    if (!main || !host) return;
+
+    assignStaticSectionKeys();
+    const target = document.querySelector(`section[data-admin-static-section-key="${staticSectionKey}"]`);
+    if (!target || !target.parentNode) return;
+
+    if (insertPosition === 'before') {
+      target.parentNode.insertBefore(host, target);
+      return;
+    }
+
+    target.parentNode.insertBefore(host, target.nextElementSibling);
   }
 
   function getAlbumsRoot() {
@@ -1852,10 +1945,27 @@ if (countdownElements.days) {
     const parentPath = keyParts.slice(0, -1).join('>');
     let parentSection = null;
 
-    // Find the parent section in the DOM
-    if (parentPath.includes('#')) {
-      const id = parentPath.split('#')[1];
-      parentSection = document.getElementById(id) || document.querySelector(`[data-admin-static-section-key="${parentPath}"]`);
+    // Find the parent section in the DOM. Parent may be:
+    // - static section key: static-section:...
+    // - static DOM id key: section#some-id
+    // - dynamic section key: section#<numericId>
+    if (parentPath.startsWith('static-section:')) {
+      parentSection = document.querySelector(`[data-admin-static-section-key="${parentPath}"]`);
+    } else if (parentPath.includes('#')) {
+      const rawId = parentPath.split('#')[1] || '';
+      const dynamicId = Number.parseInt(rawId, 10);
+
+      if (Number.isInteger(dynamicId)) {
+        parentSection = document.querySelector(`[data-admin-dynamic-section="true"][data-admin-section-id="${dynamicId}"]`);
+      }
+
+      if (!parentSection) {
+        parentSection = document.getElementById(rawId);
+      }
+
+      if (!parentSection) {
+        parentSection = document.querySelector(`[data-admin-static-section-key="${parentPath}"]`);
+      }
     }
 
     if (!parentSection) return;
@@ -1879,7 +1989,8 @@ if (countdownElements.days) {
 
     newElement.dataset.adminEditable = item.content_type;
     newElement.dataset.adminKey = item.content_key;
-    parentSection.appendChild(newElement);
+    const parentHost = getSectionContentHost(parentSection) || parentSection;
+    parentHost.appendChild(newElement);
     state.registry.set(`${item.content_type}:${item.content_key}`, newElement);
   }
 
@@ -2030,6 +2141,17 @@ if (countdownElements.days) {
         box-shadow: 0 0 0 2px rgba(102, 204, 255, 0.75);
       }
 
+      /* Enforce layer order while editing: text above image/background elements. */
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="text"] {
+        z-index: 12 !important;
+      }
+
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="image"],
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="background-image"],
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="album-root"] {
+        z-index: 8 !important;
+      }
+
       body.admin-edit-mode .admin-hidden-element {
         opacity: 0.55;
       }
@@ -2137,6 +2259,11 @@ if (countdownElements.days) {
         object-fit: cover;
       }
 
+      .dynamic-page-section-content-host {
+        display: grid;
+        gap: 1rem;
+      }
+
       .admin-remove-section {
         display: none;
         margin-top: 1rem;
@@ -2195,9 +2322,70 @@ if (countdownElements.days) {
         opacity: 0.65;
       }
 
+      body.admin-edit-mode .admin-empty-section-field {
+        color: #9ec5ff;
+        font-style: italic;
+        min-height: 1.4em;
+        cursor: pointer;
+      }
+
       body.admin-edit-mode [data-admin-drag-target="true"] {
         outline: 2px dashed rgba(255, 210, 98, 0.75);
         outline-offset: 8px;
+        position: relative;
+      }
+
+      body.admin-edit-mode [data-admin-drag-target="true"][data-admin-drag-position="before"] {
+        box-shadow: inset 0 4px 0 0 rgba(255, 210, 98, 0.85);
+      }
+
+      body.admin-edit-mode [data-admin-drag-target="true"][data-admin-drag-position="before"]::before {
+        content: "Insert Here";
+        position: absolute;
+        top: -1.35rem;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 210, 98, 0.7);
+        background: rgba(2, 8, 22, 0.96);
+        color: #ffd262;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        z-index: 6;
+        pointer-events: none;
+      }
+
+      body.admin-edit-mode [data-admin-drag-target="true"][data-admin-drag-position="after"] {
+        box-shadow: inset 0 -4px 0 0 rgba(255, 210, 98, 0.85);
+      }
+
+      body.admin-edit-mode [data-admin-drag-target="true"][data-admin-drag-position="after"]::after {
+        content: "Insert Here";
+        position: absolute;
+        bottom: -1.35rem;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 210, 98, 0.7);
+        background: rgba(2, 8, 22, 0.96);
+        color: #ffd262;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        z-index: 6;
+        pointer-events: none;
+      }
+
+      body.admin-edit-mode [data-admin-text-drop-target="true"] {
+        outline: 2px dashed rgba(102, 204, 255, 0.9);
+        outline-offset: 8px;
+      }
+
+      body.admin-edit-mode [data-admin-editable="text"][draggable="true"] {
+        cursor: move;
       }
 
       body.admin-edit-mode .event-calendar td[data-calendar-day] {
@@ -2250,6 +2438,9 @@ if (countdownElements.days) {
               <option value="capitalize">Capitalize</option>
               <option value="lowercase">Lowercase</option>
             </select>
+          </label>
+          <label>Font Size
+            <input id="admin-format-font-size" type="text" placeholder="16px, 1.125rem" />
           </label>
           <label>Text Color
             <div class="admin-color-row">
@@ -2416,6 +2607,7 @@ if (countdownElements.days) {
     const weightSelect = modal.querySelector('#admin-format-weight');
     const styleSelect = modal.querySelector('#admin-format-style');
     const transformSelect = modal.querySelector('#admin-format-transform');
+    const fontSizeInput = modal.querySelector('#admin-format-font-size');
     const colorInput = modal.querySelector('#admin-format-color');
     const colorReset = modal.querySelector('#admin-format-color-reset');
     const bgColorInput = modal.querySelector('#admin-format-bg-color');
@@ -2443,6 +2635,7 @@ if (countdownElements.days) {
     weightSelect.value = options.formatting.fontWeight || '';
     styleSelect.value = options.formatting.fontStyle || '';
     transformSelect.value = options.formatting.textTransform || '';
+    fontSizeInput.value = options.formatting.fontSize || '';
     colorInput.value = existingColor || '#ffffff';
     bgColorInput.value = existingBgColor || '#ffffff';
     widthInput.value = options.formatting.widthValue || '';
@@ -2564,6 +2757,7 @@ if (countdownElements.days) {
           fontWeight: weightSelect.value,
           fontStyle: styleSelect.value,
           textTransform: transformSelect.value,
+          fontSize: fontSizeInput.value.trim(),
           textColor: colorInput.dataset.custom === 'true' ? colorInput.value : '',
           backgroundColor: bgColorInput.dataset.custom === 'true' ? bgColorInput.value : '',
           widthValue: widthInput.value.trim(),
@@ -2596,6 +2790,7 @@ if (countdownElements.days) {
           fontWeight: override.font_weight || '',
           fontStyle: override.font_style || '',
           textTransform: override.text_transform || '',
+          fontSize: override.font_size || '',
           textColor: override.text_color || '',
           backgroundColor: override.background_color || '',
           widthValue: override.width_value || '',
@@ -2669,8 +2864,9 @@ if (countdownElements.days) {
     const sectionId = Number.parseInt(element.dataset.adminSectionId, 10);
     const field = element.dataset.adminSectionField;
     const label = field === 'title' ? 'Edit section title' : 'Edit section body';
+    const initialValue = element.dataset.adminSectionEmpty === 'true' ? '' : element.textContent.trim();
     openTextModal(
-      element.textContent.trim(),
+      initialValue,
       label,
       'Update this custom section and save it for the page.',
       {
@@ -2679,6 +2875,7 @@ if (countdownElements.days) {
           fontWeight: '',
           fontStyle: '',
           textTransform: '',
+          fontSize: '',
           textColor: '',
           backgroundColor: '',
           widthValue: '',
@@ -2972,8 +3169,13 @@ if (countdownElements.days) {
 
   function openStaticImageEditor(element) {
     openImageEditor(element, async (nextPath) => {
+      const contentKey = element.dataset.adminKey || buildContentKey(element, 'image');
+      if (!contentKey) {
+        throw new Error('Unable to update image for this section');
+      }
+      element.dataset.adminKey = contentKey;
       const item = await saveContentUpdate({
-        contentKey: element.dataset.adminKey,
+        contentKey,
         contentType: 'image',
         contentValue: nextPath,
       });
@@ -2981,8 +3183,9 @@ if (countdownElements.days) {
     }, {
       allowBackgroundColor: element.dataset.adminEditable === 'background-image',
       onRemove: async () => {
-        const key = element.dataset.adminKey;
+        const key = element.dataset.adminKey || buildContentKey(element, 'image');
         if (!key) return;
+        element.dataset.adminKey = key;
 
         if (element.dataset.adminEditable === 'background-image') {
           const item = await saveContentUpdate({
@@ -3045,8 +3248,9 @@ if (countdownElements.days) {
       return;
     }
 
-    const contentKey = section.dataset.adminKey;
+    const contentKey = section.dataset.adminKey || buildContentKey(section, 'image');
     if (!contentKey) return;
+    section.dataset.adminKey = contentKey;
     const item = await saveContentUpdate({
       contentKey,
       contentType: 'image',
@@ -3055,38 +3259,74 @@ if (countdownElements.days) {
     applyContentItem(item);
   }
 
-  function openAddSectionModal() {
-    const modal = ensureSectionModal();
-    modal.style.display = 'flex';
-    const titleInput = modal.querySelector('#admin-section-name');
-    const bodyInput = modal.querySelector('#admin-section-body');
-    const saveButton = modal.querySelector('[data-action="save"]');
+  async function openSectionSizeEditor(section) {
+    const key = getSectionResizeKey(section);
+    if (!key) return;
 
-    titleInput.value = '';
-    bodyInput.value = '';
-    titleInput.focus();
+    const override = state.elementOverrides.get(key) || {};
+    const currentHeight = override.height_value || '';
+    const nextHeight = window.prompt(
+      'Section height (examples: 420px, 60vh). Leave blank to reset:',
+      currentHeight
+    );
 
-    saveButton.onclick = async () => {
-      const title = titleInput.value.trim();
-      const body = bodyInput.value.trim();
+    if (nextHeight === null) return;
 
-      if (!title || !body) {
-        alert('Section title and body are required.');
-        return;
+    const item = await saveElementOverride(key, {
+      hidden: false,
+      heightValue: nextHeight.trim(),
+    });
+    state.elementOverrides.set(key, item);
+    applySectionSizeOverrides();
+  }
+
+  async function openAddSectionModal(options) {
+    const addOptions = options || {};
+    try {
+      const item = await createPageSection({ title: '', body: '' });
+      upsertPageSection(item);
+
+      const relativeSectionId = Number.parseInt(addOptions.relativeSectionId, 10);
+      const relativeStaticSectionKey = typeof addOptions.relativeStaticSectionKey === 'string'
+        ? addOptions.relativeStaticSectionKey
+        : '';
+      const insertPosition = addOptions.insertPosition === 'before' ? 'before' : 'after';
+      if (Number.isInteger(relativeSectionId)) {
+        const targetIndex = state.pageSections.findIndex((section) => section.id === relativeSectionId);
+        const newIndex = state.pageSections.findIndex((section) => section.id === item.id);
+        if (targetIndex >= 0 && newIndex >= 0) {
+          const [newSection] = state.pageSections.splice(newIndex, 1);
+          const rawInsertIndex = insertPosition === 'before' ? targetIndex : targetIndex + 1;
+          const insertIndex = Math.max(0, Math.min(rawInsertIndex, state.pageSections.length));
+          state.pageSections.splice(insertIndex, 0, newSection);
+          state.pageSections.forEach((entry, index) => {
+            entry.position = index + 1;
+          });
+          await persistDynamicSectionOrder();
+        }
+      } else if (relativeStaticSectionKey) {
+        placeDynamicSectionsHostRelative(relativeStaticSectionKey, insertPosition);
+
+        const newIndex = state.pageSections.findIndex((section) => section.id === item.id);
+        if (newIndex >= 0) {
+          const [newSection] = state.pageSections.splice(newIndex, 1);
+          if (insertPosition === 'before') {
+            state.pageSections.push(newSection);
+          } else {
+            state.pageSections.unshift(newSection);
+          }
+          state.pageSections.forEach((entry, index) => {
+            entry.position = index + 1;
+          });
+          await persistDynamicSectionOrder();
+        }
       }
 
-      saveButton.disabled = true;
-      try {
-        const item = await createPageSection({ title, body });
-        upsertPageSection(item);
-        renderPageSections();
-        modal.style.display = 'none';
-      } catch (error) {
-        alert(error.message);
-      } finally {
-        saveButton.disabled = false;
-      }
-    };
+      renderPageSections();
+      registerSectionEditing();
+    } catch (error) {
+      alert(error.message);
+    }
   }
 
   async function removeSection(sectionId) {
@@ -3120,14 +3360,183 @@ if (countdownElements.days) {
     await reorderDynamicSections(state.pageSections.map((section) => section.id));
   }
 
-  function moveDraggedSection(targetSection) {
+  function getDynamicBoundarySectionId(position) {
+    if (!Array.isArray(state.pageSections) || state.pageSections.length === 0) return null;
+    if (position === 'first') {
+      return state.pageSections[0].id;
+    }
+    return state.pageSections[state.pageSections.length - 1].id;
+  }
+
+  function moveSectionByDelta(section, kind, delta) {
+    if (!section || !Number.isInteger(delta) || delta === 0) return;
+
+    if (kind === 'static') {
+      const sections = getStaticSections();
+      const index = sections.indexOf(section);
+      const nextIndex = index + delta;
+      if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return;
+
+      const main = section.parentNode;
+      const target = sections[nextIndex];
+      if (!main || !target) return;
+
+      if (delta < 0) {
+        main.insertBefore(section, target);
+      } else {
+        main.insertBefore(target, section);
+      }
+
+      persistStaticSectionOrder().catch((error) => alert(error.message));
+      return;
+    }
+
+    if (kind === 'dynamic') {
+      const sectionId = Number.parseInt(section.dataset.adminSectionId, 10);
+      const index = state.pageSections.findIndex((item) => item.id === sectionId);
+      const nextIndex = index + delta;
+      if (index < 0 || nextIndex < 0 || nextIndex >= state.pageSections.length) return;
+
+      const [moved] = state.pageSections.splice(index, 1);
+      state.pageSections.splice(nextIndex, 0, moved);
+      state.pageSections.forEach((item, positionIndex) => {
+        item.position = positionIndex + 1;
+      });
+
+      renderPageSections();
+      registerSectionEditing();
+      persistDynamicSectionOrder().catch((error) => alert(error.message));
+    }
+  }
+
+  function isDynamicTextElement(element) {
+    if (!element) return false;
+    if (element.dataset.adminEditable !== 'text') return false;
+    const key = element.dataset.adminKey || '';
+    return key.includes('>dynamic-text-') && key.endsWith('|text');
+  }
+
+  function getSectionParentKey(section) {
+    if (!section) return '';
+    if (section.dataset.adminDynamicSection === 'true') {
+      const sectionId = Number.parseInt(section.dataset.adminSectionId || '', 10);
+      return Number.isInteger(sectionId) ? `section#${sectionId}` : '';
+    }
+    return section.dataset.adminStaticSectionKey || '';
+  }
+
+  function getHostSectionForElement(element) {
+    if (!element) return null;
+    return element.closest('section[data-admin-section-type="static"], section[data-admin-dynamic-section="true"]');
+  }
+
+  function getSectionContentHost(section) {
+    if (!section) return null;
+    if (section.dataset.adminDynamicSection === 'true') {
+      return section.querySelector(':scope > .container > .dynamic-page-section-content-host')
+        || section.querySelector(':scope > .container')
+        || section;
+    }
+    return section;
+  }
+
+  function clearTextDragTargets() {
+    document.querySelectorAll('[data-admin-text-drop-target="true"]').forEach((element) => {
+      element.removeAttribute('data-admin-text-drop-target');
+    });
+  }
+
+  function setTextElementDraggableState(element) {
+    if (!element) return;
+    element.draggable = state.editMode && state.freeDragMode && isDynamicTextElement(element);
+  }
+
+  function registerTextDrag(element) {
+    if (!isDynamicTextElement(element)) {
+      if (element) {
+        element.draggable = false;
+      }
+      return;
+    }
+
+    setTextElementDraggableState(element);
+    if (element.dataset.adminTextDragBound === 'true') return;
+    element.dataset.adminTextDragBound = 'true';
+
+    element.addEventListener('dragstart', (event) => {
+      if (!state.editMode || !state.freeDragMode) {
+        event.preventDefault();
+        return;
+      }
+
+      state.draggedTextElement = element;
+      element.classList.add('admin-is-dragging');
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', element.dataset.adminKey || '');
+      }
+      event.stopPropagation();
+    });
+
+    element.addEventListener('dragend', () => {
+      if (state.draggedTextElement === element) {
+        state.draggedTextElement = null;
+      }
+      element.classList.remove('admin-is-dragging');
+      clearTextDragTargets();
+    });
+  }
+
+  async function moveDraggedTextToSection(targetSection) {
+    const dragged = state.draggedTextElement;
+    if (!dragged || !targetSection) return;
+
+    const sourceSection = getHostSectionForElement(dragged);
+    if (!sourceSection || sourceSection === targetSection) return;
+
+    const oldKey = dragged.dataset.adminKey;
+    const nextParentKey = getSectionParentKey(targetSection);
+    if (!oldKey || !nextParentKey) return;
+
+    const nextItem = await moveContentBlock(oldKey, nextParentKey, 'text');
+
+    state.registry.delete(`text:${oldKey}`);
+    dragged.dataset.adminKey = nextItem.content_key;
+    state.registry.set(`text:${nextItem.content_key}`, dragged);
+
+    const targetHost = getSectionContentHost(targetSection) || targetSection;
+    targetHost.appendChild(dragged);
+
+    try {
+      const item = await saveElementOverride(nextItem.content_key, {
+        hidden: false,
+        positionMode: 'flow',
+      });
+      applyElementStyles(dragged, item);
+      dragged.classList.remove('admin-free-positioned');
+    } catch (_error) {
+      // Keep move successful even when override reset fails.
+    }
+
+    state.draggedTextElement = null;
+    clearTextDragTargets();
+  }
+
+  function moveDraggedSection(targetSection, dropPosition) {
     if (!state.draggedSection || !targetSection) return;
+    const position = dropPosition === 'after' ? 'after' : 'before';
 
     const dragged = state.draggedSection;
     if (dragged.kind === 'static') {
       const draggedElement = document.querySelector(`[data-admin-static-section-key="${dragged.key}"]`);
       if (!draggedElement || draggedElement === targetSection) return;
-      targetSection.parentNode.insertBefore(draggedElement, targetSection);
+
+      if (position === 'after') {
+        targetSection.parentNode.insertBefore(draggedElement, targetSection.nextElementSibling);
+      } else {
+        targetSection.parentNode.insertBefore(draggedElement, targetSection);
+      }
+
       persistStaticSectionOrder().catch((error) => alert(error.message));
       return;
     }
@@ -3137,8 +3546,12 @@ if (countdownElements.days) {
       const draggedIndex = state.pageSections.findIndex((section) => section.id === dragged.id);
       const targetIndex = state.pageSections.findIndex((section) => section.id === targetId);
       if (draggedIndex < 0 || targetIndex < 0 || draggedIndex === targetIndex) return;
+
+      let insertIndex = position === 'after' ? targetIndex + 1 : targetIndex;
+      if (draggedIndex < insertIndex) insertIndex -= 1;
+
       const [section] = state.pageSections.splice(draggedIndex, 1);
-      state.pageSections.splice(targetIndex, 0, section);
+      state.pageSections.splice(insertIndex, 0, section);
       state.pageSections.forEach((item, index) => {
         item.position = index + 1;
       });
@@ -3217,7 +3630,8 @@ if (countdownElements.days) {
           newElement.dataset.adminEditable = 'text';
           newElement.dataset.adminKey = item.content_key;
           newElement.style.marginTop = '1rem';
-          section.appendChild(newElement);
+          const sectionHost = getSectionContentHost(section) || section;
+          sectionHost.appendChild(newElement);
 
           state.registry.set(`text:${item.content_key}`, newElement);
           registerEditableElements();
@@ -3279,7 +3693,8 @@ if (countdownElements.days) {
           newImage.style.marginTop = '1rem';
           newImage.style.maxWidth = '100%';
           newImage.style.borderRadius = '8px';
-          section.appendChild(newImage);
+          const sectionHost = getSectionContentHost(section) || section;
+          sectionHost.appendChild(newImage);
 
           state.registry.set(`image:${item.content_key}`, newImage);
           registerEditableElements();
@@ -3318,9 +3733,9 @@ if (countdownElements.days) {
   }
 
   function registerSectionDrag(section, kind) {
+    section.draggable = state.editMode;
     if (section.dataset.adminDragBound === kind) return;
     section.dataset.adminDragBound = kind;
-    section.draggable = state.editMode;
     section.addEventListener('dragstart', () => {
       state.draggedSection = kind === 'static'
         ? { kind, key: section.dataset.adminStaticSectionKey }
@@ -3335,18 +3750,42 @@ if (countdownElements.days) {
       });
     });
     section.addEventListener('dragover', (event) => {
+      if (state.editMode && state.draggedTextElement) {
+        event.preventDefault();
+        section.dataset.adminTextDropTarget = 'true';
+        return;
+      }
+
       if (!state.editMode || !state.draggedSection || state.draggedSection.kind !== kind) return;
       event.preventDefault();
       section.dataset.adminDragTarget = 'true';
+      const rect = section.getBoundingClientRect();
+      const midpoint = rect.top + (rect.height / 2);
+      section.dataset.adminDragPosition = event.clientY > midpoint ? 'after' : 'before';
     });
     section.addEventListener('dragleave', () => {
       section.removeAttribute('data-admin-drag-target');
+      section.removeAttribute('data-admin-drag-position');
+      section.removeAttribute('data-admin-text-drop-target');
     });
-    section.addEventListener('drop', (event) => {
+    section.addEventListener('drop', async (event) => {
+      if (state.editMode && state.draggedTextElement) {
+        event.preventDefault();
+        section.removeAttribute('data-admin-text-drop-target');
+        try {
+          await moveDraggedTextToSection(section);
+        } catch (error) {
+          alert(error.message);
+        }
+        return;
+      }
+
       if (!state.editMode || !state.draggedSection || state.draggedSection.kind !== kind) return;
       event.preventDefault();
+      const dropPosition = section.dataset.adminDragPosition || 'before';
       section.removeAttribute('data-admin-drag-target');
-      moveDraggedSection(section);
+      section.removeAttribute('data-admin-drag-position');
+      moveDraggedSection(section, dropPosition);
     });
   }
 
@@ -3385,6 +3824,66 @@ if (countdownElements.days) {
         event.preventDefault();
         event.stopPropagation();
         addNewImageElement(section, kind).catch((error) => alert(error.message));
+      });
+
+      const moveUpButton = document.createElement('button');
+      moveUpButton.type = 'button';
+      moveUpButton.className = 'admin-section-tool admin-section-move-up-button';
+      moveUpButton.textContent = 'Up';
+      moveUpButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        moveSectionByDelta(section, kind, -1);
+      });
+
+      const moveDownButton = document.createElement('button');
+      moveDownButton.type = 'button';
+      moveDownButton.className = 'admin-section-tool admin-section-move-down-button';
+      moveDownButton.textContent = 'Down';
+      moveDownButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        moveSectionByDelta(section, kind, 1);
+      });
+
+      const addBeforeButton = document.createElement('button');
+      addBeforeButton.type = 'button';
+      addBeforeButton.className = 'admin-section-tool admin-section-add-before-button';
+      addBeforeButton.textContent = 'Add Before';
+      addBeforeButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (kind !== 'dynamic') {
+          openAddSectionModal({
+            relativeStaticSectionKey: section.dataset.adminStaticSectionKey,
+            insertPosition: 'before',
+          });
+          return;
+        }
+        openAddSectionModal({
+          relativeSectionId: Number.parseInt(section.dataset.adminSectionId, 10),
+          insertPosition: 'before',
+        });
+      });
+
+      const addAfterButton = document.createElement('button');
+      addAfterButton.type = 'button';
+      addAfterButton.className = 'admin-section-tool admin-section-add-after-button';
+      addAfterButton.textContent = 'Add After';
+      addAfterButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (kind !== 'dynamic') {
+          openAddSectionModal({
+            relativeStaticSectionKey: section.dataset.adminStaticSectionKey,
+            insertPosition: 'after',
+          });
+          return;
+        }
+        openAddSectionModal({
+          relativeSectionId: Number.parseInt(section.dataset.adminSectionId, 10),
+          insertPosition: 'after',
+        });
       });
 
       const removeButton = document.createElement('button');
@@ -3426,10 +3925,25 @@ if (countdownElements.days) {
           clearSectionBackground(section, kind).catch((error) => alert(error.message));
         });
         tools.appendChild(clearBgButton);
+
+        const sizeButton = document.createElement('button');
+        sizeButton.type = 'button';
+        sizeButton.className = 'admin-section-tool admin-section-size-button';
+        sizeButton.textContent = 'Size';
+        sizeButton.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openSectionSizeEditor(section).catch((error) => alert(error.message));
+        });
+        tools.appendChild(sizeButton);
       }
 
       tools.appendChild(addTextButton);
       tools.appendChild(addImageButton);
+      tools.appendChild(addBeforeButton);
+      tools.appendChild(addAfterButton);
+      tools.appendChild(moveUpButton);
+      tools.appendChild(moveDownButton);
       tools.appendChild(dragButton);
       tools.appendChild(removeButton);
       section.style.position = section.style.position || 'relative';
@@ -3457,11 +3971,19 @@ if (countdownElements.days) {
       ensureSectionTools(section, 'dynamic');
       registerSectionDrag(section, 'dynamic');
     });
+
+    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
+      registerTextDrag(element);
+    });
   }
 
   function setFreeDragMode(nextValue) {
     state.freeDragMode = Boolean(nextValue);
     document.body.classList.toggle('admin-free-drag-mode', state.editMode && state.freeDragMode);
+
+    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
+      setTextElementDraggableState(element);
+    });
 
     const button = document.getElementById('admin-drag-toggle');
     if (button) {
@@ -3496,7 +4018,7 @@ if (countdownElements.days) {
       target.style.position = 'absolute';
       target.style.left = `${target.offsetLeft}px`;
       target.style.top = `${target.offsetTop}px`;
-      target.style.zIndex = '9';
+      target.style.zIndex = target.dataset.adminEditable === 'text' ? '12' : '8';
       target.classList.add('admin-free-positioned');
     }
 
@@ -3583,6 +4105,9 @@ if (countdownElements.days) {
     document.body.classList.toggle('admin-free-drag-mode', nextValue && state.freeDragMode);
     applyElementOverrides();
     registerSectionEditing();
+    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
+      setTextElementDraggableState(element);
+    });
     renderMediaAlbums();
     const toggleButton = document.getElementById('admin-edit-toggle');
     if (toggleButton) {
@@ -3700,6 +4225,14 @@ if (countdownElements.days) {
         return;
       }
 
+      const textElement = event.target.closest('[data-admin-editable="text"]');
+      if (textElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        openTextEditor(textElement);
+        return;
+      }
+
       const sectionImageElement = event.target.closest('[data-admin-section-field][data-admin-editable="image"]');
       if (sectionImageElement) {
         event.preventDefault();
@@ -3713,14 +4246,6 @@ if (countdownElements.days) {
         event.preventDefault();
         event.stopPropagation();
         openSectionImageEditor(sectionBackgroundElement);
-        return;
-      }
-
-      const textElement = event.target.closest('[data-admin-editable="text"]');
-      if (textElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openTextEditor(textElement);
         return;
       }
 

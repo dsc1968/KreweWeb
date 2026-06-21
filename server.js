@@ -212,6 +212,7 @@ async function ensureContentTable() {
       font_weight TEXT,
       font_style TEXT,
       text_transform TEXT,
+      font_size TEXT,
       text_color TEXT,
       background_color TEXT,
       width_value TEXT,
@@ -233,6 +234,11 @@ async function ensureContentTable() {
   await pool.query(`
     ALTER TABLE element_overrides
     ADD COLUMN IF NOT EXISTS text_color TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE element_overrides
+    ADD COLUMN IF NOT EXISTS font_size TEXT
   `);
 
   await pool.query(`
@@ -577,7 +583,7 @@ app.get('/api/element-overrides', async (req, res) => {
 
   try {
     const result = await pool.query(
-            `SELECT page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+          `SELECT page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, font_size, text_color,
               background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
               position_mode, pos_x, pos_y, position, updated_at
        FROM element_overrides
@@ -802,6 +808,95 @@ app.post('/api/admin/content/new', authenticateToken, async (req, res) => {
   }
 });
 
+app.put('/api/admin/content/move', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const pagePath = normalizePagePath(req.body.pagePath);
+  if (!validateEditablePagePath(res, pagePath)) return;
+
+  const oldContentKey = typeof req.body.oldContentKey === 'string' ? req.body.oldContentKey.trim() : '';
+  const newParentKey = typeof req.body.newParentKey === 'string' ? req.body.newParentKey.trim() : '';
+  const contentType = typeof req.body.contentType === 'string' ? req.body.contentType.trim() : '';
+
+  if (!oldContentKey) {
+    return res.status(400).json({ error: 'Source content key is required' });
+  }
+
+  if (!newParentKey) {
+    return res.status(400).json({ error: 'Destination parent key is required' });
+  }
+
+  if (!['text', 'image'].includes(contentType)) {
+    return res.status(400).json({ error: 'Content type must be text or image' });
+  }
+
+  const oldKeyParts = oldContentKey.split('>');
+  const suffix = oldKeyParts[oldKeyParts.length - 1] || '';
+  if (!suffix || !suffix.endsWith(`|${contentType}`)) {
+    return res.status(400).json({ error: 'Content key does not match the requested content type' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const sourceResult = await client.query(
+      `SELECT page_path, content_key, content_type, content_value, updated_at
+       FROM content_blocks
+       WHERE page_path = $1 AND content_key = $2 AND content_type = $3
+       FOR UPDATE`,
+      [pagePath, oldContentKey, contentType]
+    );
+
+    if (sourceResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Content not found' });
+    }
+
+    let nextContentKey = `${newParentKey}>${suffix}`;
+    if (nextContentKey === oldContentKey) {
+      await client.query('COMMIT');
+      return res.json({ item: sourceResult.rows[0] });
+    }
+
+    const conflictCheck = await client.query(
+      `SELECT 1
+       FROM content_blocks
+       WHERE page_path = $1 AND content_key = $2 AND content_type = $3`,
+      [pagePath, nextContentKey, contentType]
+    );
+
+    if (conflictCheck.rowCount > 0) {
+      const timestamp = Date.now();
+      nextContentKey = `${newParentKey}>dynamic-${contentType}-${timestamp}|${contentType}`;
+    }
+
+    const updateResult = await client.query(
+      `UPDATE content_blocks
+       SET content_key = $1, updated_at = NOW(), updated_by = $2
+       WHERE page_path = $3 AND content_key = $4 AND content_type = $5
+       RETURNING page_path, content_key, content_type, content_value, updated_at`,
+      [nextContentKey, req.user.userId, pagePath, oldContentKey, contentType]
+    );
+
+    await client.query(
+      `UPDATE element_overrides
+       SET element_key = $1, updated_at = NOW(), updated_by = $2
+       WHERE page_path = $3 AND element_key = $4`,
+      [nextContentKey, req.user.userId, pagePath, oldContentKey]
+    );
+
+    await client.query('COMMIT');
+    res.json({ item: updateResult.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to move content', error);
+    res.status(500).json({ error: 'Unable to move content' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/admin/page-sections', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
@@ -809,14 +904,6 @@ app.post('/api/admin/page-sections', authenticateToken, async (req, res) => {
   if (!validateEditablePagePath(res, pagePath)) return;
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
   const body = typeof req.body.body === 'string' ? req.body.body.trim() : '';
-
-  if (!title) {
-    return res.status(400).json({ error: 'Section title is required' });
-  }
-
-  if (!body) {
-    return res.status(400).json({ error: 'Section body is required' });
-  }
 
   try {
     const positionResult = await pool.query(
@@ -833,7 +920,7 @@ app.post('/api/admin/page-sections', authenticateToken, async (req, res) => {
         pagePath,
         title,
         body,
-        '/assets/images/2026_KM_RoyalCourt.jpeg',
+        '',
         null,
         nextPosition,
         req.user.userId,
@@ -862,6 +949,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   const fontWeight = typeof req.body.fontWeight === 'string' && req.body.fontWeight ? req.body.fontWeight : null;
   const fontStyle = typeof req.body.fontStyle === 'string' && req.body.fontStyle ? req.body.fontStyle : null;
   const textTransform = typeof req.body.textTransform === 'string' && req.body.textTransform ? req.body.textTransform : null;
+  const fontSize = normalizeLengthValue(req.body.fontSize);
   const textColor = normalizeHexColor(req.body.textColor);
   const backgroundColor = normalizeHexColor(req.body.backgroundColor);
   const widthValue = normalizeLengthValue(req.body.widthValue);
@@ -878,11 +966,11 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `INSERT INTO element_overrides (
-        page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+        page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, font_size, text_color,
         background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
         position_mode, pos_x, pos_y, position, updated_at, updated_by
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), $20)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), $21)
        ON CONFLICT (page_path, element_key)
        DO UPDATE SET
          hidden = EXCLUDED.hidden,
@@ -890,6 +978,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          font_weight = EXCLUDED.font_weight,
          font_style = EXCLUDED.font_style,
          text_transform = EXCLUDED.text_transform,
+         font_size = EXCLUDED.font_size,
          text_color = EXCLUDED.text_color,
          background_color = EXCLUDED.background_color,
          width_value = EXCLUDED.width_value,
@@ -904,7 +993,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
          position = EXCLUDED.position,
          updated_at = NOW(),
          updated_by = EXCLUDED.updated_by
-       RETURNING page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, text_color,
+       RETURNING page_path, element_key, hidden, text_align, font_weight, font_style, text_transform, font_size, text_color,
                  background_color, width_value, height_value, border_style, border_width, border_color, border_radius,
                  position_mode, pos_x, pos_y, position, updated_at`,
       [
@@ -915,6 +1004,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
         fontWeight,
         fontStyle,
         textTransform,
+        fontSize,
         textColor,
         backgroundColor,
         widthValue,
@@ -937,7 +1027,7 @@ app.put('/api/admin/element-overrides', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/admin/page-sections/:sectionId', authenticateToken, async (req, res) => {
+app.put('/api/admin/page-sections/:sectionId(\\d+)', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const sectionId = Number.parseInt(req.params.sectionId, 10);
@@ -963,6 +1053,9 @@ app.put('/api/admin/page-sections/:sectionId', authenticateToken, async (req, re
     return res.status(400).json({ error: 'Section value is required' });
   }
 
+  // image_path is NOT NULL in the schema; keep empty string when clearing image.
+  const persistedValue = field === 'background_path' ? (value || null) : value;
+
   try {
     const sectionLookup = await pool.query('SELECT page_path FROM page_sections WHERE id = $1', [sectionId]);
     if (sectionLookup.rowCount === 0) {
@@ -976,7 +1069,7 @@ app.put('/api/admin/page-sections/:sectionId', authenticateToken, async (req, re
        SET ${field} = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING id, page_path, title, body, image_path, background_path, position, created_at, updated_at`,
-      [value || null, sectionId]
+      [persistedValue, sectionId]
     );
 
     if (result.rowCount === 0) {
@@ -990,7 +1083,7 @@ app.put('/api/admin/page-sections/:sectionId', authenticateToken, async (req, re
   }
 });
 
-app.delete('/api/admin/page-sections/:sectionId', authenticateToken, async (req, res) => {
+app.delete('/api/admin/page-sections/:sectionId(\\d+)', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const sectionId = Number.parseInt(req.params.sectionId, 10);
