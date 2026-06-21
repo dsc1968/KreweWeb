@@ -4,6 +4,32 @@ This repository contains a modern static website for Krewe Mystique de la Capita
 
 Repository: https://github.com/dsc1968/KreweWeb.git
 
+## Quickstart (commands only)
+
+Run these commands in order on Ubuntu:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git curl ca-certificates gnupg build-essential openssl postgresql postgresql-client xxd
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+sudo mkdir -p /srv/kreweweb
+sudo chown -R "$USER":"$USER" /srv/kreweweb
+git clone https://github.com/dsc1968/KreweWeb.git /srv/kreweweb/Krewe
+cd /srv/kreweweb/Krewe
+
+npm install
+npm run init-db
+npm start
+```
+
+Verify:
+
+```bash
+curl http://localhost:8000/api/status
+```
+
 ## What you need first
 
 This guide is written for a fresh Ubuntu machine. If you do not have admin rights on the computer, ask the person who does to run the system install steps once. After that, you can finish the project setup with your normal user account.
