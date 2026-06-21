@@ -163,7 +163,21 @@ curl http://localhost:8000/api/status
 
 If the server is working, the command will return a small status response in your terminal.
 
-If you see `must be owner of table element_overrides` when starting the app, run `npm run init-db` again and allow sudo access when prompted. The initializer now repairs ownership of existing tables and sequences so the configured DB app user owns them.
+If you see `must be owner of table element_overrides` when starting the app, run `npm run init-db` again and allow sudo access when prompted. The initializer repairs ownership of existing tables and sequences so the configured DB app user owns them.
+
+If that still fails, repair the owner manually (replace names if you changed defaults):
+
+```bash
+sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.element_overrides OWNER TO \"krewe_db_user\";"
+sudo -u postgres psql -d krewe_db -c "ALTER TABLE public.content_blocks OWNER TO \"krewe_db_user\";"
+```
+
+Then run:
+
+```bash
+npm run init-db
+npm start
+```
 
 ## Optional: demo accounts for local testing
 

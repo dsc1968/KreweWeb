@@ -119,6 +119,17 @@ else
   psql -v ON_ERROR_STOP=1 --no-psqlrc -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO \"$DB_USER\";" || true
 fi
 
+echo "-> Verifying ownership of key tables..."
+ELEMENT_OWNER=$(PGPASSWORD="$DB_PASS" psql -v ON_ERROR_STOP=1 --no-psqlrc -h localhost -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT tableowner FROM pg_tables WHERE schemaname='public' AND tablename='element_overrides';" | tr -d '[:space:]' || true)
+if [ -n "$ELEMENT_OWNER" ] && [ "$ELEMENT_OWNER" != "$DB_USER" ]; then
+  echo "Error: element_overrides is owned by '$ELEMENT_OWNER' instead of '$DB_USER'." >&2
+  echo "This prevents startup migrations from running." >&2
+  echo "Repair ownership with a postgres admin account, then rerun npm run init-db:" >&2
+  echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER TABLE public.element_overrides OWNER TO \\\"$DB_USER\\\";\"" >&2
+  echo "  sudo -u postgres psql -d $DB_NAME -c \"ALTER SEQUENCE public.element_overrides_position_seq OWNER TO \\\"$DB_USER\\\";\"  # if sequence exists" >&2
+  exit 1
+fi
+
 if [ "$CREATE_DEFAULT_ADMIN" = "true" ]; then
   echo "-> Ensuring default admin account exists..."
   ADMIN_HASH=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync(process.argv[1], 10));" "$DEFAULT_ADMIN_PASSWORD" 2>/dev/null || true)
