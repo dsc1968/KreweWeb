@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Royal Court - Krewe Mystique de la Capitale</title>
+    <title>Contact - Krewe Mystique de la Capitale</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -25,65 +25,96 @@
     <main>
       <section class="hero-alt">
         <div class="container">
-          <h1>Royal Court</h1>
-          <p class="hero-copy">Introducing the 2026 Royal Court of Krewe Mystique</p>
+          <h1>Contact Us</h1>
+          <p class="hero-copy">Get in Touch with Krewe Mystique</p>
         </div>
       </section>
 
       <section class="section">
         <div class="container">
-          <p class="section-intro">
-            We are proud to present the 2026 Royal Court for Krewe Mystique de la
-            Capitale. These esteemed members represent elegance, tradition, and the
-            spirit of our krewe.
-          </p>
-
-          <div class="royal-court-display">
-            <img 
-              src="assets/images/2026_KM_RoyalCourt.jpeg" 
-              alt="2026 Royal Court of Krewe Mystique de la Capitale"
-            />
-          </div>
-
-          <div id="media-albums-root" class="media-albums-root" data-albums-page="royal-court" style="margin-top: 2rem;"></div>
-
-          <div class="grid-two" style="margin-top: 3rem;">
-            <div>
-              <h2>Court Elegance</h2>
+          <div class="grid-two contact-layout">
+            <div class="contact-copy-card">
+              <h2>How Can We Help?</h2>
               <p>
-                The Krewe Mystique Royal Court embodies the grace, dignity, and pageantry
-                that define our parade tradition. Each member has been carefully selected
-                to represent our krewe's values and vision.
+                Whether you want to join our krewe, participate in our parade, nominate
+                a veteran, or have questions about our events, we're here to help.
               </p>
               <p>
-                The court serves as the ceremonial heart of our krewe, leading our parade
-                procession and engaging with the Baton Rouge community throughout the
-                celebration season.
+                Fill out the contact form or reach out directly using the information below.
+              </p>
+
+              <h3 style="margin-top: 2rem;">Contact Information</h3>
+              <p>
+                <strong>Krewe Mystique de la Capitale</strong><br />
+                Baton Rouge, Louisiana
+              </p>
+              <p>
+                For parade participation, veteran nominations, or general inquiries, please
+                use the contact form or send us a message.
               </p>
             </div>
-            <div>
-              <h2>Community Pride</h2>
-              <p>
-                Our court is built on a strong foundation of community, tradition, and
-                parading excellence that continues to grow every year. Members represent
-                the diverse spirit of Baton Rouge.
-              </p>
-              <p>
-                The pageantry and presentation of our royal court reflects decades of
-                tradition and our commitment to delivering a world-class parade experience.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section class="section section-alt">
-        <div class="container">
-          <h2>Court Information</h2>
-          <p>
-            To learn more about our royal court presentation, venue details, or to inquire
-            about court-related events, please <a href="/contact.html">contact us</a>.
-          </p>
+            <form class="contact-form contact-form-card">
+              <div class="contact-form-grid">
+                <div class="form-group contact-form-field contact-form-field-half">
+                <label for="name">Name *</label>
+                <input 
+                  type="text" 
+                  id="name" 
+                  name="name" 
+                  required
+                  placeholder="Your full name"
+                  autocomplete="name"
+                  aria-label="Your name"
+                />
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-half">
+                <label for="email">Email *</label>
+                <input 
+                  type="email" 
+                  id="email" 
+                  name="email" 
+                  required
+                  placeholder="name@example.com"
+                  autocomplete="email"
+                  aria-label="Your email address"
+                />
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-full">
+                <label for="subject">Subject *</label>
+                <select 
+                  id="subject" 
+                  name="subject" 
+                  required
+                  aria-label="Inquiry subject"
+                >
+                  <option value="">Select a subject</option>
+                  <option value="membership">Krewe Membership</option>
+                  <option value="parade">Parade Participation</option>
+                  <option value="veteran">Veteran Nomination</option>
+                  <option value="events">Event Information</option>
+                  <option value="general">General Inquiry</option>
+                </select>
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-full">
+                <label for="message">Message *</label>
+                <textarea 
+                  id="message" 
+                  name="message" 
+                  rows="8" 
+                  required
+                  placeholder="Tell us how we can help, who this is for, and any details we should know."
+                  aria-label="Your message"
+                ></textarea>
+                </div>
+              </div>
+
+              <button type="submit" class="button primary">Send Message</button>
+            </form>
+          </div>
         </div>
       </section>
 

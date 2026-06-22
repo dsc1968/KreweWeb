@@ -1091,9 +1091,7 @@ app.put('/api/admin/page-sections/:sectionId(\\d+)', authenticateToken, async (r
     return res.status(400).json({ error: 'Unsupported section field' });
   }
 
-  if (!value && !['background_path', 'image_path'].includes(field)) {
-    return res.status(400).json({ error: 'Section value is required' });
-  }
+  // Empty string is allowed for title/body so editor delete can clear those fields.
 
   // image_path is NOT NULL in the schema; keep empty string when clearing image.
   const persistedValue = field === 'background_path' ? (value || null) : value;

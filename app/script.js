@@ -43,6 +43,8 @@ if (countdownElements.days) {
   const editableTextSelector = 'h1, h2, h3, h4, h5, h6, p, a, span, small, strong, em, i, b, blockquote, li, button, label, figcaption, td, th, dt, dd, div, div[data-admin-editable-target="text"]';
   const leafTextSelector = 'h1,h2,h3,h4,h5,h6,p,a,span,small,strong,em,i,b,blockquote,li,button,label,figcaption,td,th,dt,dd,div,div[data-admin-editable-target="text"]';
   const editableContainerSelector = 'main section, main article, main aside, main div';
+  const staticSectionRootTags = new Set(['SECTION', 'DIV', 'ARTICLE', 'ASIDE']);
+  const genericStyleIgnoreTags = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'BR', 'HR', 'SOURCE', 'TRACK', 'TEMPLATE']);
   const state = {
     pagePath: normalizePagePath(window.location.pathname),
     profilePromise: null,
@@ -68,7 +70,11 @@ if (countdownElements.days) {
     dragOriginY: 0,
     suppressEditClickUntil: 0,
     elementToolbar: null,
+    inspectorPanel: null,
     selectedEditableElement: null,
+    editorSyncTimer: null,
+    isSyncingEditorState: false,
+    domObserver: null,
     draggedTextElement: null,
     isAdmin: false,
     albums: [],
@@ -78,12 +84,15 @@ if (countdownElements.days) {
     albumViewerIndex: -1,
     albumViewerTitle: '',
     albumUiBound: false,
+    savePendingCount: 0,
+    saveStatusNode: null,
   };
   const albumRootElementKey = 'media-albums-root|container';
   const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
   const resizeEdgeThreshold = 10;
   const minResizableWidth = 40;
   const minResizableHeight = 32;
+  const gridSnapSize = 12;
 
   function isPageEditable() {
     return !nonEditablePagePaths.has(state.pagePath);
@@ -117,6 +126,33 @@ if (countdownElements.days) {
     }
   }
 
+  function getDeletedImageCacheKey(contentKey) {
+    return `adminDeletedImage:${state.pagePath}:${contentKey}`;
+  }
+
+  function persistDeletedImageCache(contentKey, deleted) {
+    if (!contentKey) return;
+    try {
+      const cacheKey = getDeletedImageCacheKey(contentKey);
+      if (deleted) {
+        localStorage.setItem(cacheKey, '1');
+      } else {
+        localStorage.removeItem(cacheKey);
+      }
+    } catch (_error) {
+      // Ignore localStorage failures in restricted browser contexts.
+    }
+  }
+
+  function isDeletedImageCached(contentKey) {
+    if (!contentKey) return false;
+    try {
+      return localStorage.getItem(getDeletedImageCacheKey(contentKey)) === '1';
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function syncHomeHeroBootImage(contentKey, imagePath) {
     if (state.pagePath !== '/' || contentKey !== 'header#home|image') return;
     document.documentElement.style.setProperty('--home-hero-image', `url("${imagePath}")`);
@@ -133,6 +169,102 @@ if (countdownElements.days) {
     return {
       error: text.trim() || 'The server returned a non-JSON response. Restart the server and try again.',
     };
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  function ensureSaveStatusNode() {
+    if (state.saveStatusNode && document.body.contains(state.saveStatusNode)) {
+      return state.saveStatusNode;
+    }
+
+    const controls = document.getElementById('admin-nav-controls');
+    if (!controls) return null;
+
+    let status = controls.querySelector('.admin-save-status');
+    if (!status) {
+      status = document.createElement('span');
+      status.className = 'admin-save-status';
+      status.dataset.state = 'idle';
+      status.textContent = 'Saved';
+      controls.appendChild(status);
+    }
+
+    state.saveStatusNode = status;
+    return status;
+  }
+
+  function updateSaveStatus(mode, message) {
+    const node = ensureSaveStatusNode();
+    if (!node) return;
+
+    node.dataset.state = mode;
+    if (message) {
+      node.textContent = message;
+      return;
+    }
+
+    if (mode === 'saving') {
+      node.textContent = 'Saving...';
+      return;
+    }
+
+    if (mode === 'error') {
+      node.textContent = 'Save failed';
+      return;
+    }
+
+    node.textContent = 'Saved';
+  }
+
+  function beginSaveAttempt() {
+    state.savePendingCount += 1;
+    updateSaveStatus('saving');
+  }
+
+  function finishSaveAttempt(success, errorMessage) {
+    state.savePendingCount = Math.max(0, state.savePendingCount - 1);
+    if (!success) {
+      updateSaveStatus('error', errorMessage || 'Save failed');
+      return;
+    }
+
+    if (state.savePendingCount === 0) {
+      updateSaveStatus('idle', 'Saved');
+    }
+  }
+
+  async function fetchWithRetry(url, requestOptions, retryOptions) {
+    const maxRetries = Number.isInteger(retryOptions && retryOptions.maxRetries) ? retryOptions.maxRetries : 2;
+    let attempt = 0;
+    let lastNetworkError = null;
+
+    while (attempt <= maxRetries) {
+      try {
+        const response = await fetch(url, requestOptions);
+        if ([408, 425, 429, 500, 502, 503, 504].includes(response.status) && attempt < maxRetries) {
+          const delayMs = (retryOptions && retryOptions.baseDelayMs ? retryOptions.baseDelayMs : 180) * (attempt + 1);
+          await wait(delayMs);
+          attempt += 1;
+          continue;
+        }
+
+        const data = await parseApiResponse(response);
+        return { response, data };
+      } catch (error) {
+        lastNetworkError = error;
+        if (attempt >= maxRetries) break;
+        const delayMs = (retryOptions && retryOptions.baseDelayMs ? retryOptions.baseDelayMs : 180) * (attempt + 1);
+        await wait(delayMs);
+        attempt += 1;
+      }
+    }
+
+    throw new Error(`Network error while saving. ${lastNetworkError && lastNetworkError.message ? lastNetworkError.message : ''}`.trim());
   }
 
   function escapeHtml(value) {
@@ -380,140 +512,176 @@ if (countdownElements.days) {
   }
 
   async function createPageSection(payload) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/page-sections', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        pagePath: state.pagePath,
-        title: payload.title,
-        body: payload.body,
-      }),
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to create section');
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/page-sections', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pagePath: state.pagePath,
+          title: payload.title,
+          body: payload.body,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to create section');
+      }
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-    return data.item;
   }
 
   async function updatePageSection(sectionId, field, value) {
-    const token = getStoredToken();
-    const res = await fetch(`/api/admin/page-sections/${sectionId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ field, value }),
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to update section');
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry(`/api/admin/page-sections/${sectionId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ field, value }),
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to update section');
+      }
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-    return data.item;
   }
 
   async function deletePageSection(sectionId) {
-    const token = getStoredToken();
-    const res = await fetch(`/api/admin/page-sections/${sectionId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to delete section');
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry(`/api/admin/page-sections/${sectionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to delete section');
+      }
+      finishSaveAttempt(true);
+      return data;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-    return data;
   }
 
   async function saveElementOverride(elementKey, patch) {
-    const token = getStoredToken();
-    const current = state.elementOverrides.get(elementKey) || {};
-    const payload = {
-      pagePath: state.pagePath,
-      elementKey,
-      hidden: patch.hidden ?? current.hidden ?? false,
-      deleted: patch.deleted ?? current.deleted ?? false,
-      textAlign: patch.textAlign ?? current.text_align ?? null,
-      fontFamily: patch.fontFamily ?? current.font_family ?? null,
-      fontWeight: patch.fontWeight ?? current.font_weight ?? null,
-      fontStyle: patch.fontStyle ?? current.font_style ?? null,
-      textTransform: patch.textTransform ?? current.text_transform ?? null,
-      fontSize: patch.fontSize ?? current.font_size ?? null,
-      opacityValue: patch.opacityValue ?? current.opacity_value ?? null,
-      textColor: patch.textColor ?? current.text_color ?? null,
-      backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
-      backgroundOpacityValue: patch.backgroundOpacityValue ?? current.background_opacity_value ?? null,
-      widthValue: patch.widthValue ?? current.width_value ?? null,
-      heightValue: patch.heightValue ?? current.height_value ?? null,
-      borderStyle: patch.borderStyle ?? current.border_style ?? null,
-      borderWidth: patch.borderWidth ?? current.border_width ?? null,
-      borderColor: patch.borderColor ?? current.border_color ?? null,
-      borderRadius: patch.borderRadius ?? current.border_radius ?? null,
-      positionMode: patch.positionMode ?? current.position_mode ?? null,
-      posX: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
-      posY: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
-      position: Number.isInteger(patch.position) ? patch.position : (Number.isInteger(current.position) ? current.position : null),
-    };
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const current = state.elementOverrides.get(elementKey) || {};
+      const payload = {
+        pagePath: state.pagePath,
+        elementKey,
+        hidden: patch.hidden ?? current.hidden ?? false,
+        deleted: patch.deleted ?? current.deleted ?? false,
+        textAlign: patch.textAlign ?? current.text_align ?? null,
+        fontFamily: patch.fontFamily ?? current.font_family ?? null,
+        fontWeight: patch.fontWeight ?? current.font_weight ?? null,
+        fontStyle: patch.fontStyle ?? current.font_style ?? null,
+        textTransform: patch.textTransform ?? current.text_transform ?? null,
+        fontSize: patch.fontSize ?? current.font_size ?? null,
+        opacityValue: patch.opacityValue ?? current.opacity_value ?? null,
+        textColor: patch.textColor ?? current.text_color ?? null,
+        backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
+        backgroundOpacityValue: patch.backgroundOpacityValue ?? current.background_opacity_value ?? null,
+        widthValue: patch.widthValue ?? current.width_value ?? null,
+        heightValue: patch.heightValue ?? current.height_value ?? null,
+        borderStyle: patch.borderStyle ?? current.border_style ?? null,
+        borderWidth: patch.borderWidth ?? current.border_width ?? null,
+        borderColor: patch.borderColor ?? current.border_color ?? null,
+        borderRadius: patch.borderRadius ?? current.border_radius ?? null,
+        positionMode: patch.positionMode ?? current.position_mode ?? null,
+        posX: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
+        posY: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
+        position: Number.isInteger(patch.position) ? patch.position : (Number.isInteger(current.position) ? current.position : null),
+      };
 
-    const res = await fetch('/api/admin/element-overrides', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to save element settings');
+      const { response, data } = await fetchWithRetry('/api/admin/element-overrides', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to save element settings');
+      }
+
+      state.elementOverrides.set(elementKey, data.item);
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-
-    state.elementOverrides.set(elementKey, data.item);
-    return data.item;
   }
 
   async function reorderDynamicSections(orderedIds) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/page-sections/reorder', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ orderedIds }),
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to reorder sections');
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/page-sections/reorder', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orderedIds }),
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to reorder sections');
+      }
+      finishSaveAttempt(true);
+      return data;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-    return data;
   }
 
   async function moveContentBlock(oldContentKey, newParentKey, contentType) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/content/move', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        pagePath: state.pagePath,
-        oldContentKey,
-        newParentKey,
-        contentType,
-      }),
-    });
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Unable to move content');
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/content/move', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pagePath: state.pagePath,
+          oldContentKey,
+          newParentKey,
+          contentType,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to move content');
+      }
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-    return data.item;
   }
 
   async function createAlbum(payload) {
@@ -745,7 +913,7 @@ if (countdownElements.days) {
   }
 
   function isInsideAdminUi(element) {
-    return Boolean(element.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-editor-backdrop, .admin-section-tools, .admin-element-toolbar'));
+    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel'));
   }
 
   function hasNestedEditableText(element) {
@@ -763,6 +931,7 @@ if (countdownElements.days) {
     if (!element || !(element instanceof Element)) return false;
     const menuHost = element.closest('.site-nav');
     if (!menuHost) return false;
+    if (state.editMode) return false;
     return !isInsideAdminUi(element);
   }
 
@@ -792,16 +961,51 @@ if (countdownElements.days) {
     return `${segments.join('>')}|${contentType}`;
   }
 
+  function buildStableBackgroundImageKey(element) {
+    if (!element) return '';
+    const staticSection = element.closest('[data-admin-section-type="static"]');
+    if (staticSection && staticSection.dataset.adminStaticSectionKey) {
+      return `${staticSection.dataset.adminStaticSectionKey}|background-image`;
+    }
+    return buildContentKey(element, 'image');
+  }
+
+  function buildStableImageKey(element) {
+    if (!element) return '';
+    if (element.dataset && element.dataset.adminKey) return element.dataset.adminKey;
+
+    const staticSection = element.closest('[data-admin-section-type="static"]');
+    if (staticSection && staticSection.dataset.adminStaticSectionKey) {
+      const staticImages = Array.from(staticSection.querySelectorAll('img')).filter((candidate) => {
+        if (candidate.closest('[data-admin-dynamic-section="true"]')) return false;
+        const candidateKey = candidate.dataset && candidate.dataset.adminKey;
+        if (candidateKey && candidateKey.includes('dynamic-image-')) return false;
+        return true;
+      });
+      const index = staticImages.indexOf(element);
+      if (index >= 0) {
+        return `${staticSection.dataset.adminStaticSectionKey}>static-image:${index + 1}|image`;
+      }
+    }
+
+    return buildContentKey(element, 'image');
+  }
+
   function getStaticSections() {
     const main = document.querySelector('main');
     if (!main) return [];
-    return Array.from(main.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection);
+    return Array.from(main.children).filter((element) => {
+      if (!staticSectionRootTags.has(element.tagName)) return false;
+      if (element.id === 'dynamic-page-sections') return false;
+      if (element.dataset.adminDynamicSection === 'true') return false;
+      return true;
+    });
   }
 
   function getStaticSectionToolTargets() {
     const main = document.querySelector('main');
     if (!main) return [];
-    return Array.from(main.querySelectorAll('section')).filter((element) => {
+    return Array.from(main.querySelectorAll('[data-admin-section-type="static"]')).filter((element) => {
       if (element.dataset.adminDynamicSection === 'true') return false;
       if (element.closest('[data-admin-dynamic-section="true"]')) return false;
       return true;
@@ -823,7 +1027,7 @@ if (countdownElements.days) {
 
   async function persistStaticSectionOrderForParent(parentElement) {
     if (!parentElement) return;
-    const siblings = Array.from(parentElement.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection);
+    const siblings = Array.from(parentElement.children).filter((element) => element.dataset.adminSectionType === 'static' && element.dataset.adminDynamicSection !== 'true');
     await Promise.all(
       siblings.map((section, index) => saveElementOverride(section.dataset.adminStaticSectionKey, { position: index + 1, hidden: false }))
     );
@@ -844,16 +1048,41 @@ if (countdownElements.days) {
   function registerEditableElements() {
     state.registry.clear();
     assignStaticSectionKeys();
+    const assignedElements = new WeakSet();
+
+    const main = document.querySelector('main');
+    if (main && !isInsideAdminUi(main)) {
+      main.dataset.adminEditable = 'page-root';
+      main.dataset.adminKey = 'page-root';
+      state.registry.set('page-root:page-root', main);
+      assignedElements.add(main);
+    }
 
     getStaticSections().forEach((section) => {
       if (isInsideAdminUi(section)) return;
       if (!state.editMode && section.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(section).display === 'none') return;
 
-      const key = buildContentKey(section, 'image');
+      const key = `${section.dataset.adminStaticSectionKey}|background-image`;
       section.dataset.adminEditable = 'background-image';
       section.dataset.adminKey = key;
       state.registry.set(`image:${key}`, section);
+      assignedElements.add(section);
+    });
+
+    document.querySelectorAll('[data-admin-dynamic-section="true"]').forEach((section) => {
+      if (!(section instanceof HTMLElement)) return;
+      if (isInsideAdminUi(section)) return;
+      if (!state.editMode && section.classList.contains('admin-hidden-element')) return;
+      if (window.getComputedStyle(section).display === 'none') return;
+
+      const sectionId = Number.parseInt(section.dataset.adminSectionId || '', 10);
+      if (!Number.isInteger(sectionId)) return;
+      const key = `dynamic-section:${sectionId}|background-image`;
+      section.dataset.adminEditable = 'background-image';
+      section.dataset.adminKey = key;
+      state.registry.set(`image:${key}`, section);
+      assignedElements.add(section);
     });
 
     document.querySelectorAll(editableTextSelector).forEach((element) => {
@@ -871,6 +1100,7 @@ if (countdownElements.days) {
       element.dataset.adminEditable = 'text';
       element.dataset.adminKey = key;
       state.registry.set(`text:${key}`, element);
+      assignedElements.add(element);
     });
 
     document.querySelectorAll('img').forEach((element) => {
@@ -879,10 +1109,15 @@ if (countdownElements.days) {
       if (element.closest('[data-admin-dynamic-section]') && !element.dataset.adminKey) return;
       if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
-      const key = buildContentKey(element, 'image');
+      const key = buildStableImageKey(element);
+      if (isDeletedImageCached(key)) {
+        element.remove();
+        return;
+      }
       element.dataset.adminEditable = 'image';
       element.dataset.adminKey = key;
       state.registry.set(`image:${key}`, element);
+      assignedElements.add(element);
     });
 
     document.querySelectorAll('[data-admin-background-var]').forEach((element) => {
@@ -891,10 +1126,11 @@ if (countdownElements.days) {
       if (element.closest('[data-admin-dynamic-section]')) return;
       if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
-      const key = buildContentKey(element, 'image');
+      const key = buildStableBackgroundImageKey(element);
       element.dataset.adminEditable = 'background-image';
       element.dataset.adminKey = key;
       state.registry.set(`image:${key}`, element);
+      assignedElements.add(element);
     });
 
     document.querySelectorAll(editableContainerSelector).forEach((element) => {
@@ -906,13 +1142,34 @@ if (countdownElements.days) {
       if (element.dataset.adminDynamicSection === 'true') return;
       if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
       if (window.getComputedStyle(element).display === 'none') return;
-      if (element.dataset.adminEditable === 'text' || element.dataset.adminEditable === 'image' || element.dataset.adminEditable === 'background-image' || element.dataset.adminEditable === 'album-root') return;
+      if (assignedElements.has(element)) return;
 
       const key = buildContentKey(element, 'container');
       element.dataset.adminEditable = 'container';
       element.dataset.adminKey = key;
       state.registry.set(`container:${key}`, element);
+      assignedElements.add(element);
     });
+
+    if (document.body) {
+      Array.from(document.body.querySelectorAll('*')).forEach((element) => {
+        if (!(element instanceof HTMLElement)) return;
+        if (assignedElements.has(element)) return;
+        if (element.id === 'dynamic-page-sections') return;
+        if (element.dataset.adminDynamicSection === 'true') return;
+        if (element.dataset.adminEditable) return;
+        if (genericStyleIgnoreTags.has(element.tagName)) return;
+        if (isInsideAdminUi(element)) return;
+        if (isInsideSiteMenu(element)) return;
+        if (!state.editMode && element.classList.contains('admin-hidden-element')) return;
+        if (window.getComputedStyle(element).display === 'none') return;
+
+        const key = buildContentKey(element, 'style');
+        element.dataset.adminEditable = 'generic';
+        element.dataset.adminKey = key;
+        state.registry.set(`generic:${key}`, element);
+      });
+    }
 
     const albumsRoot = getAlbumsRoot();
     if (albumsRoot && albumsRoot.dataset.adminKey) {
@@ -1348,6 +1605,20 @@ if (countdownElements.days) {
       const key = element.dataset.adminKey;
       if (!key) return;
       const override = state.elementOverrides.get(key);
+
+      // Compatibility path: old image deletes stored as element-overrides should behave as true deletes.
+      if (
+        override &&
+        override.deleted &&
+        element.dataset.adminEditable === 'image' &&
+        !isDynamicContentKey(key)
+      ) {
+        persistDeletedImageCache(key, true);
+        element.remove();
+        state.registry.delete(`image:${key}`);
+        return;
+      }
+
       setAdminHiddenState(element, override && override.hidden, override && override.deleted);
       if (!override) return;
       applyElementStyles(element, override);
@@ -1543,7 +1814,7 @@ if (countdownElements.days) {
     if (!main || !host) return;
 
     assignStaticSectionKeys();
-    const target = document.querySelector(`section[data-admin-static-section-key="${staticSectionKey}"]`);
+    const target = document.querySelector(`[data-admin-static-section-key="${staticSectionKey}"]`);
     if (!target || !target.parentNode) return;
 
     if (insertPosition === 'before') {
@@ -1979,10 +2250,31 @@ if (countdownElements.days) {
     if (!element) return;
 
     if (item.content_type === 'image') {
+      const isDeletedImageValue = item.content_value === '__deleted__';
+      if (isDeletedImageValue) {
+        if (element.dataset.adminEditable === 'background-image') {
+          const cssVarName = element.dataset.adminBackgroundVar;
+          if (cssVarName) element.style.removeProperty(cssVarName);
+          element.style.removeProperty('background-image');
+          element.style.removeProperty('background-position');
+          element.style.removeProperty('background-size');
+          element.style.removeProperty('background-repeat');
+          return;
+        }
+
+        persistDeletedImageCache(item.content_key, true);
+        element.remove();
+        state.registry.delete(`image:${item.content_key}`);
+        return;
+      }
+
       const nextValue = withCacheBust(item.content_value, item.updated_at);
-      element.dataset.adminImagePath = item.content_value;
-      persistImageCache(item.content_key, item.content_value);
-      syncHomeHeroBootImage(item.content_key, item.content_value);
+      if (item.content_value) {
+        element.dataset.adminImagePath = item.content_value;
+        persistImageCache(item.content_key, item.content_value);
+        persistDeletedImageCache(item.content_key, false);
+        syncHomeHeroBootImage(item.content_key, item.content_value);
+      }
 
       if (element.dataset.adminEditable === 'background-image') {
         const cssVarName = element.dataset.adminBackgroundVar;
@@ -2009,6 +2301,11 @@ if (countdownElements.days) {
           element.style.backgroundSize = 'cover';
           element.style.backgroundRepeat = 'no-repeat';
         }
+        return;
+      }
+
+      if (!item.content_value) {
+        // Ignore empty persisted values for normal <img> tags to avoid flash-then-disappear on refresh.
         return;
       }
 
@@ -2161,6 +2458,34 @@ if (countdownElements.days) {
         gap: 0.5rem;
       }
 
+      .admin-save-status {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+        color: #b8c4e0;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .admin-save-status[data-state="saving"] {
+        border-color: rgba(158, 197, 255, 0.5);
+        color: #9ec5ff;
+      }
+
+      .admin-save-status[data-state="error"] {
+        border-color: rgba(255, 155, 155, 0.6);
+        color: #ffb7b7;
+      }
+
+      .admin-save-status[data-state="idle"] {
+        border-color: rgba(136, 212, 152, 0.55);
+        color: #88d498;
+      }
+
       .admin-format-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2218,24 +2543,56 @@ if (countdownElements.days) {
       body.admin-edit-mode [data-admin-editable="image"],
       body.admin-edit-mode [data-admin-editable="background-image"],
       body.admin-edit-mode [data-admin-editable="container"],
-      body.admin-edit-mode [data-admin-editable="album-root"] {
-        outline: 2px dashed rgba(255, 210, 98, 0.6);
-        outline-offset: 4px;
+      body.admin-edit-mode [data-admin-editable="generic"],
+      body.admin-edit-mode [data-admin-editable="album-root"],
+      body.admin-edit-mode [data-admin-editable="page-root"] {
+        outline: 1px dashed rgba(255, 210, 98, 0.28);
+        outline-offset: 2px;
         cursor: pointer;
+        transition: outline-color 0.14s ease, outline-offset 0.14s ease, box-shadow 0.14s ease;
+      }
+
+      body.admin-edit-mode [data-admin-editable="text"]:hover,
+      body.admin-edit-mode [data-admin-editable="image"]:hover,
+      body.admin-edit-mode [data-admin-editable="background-image"]:hover,
+      body.admin-edit-mode [data-admin-editable="container"]:hover,
+      body.admin-edit-mode [data-admin-editable="generic"]:hover,
+      body.admin-edit-mode [data-admin-editable="album-root"]:hover,
+      body.admin-edit-mode [data-admin-editable="page-root"]:hover {
+        outline-color: rgba(255, 210, 98, 0.62);
+        outline-offset: 4px;
+      }
+
+      body.admin-edit-mode [data-admin-editable="text"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="image"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="background-image"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="container"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="generic"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="album-root"].admin-current-selection,
+      body.admin-edit-mode [data-admin-editable="page-root"].admin-current-selection {
+        outline: 2px solid rgba(255, 210, 98, 0.95);
+        outline-offset: 4px;
+        box-shadow: 0 0 0 3px rgba(255, 210, 98, 0.2);
+      }
+
+      body.admin-edit-mode [data-admin-editable="page-root"] {
+        min-height: 40vh;
       }
 
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="container"],
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="generic"],
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"] {
-        cursor: grab;
+        cursor: pointer;
       }
 
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="image"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="background-image"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="container"].admin-is-dragging,
+      body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="generic"].admin-is-dragging,
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="album-root"].admin-is-dragging {
         cursor: grabbing;
         opacity: 0.92;
@@ -2253,12 +2610,19 @@ if (countdownElements.days) {
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="image"],
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="background-image"],
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="container"],
+      body.admin-edit-mode .admin-free-positioned[data-admin-editable="generic"],
       body.admin-edit-mode .admin-free-positioned[data-admin-editable="album-root"] {
         z-index: 8 !important;
       }
 
       body.admin-edit-mode .admin-hidden-element {
         opacity: 0.55;
+      }
+
+      body.admin-edit-mode .admin-deleted-element {
+        opacity: 0.45;
+        outline: 2px dashed rgba(255, 107, 107, 0.9) !important;
+        outline-offset: 4px;
       }
 
       .admin-editor-backdrop {
@@ -2475,6 +2839,69 @@ if (countdownElements.days) {
       .admin-element-toolbar button[disabled] {
         opacity: 0.45;
         cursor: not-allowed;
+      }
+
+      .admin-inspector-panel {
+        position: fixed;
+        right: 1rem;
+        top: 6.5rem;
+        z-index: 10020;
+        width: min(320px, calc(100vw - 2rem));
+        max-height: calc(100vh - 7.5rem);
+        overflow: auto;
+        display: none;
+        gap: 0.65rem;
+        padding: 0.8rem;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(2, 8, 22, 0.95);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      .admin-inspector-panel h3 {
+        margin: 0;
+        font-size: 0.92rem;
+        color: #ffd262;
+      }
+
+      .admin-inspector-meta {
+        font-size: 0.78rem;
+        color: #b8c4e0;
+        word-break: break-all;
+      }
+
+      .admin-inspector-group {
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .admin-inspector-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+      }
+
+      .admin-inspector-panel button {
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.08);
+        color: #f5f7ff;
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      .admin-inspector-panel button:hover,
+      .admin-inspector-panel button:focus-visible {
+        border-color: rgba(255, 210, 98, 0.55);
+        background: rgba(255, 210, 98, 0.14);
+      }
+
+      body.admin-edit-mode main[data-admin-canvas-dropzone="true"] {
+        background-image:
+          linear-gradient(rgba(255, 210, 98, 0.16) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 210, 98, 0.16) 1px, transparent 1px);
+        background-size: ${gridSnapSize}px ${gridSnapSize}px;
       }
 
       body.admin-edit-mode .admin-empty-section-field {
@@ -2715,26 +3142,32 @@ if (countdownElements.days) {
   }
 
   async function deleteContentItem(contentKey, contentType) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/content', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        pagePath: state.pagePath,
-        contentKey,
-        contentType,
-      }),
-    });
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/content', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pagePath: state.pagePath,
+          contentKey,
+          contentType,
+        }),
+      });
 
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Delete failed');
+      if (!response.ok) {
+        throw new Error(data.error || 'Delete failed');
+      }
+
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-
-    return data.item;
   }
 
   function isDynamicContentKey(key) {
@@ -2742,27 +3175,33 @@ if (countdownElements.days) {
   }
 
   async function saveContentUpdate(payload) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/content', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        pagePath: state.pagePath,
-        contentKey: payload.contentKey,
-        contentType: payload.contentType,
-        contentValue: payload.contentValue,
-      }),
-    });
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/content', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pagePath: state.pagePath,
+          contentKey: payload.contentKey,
+          contentType: payload.contentType,
+          contentValue: payload.contentValue,
+        }),
+      });
 
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Save failed');
+      if (!response.ok) {
+        throw new Error(data.error || 'Save failed');
+      }
+
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-
-    return data.item;
   }
 
   function openTextModal(initialValue, heading, description, options) {
@@ -3056,6 +3495,7 @@ if (countdownElements.days) {
     const key = element.dataset.adminKey;
     const override = (key && state.elementOverrides.get(key)) || {};
     const isHidden = Boolean(override.hidden);
+    const editableType = element.dataset.adminEditable || 'container';
 
     openTextModal(
       '',
@@ -3112,7 +3552,7 @@ if (countdownElements.days) {
         onDelete: async () => {
           await saveElementOverride(key, { hidden: true, deleted: true });
           element.remove();
-          state.registry.delete(`container:${key}`);
+          state.registry.delete(`${editableType}:${key}`);
         },
         onSaveFormatting: async (formatting) => {
           const item = await saveElementOverride(key, {
@@ -3148,12 +3588,239 @@ if (countdownElements.days) {
 
   function hideElementToolbar() {
     if (!state.elementToolbar) return;
+    document.querySelectorAll('.admin-current-selection').forEach((node) => node.classList.remove('admin-current-selection'));
     state.elementToolbar.style.display = 'none';
     state.selectedEditableElement = null;
+    updateInspectorPanel(null);
+  }
+
+  async function createBlankDynamicSection() {
+    const item = await createPageSection({ title: '', body: '' });
+    upsertPageSection(item);
+    renderPageSections();
+    registerEditableElements();
+    applyElementOverrides();
+    registerSectionEditing();
+    return document.querySelector(`[data-admin-dynamic-section="true"][data-admin-section-id="${item.id}"]`);
+  }
+
+  async function addContainerToSection(section) {
+    const sectionHost = getSectionContentHost(section) || section;
+    if (!sectionHost) return;
+
+    const newContainer = document.createElement('div');
+    newContainer.textContent = 'New container';
+    newContainer.style.minHeight = '90px';
+    newContainer.style.padding = '0.85rem';
+    newContainer.style.marginTop = '1rem';
+    newContainer.style.border = '1px dashed rgba(255, 255, 255, 0.35)';
+    newContainer.style.borderRadius = '10px';
+    sectionHost.appendChild(newContainer);
+
+    const key = buildContentKey(newContainer, 'container');
+    newContainer.dataset.adminEditable = 'container';
+    newContainer.dataset.adminKey = key;
+    state.registry.set(`container:${key}`, newContainer);
+    registerEditableElements();
+    applyElementOverrides();
+    registerSectionEditing();
+  }
+
+  async function insertIntoTarget(targetElement, insertType) {
+    const target = targetElement || document.querySelector('main[data-admin-editable="page-root"]');
+    if (!target) return;
+
+    let section = null;
+    let kind = null;
+
+    if (target.dataset.adminEditable === 'page-root') {
+      section = await createBlankDynamicSection();
+      kind = 'dynamic';
+      if (insertType === 'section') return;
+    } else if (isSectionRootEditable(target)) {
+      section = target;
+      kind = getSectionKindFromElement(target);
+    } else {
+      section = getHostSectionForElement(target);
+      kind = getSectionKindFromElement(section);
+    }
+
+    if (!section || !kind) return;
+    if (insertType === 'text') {
+      await addNewTextElement(section, kind);
+      registerEditableElements();
+      applyElementOverrides();
+      registerSectionEditing();
+      return;
+    }
+
+    if (insertType === 'image') {
+      await addNewImageElement(section, kind);
+      registerEditableElements();
+      applyElementOverrides();
+      registerSectionEditing();
+      return;
+    }
+
+    if (insertType === 'container') {
+      await addContainerToSection(section);
+    }
+  }
+
+  function ensureInspectorPanel() {
+    if (state.inspectorPanel) return state.inspectorPanel;
+
+    const panel = document.createElement('aside');
+    panel.className = 'admin-inspector-panel';
+    panel.innerHTML = `
+      <h3>Inspector</h3>
+      <div class="admin-inspector-meta" data-role="selected-kind">No selection</div>
+      <div class="admin-inspector-meta" data-role="selected-key"></div>
+      <div class="admin-inspector-meta" style="border-top:1px solid rgba(255,255,255,0.12);padding-top:0.45rem;">
+        Dotted line = editable. Solid gold line = selected.
+      </div>
+      <div class="admin-inspector-group">
+        <strong style="font-size:0.8rem;color:#ffd262;">Insert</strong>
+        <div class="admin-inspector-grid">
+          <button type="button" data-inspector-action="insert-section">+Section</button>
+          <button type="button" data-inspector-action="insert-text">+Text</button>
+          <button type="button" data-inspector-action="insert-image">+Image</button>
+          <button type="button" data-inspector-action="insert-container">+Container</button>
+        </div>
+      </div>
+      <div class="admin-inspector-group">
+        <strong style="font-size:0.8rem;color:#ffd262;">Element</strong>
+        <div class="admin-inspector-grid">
+          <button type="button" data-inspector-action="edit">Edit</button>
+          <button type="button" data-inspector-action="style">Style</button>
+          <button type="button" data-inspector-action="move">Move</button>
+          <button type="button" data-inspector-action="duplicate">Duplicate</button>
+          <button type="button" data-inspector-action="restore">Restore</button>
+          <button type="button" data-inspector-action="delete" style="color:#ff9b9b;">Delete</button>
+        </div>
+      </div>
+    `;
+
+    panel.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-inspector-action]');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const action = button.dataset.inspectorAction;
+      const selected = getSelectedEditableElement() || document.querySelector('main[data-admin-editable="page-root"]');
+
+      try {
+        if (!selected) return;
+        if (action === 'insert-section') {
+          await insertIntoTarget(selected, 'section');
+          scheduleEditorSync();
+          return;
+        }
+        if (action === 'insert-text') {
+          await insertIntoTarget(selected, 'text');
+          scheduleEditorSync();
+          return;
+        }
+        if (action === 'insert-image') {
+          await insertIntoTarget(selected, 'image');
+          scheduleEditorSync();
+          return;
+        }
+        if (action === 'insert-container') {
+          await insertIntoTarget(selected, 'container');
+          scheduleEditorSync();
+          return;
+        }
+        await performEditorAction(action, selected);
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    document.body.appendChild(panel);
+    state.inspectorPanel = panel;
+    return panel;
+  }
+
+  function updateInspectorPanel(element) {
+    const panel = ensureInspectorPanel();
+    const kindNode = panel.querySelector('[data-role="selected-kind"]');
+    const keyNode = panel.querySelector('[data-role="selected-key"]');
+
+    if (!state.editMode) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = 'grid';
+    if (!element) {
+      kindNode.textContent = 'No selection';
+      keyNode.textContent = 'Click an element or page canvas';
+      return;
+    }
+
+    kindNode.textContent = `Selected: ${getElementKindLabel(element)}`;
+    keyNode.textContent = element.dataset.adminKey || '';
+  }
+
+  function scheduleEditorSync() {
+    if (state.editorSyncTimer || state.isSyncingEditorState || !state.editMode) return;
+    state.editorSyncTimer = window.setTimeout(() => {
+      state.editorSyncTimer = null;
+      if (!state.editMode) return;
+
+      state.isSyncingEditorState = true;
+      try {
+        registerEditableElements();
+        applyElementOverrides();
+        registerSectionEditing();
+
+        const current = getSelectedEditableElement();
+        if (current) {
+          updateInspectorPanel(current);
+        } else {
+          const root = document.querySelector('main[data-admin-editable="page-root"]');
+          updateInspectorPanel(root || null);
+        }
+      } finally {
+        state.isSyncingEditorState = false;
+      }
+    }, 60);
+  }
+
+  function ensureEditorDomObserver() {
+    if (state.domObserver) return state.domObserver;
+    const root = document.body;
+    if (!root) return null;
+
+    const observer = new MutationObserver((mutations) => {
+      if (!state.editMode || state.isSyncingEditorState) return;
+      const hasRealDomChange = mutations.some((mutation) => {
+        if (mutation.type === 'childList') {
+          return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+        }
+        if (mutation.type === 'attributes') {
+          return ['class', 'style', 'data-admin-editable', 'data-admin-key', 'data-admin-dynamic-section'].includes(mutation.attributeName || '');
+        }
+        return false;
+      });
+      if (!hasRealDomChange) return;
+      scheduleEditorSync();
+    });
+
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-admin-editable', 'data-admin-key', 'data-admin-dynamic-section'],
+    });
+    state.domObserver = observer;
+    return observer;
   }
 
   function isSectionRootEditable(element) {
-    if (!element || element.tagName !== 'SECTION') return false;
+    if (!element || !element.dataset) return false;
     return element.dataset.adminSectionType === 'static' || element.dataset.adminDynamicSection === 'true';
   }
 
@@ -3164,6 +3831,9 @@ if (countdownElements.days) {
 
   function getElementKindLabel(element) {
     if (!element) return 'Element';
+    if (element.dataset && element.dataset.adminEditable === 'page-root') {
+      return 'Page';
+    }
     if (isSectionRootEditable(element)) {
       return element.dataset.adminDynamicSection === 'true' ? 'Dynamic Section' : 'Section';
     }
@@ -3173,8 +3843,132 @@ if (countdownElements.days) {
     if (type === 'image') return 'Image';
     if (type === 'background-image') return 'Background';
     if (type === 'container') return 'Container';
+    if (type === 'generic') return 'Element';
     if (type === 'album-root') return 'Albums';
     return 'Element';
+  }
+
+  async function performEditorAction(action, element) {
+    if (!element) return;
+
+    if (action === 'edit' || action === 'style') {
+      hideElementToolbar();
+      openEditorForSelectedElement(element, action);
+      return;
+    }
+
+    if (action === 'move') {
+      await enableMoveForElement(element);
+      hideElementToolbar();
+      return;
+    }
+
+    if (action === 'add-text' || action === 'add-image' || action === 'add-container' || action === 'add-before' || action === 'add-after' || action === 'remove-section') {
+      const isPageRoot = element.dataset.adminEditable === 'page-root';
+      if (!isSectionRootEditable(element) && !isPageRoot) return;
+      const kind = getSectionKindFromElement(element);
+      if (!kind && !isPageRoot) return;
+
+      if (isPageRoot) {
+        if (action === 'add-text') await insertIntoTarget(element, 'text');
+        if (action === 'add-image') await insertIntoTarget(element, 'image');
+        if (action === 'add-container') await insertIntoTarget(element, 'container');
+        if (action === 'add-before' || action === 'add-after') await insertIntoTarget(element, 'section');
+        scheduleEditorSync();
+        hideElementToolbar();
+        return;
+      }
+
+      if (action === 'add-text') {
+        await addNewTextElement(element, kind);
+        registerEditableElements();
+        applyElementOverrides();
+        registerSectionEditing();
+        scheduleEditorSync();
+        hideElementToolbar();
+        return;
+      }
+
+      if (action === 'add-image') {
+        await addNewImageElement(element, kind);
+        registerEditableElements();
+        applyElementOverrides();
+        registerSectionEditing();
+        scheduleEditorSync();
+        hideElementToolbar();
+        return;
+      }
+
+      if (action === 'add-container') {
+        await addContainerToSection(element);
+        scheduleEditorSync();
+        hideElementToolbar();
+        return;
+      }
+
+      if (action === 'add-before' || action === 'add-after') {
+        const insertPosition = action === 'add-before' ? 'before' : 'after';
+        if (kind === 'dynamic') {
+          openAddSectionModal({
+            relativeSectionId: Number.parseInt(element.dataset.adminSectionId, 10),
+            insertPosition,
+          });
+        } else {
+          openAddSectionModal({
+            relativeStaticSectionKey: element.dataset.adminStaticSectionKey,
+            insertPosition,
+          });
+        }
+        hideElementToolbar();
+        return;
+      }
+
+      if (action === 'remove-section') {
+        if (kind === 'dynamic') {
+          await removeSection(Number.parseInt(element.dataset.adminSectionId, 10));
+        } else {
+          await hideStaticSection(element);
+        }
+        scheduleEditorSync();
+        hideElementToolbar();
+      }
+      return;
+    }
+
+    if (action === 'parent') {
+      const parent = getParentEditableElement(element);
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      const centerX = rect.left + (rect.width / 2);
+      const topY = rect.top;
+      showElementToolbarFor(parent, centerX, topY);
+      return;
+    }
+
+    if (action === 'duplicate') {
+      await duplicateSelectedElement(element);
+      scheduleEditorSync();
+      hideElementToolbar();
+      return;
+    }
+
+    if (action === 'restore') {
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      const item = await saveElementOverride(key, { hidden: false, deleted: false });
+      setAdminHiddenState(element, false, false);
+      applyElementStyles(element, item);
+      scheduleEditorSync();
+      hideElementToolbar();
+      return;
+    }
+
+    if (action === 'delete') {
+      if (!window.confirm('Delete this selected element?')) return;
+      await deleteSelectedElement(element);
+      scheduleEditorSync();
+      hideElementToolbar();
+    }
   }
 
   function ensureElementToolbar() {
@@ -3188,12 +3982,14 @@ if (countdownElements.days) {
       <button type="button" data-action="style">Style</button>
       <button type="button" data-action="add-text">+Text</button>
       <button type="button" data-action="add-image">+Image</button>
+      <button type="button" data-action="add-container">+Container</button>
       <button type="button" data-action="add-before">+Before</button>
       <button type="button" data-action="add-after">+After</button>
       <button type="button" data-action="remove-section" style="color:#ffb1b1;">Section Delete</button>
       <button type="button" data-action="parent">Parent</button>
       <button type="button" data-action="move">Move</button>
       <button type="button" data-action="duplicate">Duplicate</button>
+      <button type="button" data-action="restore" style="color:#9ef3b0;">Restore</button>
       <button type="button" data-action="delete" style="color:#ff9b9b;">Delete</button>
     `;
 
@@ -3209,92 +4005,8 @@ if (countdownElements.days) {
         return;
       }
 
-      const action = button.dataset.action;
       try {
-        if (action === 'edit' || action === 'style') {
-          hideElementToolbar();
-          openEditorForSelectedElement(element, action);
-          return;
-        }
-
-        if (action === 'move') {
-          await enableMoveForElement(element);
-          hideElementToolbar();
-          return;
-        }
-
-        if (action === 'add-text' || action === 'add-image' || action === 'add-before' || action === 'add-after' || action === 'remove-section') {
-          if (!isSectionRootEditable(element)) return;
-          const kind = getSectionKindFromElement(element);
-          if (!kind) return;
-
-          if (action === 'add-text') {
-            await addNewTextElement(element, kind);
-            registerEditableElements();
-            applyElementOverrides();
-            registerSectionEditing();
-            hideElementToolbar();
-            return;
-          }
-
-          if (action === 'add-image') {
-            await addNewImageElement(element, kind);
-            registerEditableElements();
-            applyElementOverrides();
-            registerSectionEditing();
-            hideElementToolbar();
-            return;
-          }
-
-          if (action === 'add-before' || action === 'add-after') {
-            const insertPosition = action === 'add-before' ? 'before' : 'after';
-            if (kind === 'dynamic') {
-              openAddSectionModal({
-                relativeSectionId: Number.parseInt(element.dataset.adminSectionId, 10),
-                insertPosition,
-              });
-            } else {
-              openAddSectionModal({
-                relativeStaticSectionKey: element.dataset.adminStaticSectionKey,
-                insertPosition,
-              });
-            }
-            hideElementToolbar();
-            return;
-          }
-
-          if (action === 'remove-section') {
-            if (kind === 'dynamic') {
-              await removeSection(Number.parseInt(element.dataset.adminSectionId, 10));
-            } else {
-              await hideStaticSection(element);
-            }
-            hideElementToolbar();
-            return;
-          }
-        }
-
-        if (action === 'parent') {
-          const parent = getParentEditableElement(element);
-          if (!parent) return;
-          const rect = parent.getBoundingClientRect();
-          const centerX = rect.left + (rect.width / 2);
-          const topY = rect.top;
-          showElementToolbarFor(parent, centerX, topY);
-          return;
-        }
-
-        if (action === 'duplicate') {
-          await duplicateSelectedElement(element);
-          hideElementToolbar();
-          return;
-        }
-
-        if (action === 'delete') {
-          if (!window.confirm('Delete this selected element?')) return;
-          await deleteSelectedElement(element);
-          hideElementToolbar();
-        }
+        await performEditorAction(button.dataset.action, element);
       } catch (error) {
         alert(error.message);
       }
@@ -3308,6 +4020,15 @@ if (countdownElements.days) {
   function openEditorForSelectedElement(element, action) {
     if (!element) return;
     const editableType = element.dataset.adminEditable;
+
+    if (editableType === 'page-root') {
+      if (action === 'style') {
+        openContainerEditor(element);
+      } else {
+        alert('Use the page actions to add sections and start building the page.');
+      }
+      return;
+    }
 
     if (element.dataset.adminSectionField && editableType === 'text') {
       openSectionTextEditor(element);
@@ -3330,6 +4051,11 @@ if (countdownElements.days) {
     }
 
     if (editableType === 'container') {
+      openContainerEditor(element);
+      return;
+    }
+
+    if (editableType === 'generic') {
       openContainerEditor(element);
       return;
     }
@@ -3445,7 +4171,16 @@ if (countdownElements.days) {
 
     if (editableType === 'text') {
       if (element.dataset.adminSectionField) {
-        throw new Error('Delete is not supported for section title/body fields.');
+        const sectionId = Number.parseInt(element.dataset.adminSectionId, 10);
+        const field = element.dataset.adminSectionField;
+        if (!['title', 'body'].includes(field)) {
+          throw new Error('Delete is not supported for this section field.');
+        }
+        const item = await updatePageSection(sectionId, field, '');
+        upsertPageSection(item);
+        renderPageSections();
+        registerSectionEditing();
+        return;
       }
       const key = element.dataset.adminKey;
       if (!key) return;
@@ -3476,8 +4211,30 @@ if (countdownElements.days) {
       if (!key) return;
       if (isDynamicContentKey(key)) {
         await deleteContentItem(key, 'image');
+        persistDeletedImageCache(key, false);
       } else {
-        await saveElementOverride(key, { hidden: true, deleted: true });
+        if (editableType === 'background-image') {
+          await saveContentUpdate({
+            contentKey: key,
+            contentType: 'image',
+            contentValue: '',
+          });
+          applyContentItem({
+            content_key: key,
+            content_type: 'image',
+            content_value: '',
+            updated_at: new Date().toISOString(),
+          });
+          return;
+        }
+
+        const item = await saveContentUpdate({
+          contentKey: key,
+          contentType: 'image',
+          contentValue: '__deleted__',
+        });
+        applyContentItem(item);
+        return;
       }
       element.remove();
       state.registry.delete(`image:${key}`);
@@ -3493,39 +4250,67 @@ if (countdownElements.days) {
       return;
     }
 
+    if (editableType === 'generic') {
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      await saveElementOverride(key, { hidden: true, deleted: true });
+      element.remove();
+      state.registry.delete(`generic:${key}`);
+      return;
+    }
+
     throw new Error('Delete is not supported for this element type.');
   }
 
   function showElementToolbarFor(element, clientX, clientY) {
     if (!state.editMode || !element) return;
     const toolbar = ensureElementToolbar();
+    document.querySelectorAll('.admin-current-selection').forEach((node) => node.classList.remove('admin-current-selection'));
+    element.classList.add('admin-current-selection');
     state.selectedEditableElement = element;
+    updateInspectorPanel(element);
 
     const type = element.dataset.adminEditable || '';
     const isSectionField = Boolean(element.dataset.adminSectionField);
     const isSectionRoot = isSectionRootEditable(element);
+    const isPageRoot = type === 'page-root';
+    const key = element.dataset.adminKey;
+    const override = key ? state.elementOverrides.get(key) : null;
+    const restoreAllowed = Boolean(override && (override.hidden || override.deleted));
     const duplicateAllowed = !isSectionField && (type === 'text' || type === 'image');
-    const deleteAllowed = type !== 'album-root' && !(isSectionField && type === 'text');
+    const deleteAllowed = type !== 'album-root' && type !== 'page-root';
     const parentAllowed = Boolean(getParentEditableElement(element));
-    const sectionActionsAllowed = isSectionRoot;
+    const sectionActionsAllowed = isSectionRoot || isPageRoot;
 
     const kindLabel = toolbar.querySelector('[data-role="kind"]');
+    const editButton = toolbar.querySelector('button[data-action="edit"]');
+    const styleButton = toolbar.querySelector('button[data-action="style"]');
     const addTextButton = toolbar.querySelector('button[data-action="add-text"]');
     const addImageButton = toolbar.querySelector('button[data-action="add-image"]');
+    const addContainerButton = toolbar.querySelector('button[data-action="add-container"]');
     const addBeforeButton = toolbar.querySelector('button[data-action="add-before"]');
     const addAfterButton = toolbar.querySelector('button[data-action="add-after"]');
     const removeSectionButton = toolbar.querySelector('button[data-action="remove-section"]');
     const parentButton = toolbar.querySelector('button[data-action="parent"]');
     const duplicateButton = toolbar.querySelector('button[data-action="duplicate"]');
+    const restoreButton = toolbar.querySelector('button[data-action="restore"]');
     const deleteButton = toolbar.querySelector('button[data-action="delete"]');
     if (kindLabel) kindLabel.textContent = getElementKindLabel(element);
+    if (editButton) editButton.style.display = isPageRoot ? 'none' : 'inline-flex';
+    if (styleButton) styleButton.style.display = isPageRoot ? 'none' : 'inline-flex';
     if (addTextButton) addTextButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
     if (addImageButton) addImageButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (addContainerButton) addContainerButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
     if (addBeforeButton) addBeforeButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
-    if (addAfterButton) addAfterButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
-    if (removeSectionButton) removeSectionButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (addAfterButton) addAfterButton.style.display = isSectionRoot ? 'inline-flex' : 'none';
+    if (removeSectionButton) removeSectionButton.style.display = isSectionRoot ? 'inline-flex' : 'none';
+    if (addBeforeButton) addBeforeButton.textContent = isPageRoot ? '+Section' : '+Before';
     if (parentButton) parentButton.disabled = !parentAllowed;
     if (duplicateButton) duplicateButton.disabled = !duplicateAllowed;
+    if (restoreButton) {
+      restoreButton.style.display = restoreAllowed ? 'inline-flex' : 'none';
+      restoreButton.disabled = !restoreAllowed;
+    }
     if (deleteButton) deleteButton.disabled = !deleteAllowed;
 
     toolbar.style.display = 'inline-flex';
@@ -3900,6 +4685,7 @@ if (countdownElements.days) {
         if (isDynamicContentKey(key)) {
           try {
             await deleteContentItem(key, 'image');
+            persistDeletedImageCache(key, false);
           } catch (error) {
             const message = String(error && error.message ? error.message : '').toLowerCase();
             if (!message.includes('not found')) {
@@ -3912,9 +4698,12 @@ if (countdownElements.days) {
           return;
         }
 
-        await saveElementOverride(key, { hidden: true, deleted: true });
-        element.remove();
-        state.registry.delete(`image:${key}`);
+        const item = await saveContentUpdate({
+          contentKey: key,
+          contentType: 'image',
+          contentValue: '__deleted__',
+        });
+        applyContentItem(item);
       },
     });
   }
@@ -4075,7 +4864,7 @@ if (countdownElements.days) {
     if (kind === 'static') {
       const parent = section.parentElement;
       const sections = parent
-        ? Array.from(parent.children).filter((element) => element.tagName === 'SECTION' && !element.dataset.adminDynamicSection)
+        ? Array.from(parent.children).filter((element) => element.dataset.adminSectionType === 'static' && element.dataset.adminDynamicSection !== 'true')
         : [];
       const index = sections.indexOf(section);
       const nextIndex = index + delta;
@@ -4131,7 +4920,7 @@ if (countdownElements.days) {
 
   function getHostSectionForElement(element) {
     if (!element) return null;
-    return element.closest('section[data-admin-section-type="static"], section[data-admin-dynamic-section="true"]');
+    return element.closest('[data-admin-section-type="static"], [data-admin-dynamic-section="true"]');
   }
 
   function getSectionContentHost(section) {
@@ -4413,27 +5202,33 @@ if (countdownElements.days) {
   }
 
   async function createNewContentElement(parentKey, contentType, contentValue) {
-    const token = getStoredToken();
-    const res = await fetch('/api/admin/content/new', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        pagePath: state.pagePath,
-        parentKey,
-        contentType,
-        contentValue,
-      }),
-    });
+    beginSaveAttempt();
+    try {
+      const token = getStoredToken();
+      const { response, data } = await fetchWithRetry('/api/admin/content/new', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pagePath: state.pagePath,
+          parentKey,
+          contentType,
+          contentValue,
+        }),
+      });
 
-    const data = await parseApiResponse(res);
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to create element');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create element');
+      }
+
+      finishSaveAttempt(true);
+      return data.item;
+    } catch (error) {
+      finishSaveAttempt(false, error.message);
+      throw error;
     }
-
-    return data.item;
   }
 
   function registerSectionDrag(section, kind) {
@@ -4704,7 +5499,7 @@ if (countdownElements.days) {
   function findFreeDragTarget(source) {
     if (!source || !state.editMode) return null;
     if (isInsideAdminUi(source)) return null;
-    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="album-root"]');
+    const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="generic"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
     if (isInsideAdminUi(candidate)) return null;
@@ -4744,7 +5539,7 @@ if (countdownElements.days) {
 
   function clearFreeDragCursors() {
     document.body.style.cursor = '';
-    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="album-root"]').forEach((element) => {
+    document.querySelectorAll('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="generic"], [data-admin-editable="album-root"]').forEach((element) => {
       element.style.cursor = '';
     });
   }
@@ -4792,10 +5587,13 @@ if (countdownElements.days) {
     state.dragOriginY = startTop;
     target.classList.add('admin-is-dragging');
     document.body.style.cursor = activeCursor;
+    const canvas = document.querySelector('main');
+    if (canvas) {
+      canvas.dataset.adminCanvasDropzone = 'true';
+    }
 
     const onMove = (moveEvent) => {
       if (!state.draggingElement) return;
-      const parent = state.draggingElement.offsetParent || state.draggingElement.parentElement;
       const dx = moveEvent.clientX - state.dragStartX;
       const dy = moveEvent.clientY - state.dragStartY;
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
@@ -4809,16 +5607,8 @@ if (countdownElements.days) {
       if (!isResizeAction) {
         const rawX = state.dragOriginX + dx;
         const rawY = state.dragOriginY + dy;
-        nextX = rawX;
-        nextY = rawY;
-        if (parent) {
-          const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
-          const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
-          const maxX = Math.max(0, parentWidth - state.draggingElement.offsetWidth);
-          const maxY = Math.max(0, parentHeight - state.draggingElement.offsetHeight);
-          nextX = Math.max(0, Math.min(maxX, rawX));
-          nextY = Math.max(0, Math.min(maxY, rawY));
-        }
+        nextX = Math.max(0, rawX);
+        nextY = Math.max(0, rawY);
       } else {
         if (resizeEdges.includes('e')) nextWidth = startWidth + dx;
         if (resizeEdges.includes('s')) nextHeight = startHeight + dy;
@@ -4841,25 +5631,24 @@ if (countdownElements.days) {
           nextY = state.dragOriginY + (startHeight - nextHeight);
         }
 
-        if (parent) {
-          const parentWidth = Math.max(parent.clientWidth, parent.scrollWidth);
-          const parentHeight = Math.max(parent.clientHeight, parent.scrollHeight);
+        if (nextX < 0) {
+          const overflowX = 0 - nextX;
+          nextX = 0;
+          nextWidth = Math.max(minResizableWidth, nextWidth - overflowX);
+        }
+        if (nextY < 0) {
+          const overflowY = 0 - nextY;
+          nextY = 0;
+          nextHeight = Math.max(minResizableHeight, nextHeight - overflowY);
+        }
+      }
 
-          if (nextX < 0) {
-            const overflowX = 0 - nextX;
-            nextX = 0;
-            nextWidth = Math.max(minResizableWidth, nextWidth - overflowX);
-          }
-          if (nextY < 0) {
-            const overflowY = 0 - nextY;
-            nextY = 0;
-            nextHeight = Math.max(minResizableHeight, nextHeight - overflowY);
-          }
-
-          const maxWidth = Math.max(minResizableWidth, parentWidth - nextX);
-          const maxHeight = Math.max(minResizableHeight, parentHeight - nextY);
-          nextWidth = Math.min(nextWidth, maxWidth);
-          nextHeight = Math.min(nextHeight, maxHeight);
+      if (!moveEvent.altKey) {
+        nextX = Math.max(0, Math.round(nextX / gridSnapSize) * gridSnapSize);
+        nextY = Math.max(0, Math.round(nextY / gridSnapSize) * gridSnapSize);
+        if (isResizeAction) {
+          nextWidth = Math.max(minResizableWidth, Math.round(nextWidth / gridSnapSize) * gridSnapSize);
+          nextHeight = Math.max(minResizableHeight, Math.round(nextHeight / gridSnapSize) * gridSnapSize);
         }
       }
 
@@ -4876,6 +5665,9 @@ if (countdownElements.days) {
       const dragged = state.draggingElement;
       state.draggingElement = null;
       if (!dragged) return;
+      if (canvas) {
+        delete canvas.dataset.adminCanvasDropzone;
+      }
 
       dragged.classList.remove('admin-is-dragging');
       document.body.style.cursor = '';
@@ -4934,6 +5726,12 @@ if (countdownElements.days) {
       const target = findFreeDragTarget(event.target);
       if (!target) return;
 
+      const resizeEdges = getResizeEdges(target, event);
+      const shouldStartDrag = Boolean(resizeEdges) || event.altKey;
+      if (!shouldStartDrag) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
       beginFreeDrag(target, event);
@@ -4947,6 +5745,20 @@ if (countdownElements.days) {
     if (!nextValue) {
       clearFreeDragCursors();
       hideElementToolbar();
+      if (state.editorSyncTimer) {
+        window.clearTimeout(state.editorSyncTimer);
+        state.editorSyncTimer = null;
+      }
+      if (state.domObserver) {
+        state.domObserver.disconnect();
+        state.domObserver = null;
+      }
+    }
+    ensureInspectorPanel();
+    updateInspectorPanel(nextValue ? document.querySelector('main[data-admin-editable="page-root"]') : null);
+    if (nextValue) {
+      ensureEditorDomObserver();
+      scheduleEditorSync();
     }
     applyElementOverrides();
     registerSectionEditing();
@@ -5007,6 +5819,8 @@ if (countdownElements.days) {
     `;
 
     controls.replaceChildren(button, addButton);
+    ensureSaveStatusNode();
+    updateSaveStatus('idle', 'Saved');
 
     const logoutLink = document.getElementById('nav-logout-link');
     if (logoutLink) {
@@ -5022,6 +5836,7 @@ if (countdownElements.days) {
 
     bindFreeDragHandlers();
     ensureElementToolbar();
+    ensureInspectorPanel();
 
     window.addEventListener('resize', () => {
       hideElementToolbar();
@@ -5038,15 +5853,7 @@ if (countdownElements.days) {
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
-      if (event.target.closest('.admin-edit-nav-button, .admin-add-section-button, .admin-editor-modal, .admin-section-tools, .admin-element-toolbar')) return;
-
-      const siteNavLink = event.target.closest('.site-nav a');
-      if (siteNavLink) {
-        event.preventDefault();
-        event.stopPropagation();
-        hideElementToolbar();
-        return;
-      }
+      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
       if (calendarCell) {
@@ -5074,6 +5881,14 @@ if (countdownElements.days) {
         return;
       }
 
+      const siteNavLink = event.target.closest('.site-nav a');
+      if (siteNavLink) {
+        event.preventDefault();
+        event.stopPropagation();
+        hideElementToolbar();
+        return;
+      }
+
       hideElementToolbar();
     }, true);
   }
@@ -5091,8 +5906,7 @@ if (countdownElements.days) {
     await loadMediaAlbums();
     await loadPageSections();
     registerEditableElements();
-    await loadElementOverrides();
-    await loadSavedContent();
+    await Promise.all([loadSavedContent(), loadElementOverrides()]);
     applyElementOverrides();
     initializeCalendarUi();
     await loadCalendarEvents();
