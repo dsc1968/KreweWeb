@@ -2406,12 +2406,12 @@ if (countdownElements.days) {
         top: 1rem;
         right: 1rem;
         z-index: 5;
-        display: none;
+        display: none !important;
         gap: 0.5rem;
       }
 
       body.admin-edit-mode .admin-section-tools {
-        display: inline-flex;
+        display: none !important;
       }
 
       .admin-section-tool {
@@ -2432,12 +2432,28 @@ if (countdownElements.days) {
         z-index: 10030;
         display: none;
         align-items: center;
+        flex-wrap: wrap;
         gap: 0.35rem;
         padding: 0.45rem;
         border-radius: 12px;
         border: 1px solid rgba(255, 255, 255, 0.18);
         background: rgba(2, 8, 22, 0.95);
         box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        max-width: min(92vw, 900px);
+      }
+
+      .admin-element-kind {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.28rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+        color: #ffd262;
+        font-size: 0.76rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-weight: 700;
       }
 
       .admin-element-toolbar button {
@@ -3136,14 +3152,45 @@ if (countdownElements.days) {
     state.selectedEditableElement = null;
   }
 
+  function isSectionRootEditable(element) {
+    if (!element || element.tagName !== 'SECTION') return false;
+    return element.dataset.adminSectionType === 'static' || element.dataset.adminDynamicSection === 'true';
+  }
+
+  function getSectionKindFromElement(element) {
+    if (!isSectionRootEditable(element)) return null;
+    return element.dataset.adminDynamicSection === 'true' ? 'dynamic' : 'static';
+  }
+
+  function getElementKindLabel(element) {
+    if (!element) return 'Element';
+    if (isSectionRootEditable(element)) {
+      return element.dataset.adminDynamicSection === 'true' ? 'Dynamic Section' : 'Section';
+    }
+
+    const type = element.dataset.adminEditable;
+    if (type === 'text') return 'Text';
+    if (type === 'image') return 'Image';
+    if (type === 'background-image') return 'Background';
+    if (type === 'container') return 'Container';
+    if (type === 'album-root') return 'Albums';
+    return 'Element';
+  }
+
   function ensureElementToolbar() {
     if (state.elementToolbar) return state.elementToolbar;
 
     const toolbar = document.createElement('div');
     toolbar.className = 'admin-element-toolbar';
     toolbar.innerHTML = `
+      <span class="admin-element-kind" data-role="kind">Element</span>
       <button type="button" data-action="edit">Edit</button>
       <button type="button" data-action="style">Style</button>
+      <button type="button" data-action="add-text">+Text</button>
+      <button type="button" data-action="add-image">+Image</button>
+      <button type="button" data-action="add-before">+Before</button>
+      <button type="button" data-action="add-after">+After</button>
+      <button type="button" data-action="remove-section" style="color:#ffb1b1;">Section Delete</button>
       <button type="button" data-action="parent">Parent</button>
       <button type="button" data-action="move">Move</button>
       <button type="button" data-action="duplicate">Duplicate</button>
@@ -3174,6 +3221,57 @@ if (countdownElements.days) {
           await enableMoveForElement(element);
           hideElementToolbar();
           return;
+        }
+
+        if (action === 'add-text' || action === 'add-image' || action === 'add-before' || action === 'add-after' || action === 'remove-section') {
+          if (!isSectionRootEditable(element)) return;
+          const kind = getSectionKindFromElement(element);
+          if (!kind) return;
+
+          if (action === 'add-text') {
+            await addNewTextElement(element, kind);
+            registerEditableElements();
+            applyElementOverrides();
+            registerSectionEditing();
+            hideElementToolbar();
+            return;
+          }
+
+          if (action === 'add-image') {
+            await addNewImageElement(element, kind);
+            registerEditableElements();
+            applyElementOverrides();
+            registerSectionEditing();
+            hideElementToolbar();
+            return;
+          }
+
+          if (action === 'add-before' || action === 'add-after') {
+            const insertPosition = action === 'add-before' ? 'before' : 'after';
+            if (kind === 'dynamic') {
+              openAddSectionModal({
+                relativeSectionId: Number.parseInt(element.dataset.adminSectionId, 10),
+                insertPosition,
+              });
+            } else {
+              openAddSectionModal({
+                relativeStaticSectionKey: element.dataset.adminStaticSectionKey,
+                insertPosition,
+              });
+            }
+            hideElementToolbar();
+            return;
+          }
+
+          if (action === 'remove-section') {
+            if (kind === 'dynamic') {
+              await removeSection(Number.parseInt(element.dataset.adminSectionId, 10));
+            } else {
+              await hideStaticSection(element);
+            }
+            hideElementToolbar();
+            return;
+          }
         }
 
         if (action === 'parent') {
@@ -3405,13 +3503,27 @@ if (countdownElements.days) {
 
     const type = element.dataset.adminEditable || '';
     const isSectionField = Boolean(element.dataset.adminSectionField);
+    const isSectionRoot = isSectionRootEditable(element);
     const duplicateAllowed = !isSectionField && (type === 'text' || type === 'image');
     const deleteAllowed = type !== 'album-root' && !(isSectionField && type === 'text');
     const parentAllowed = Boolean(getParentEditableElement(element));
+    const sectionActionsAllowed = isSectionRoot;
 
+    const kindLabel = toolbar.querySelector('[data-role="kind"]');
+    const addTextButton = toolbar.querySelector('button[data-action="add-text"]');
+    const addImageButton = toolbar.querySelector('button[data-action="add-image"]');
+    const addBeforeButton = toolbar.querySelector('button[data-action="add-before"]');
+    const addAfterButton = toolbar.querySelector('button[data-action="add-after"]');
+    const removeSectionButton = toolbar.querySelector('button[data-action="remove-section"]');
     const parentButton = toolbar.querySelector('button[data-action="parent"]');
     const duplicateButton = toolbar.querySelector('button[data-action="duplicate"]');
     const deleteButton = toolbar.querySelector('button[data-action="delete"]');
+    if (kindLabel) kindLabel.textContent = getElementKindLabel(element);
+    if (addTextButton) addTextButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (addImageButton) addImageButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (addBeforeButton) addBeforeButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (addAfterButton) addAfterButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
+    if (removeSectionButton) removeSectionButton.style.display = sectionActionsAllowed ? 'inline-flex' : 'none';
     if (parentButton) parentButton.disabled = !parentAllowed;
     if (duplicateButton) duplicateButton.disabled = !duplicateAllowed;
     if (deleteButton) deleteButton.disabled = !deleteAllowed;
@@ -3935,7 +4047,7 @@ if (countdownElements.days) {
     const nextDeleted = !Boolean(override.deleted);
     await saveElementOverride(key, { hidden: nextDeleted, deleted: nextDeleted });
     setAdminHiddenState(section, nextDeleted, nextDeleted);
-    ensureSectionTools(section, 'static');
+    disableLegacySectionControls();
   }
 
   async function persistStaticSectionOrder() {
@@ -4553,21 +4665,40 @@ if (countdownElements.days) {
     }
   }
 
+  function disableLegacySectionControls() {
+    document.querySelectorAll('.admin-section-tools').forEach((tools) => {
+      tools.remove();
+    });
+
+    const sections = [
+      ...getStaticSectionToolTargets(),
+      ...Array.from(document.querySelectorAll('[data-admin-dynamic-section="true"]')),
+    ];
+
+    sections.forEach((section) => {
+      section.draggable = false;
+      delete section.dataset.adminDragBound;
+      section.removeAttribute('data-admin-drag-target');
+      section.removeAttribute('data-admin-drag-position');
+      section.removeAttribute('data-admin-text-drop-target');
+    });
+  }
+
+  function disableLegacyTextDrag() {
+    state.draggedTextElement = null;
+    clearTextDragTargets();
+    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
+      element.draggable = false;
+    });
+  }
+
   function registerSectionEditing() {
     getStaticSectionToolTargets().forEach((section, index) => {
       ensureStaticSectionKey(section, index);
-      ensureSectionTools(section, 'static');
-      registerSectionDrag(section, 'static');
     });
 
-    document.querySelectorAll('[data-admin-dynamic-section="true"]').forEach((section) => {
-      ensureSectionTools(section, 'dynamic');
-      registerSectionDrag(section, 'dynamic');
-    });
-
-    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
-      registerTextDrag(element);
-    });
+    disableLegacySectionControls();
+    disableLegacyTextDrag();
   }
 
   function findFreeDragTarget(source) {
@@ -4819,9 +4950,6 @@ if (countdownElements.days) {
     }
     applyElementOverrides();
     registerSectionEditing();
-    document.querySelectorAll('[data-admin-editable="text"]').forEach((element) => {
-      setTextElementDraggableState(element);
-    });
     renderMediaAlbums();
     const toggleButton = document.getElementById('admin-edit-toggle');
     if (toggleButton) {
