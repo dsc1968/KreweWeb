@@ -3134,6 +3134,22 @@ if (countdownElements.days) {
         font-size: 0.82rem;
         color: #8fa0c8;
       }
+
+      body.admin-edit-mode .site-nav a.admin-nav-draggable {
+        cursor: grab;
+      }
+
+      body.admin-edit-mode .site-nav a.admin-nav-dragging {
+        opacity: 0.35;
+        outline: 1px dashed rgba(255, 210, 98, 0.4);
+        outline-offset: 0;
+      }
+
+      body.admin-edit-mode .site-nav a.admin-nav-drag-over {
+        outline: 2px solid rgba(255, 210, 98, 0.95);
+        outline-offset: 0;
+        background: rgba(255, 210, 98, 0.18) !important;
+      }
     `;
 
     document.head.appendChild(style);
@@ -6090,6 +6106,7 @@ if (countdownElements.days) {
     state.editMode = nextValue;
     document.body.classList.toggle('admin-edit-mode', nextValue);
     document.body.classList.toggle('admin-free-drag-mode', nextValue);
+    updateNavDraggable(nextValue);
     if (!nextValue) {
       clearFreeDragCursors();
       hideElementToolbar();
@@ -6125,6 +6142,124 @@ if (countdownElements.days) {
         nextValue ? 'Exit page edit mode' : 'Enter page edit mode'
       );
       toggleButton.setAttribute('aria-pressed', String(nextValue));
+    }
+  }
+
+  const NAV_DYNAMIC_IDS = new Set(['nav-auth-link', 'nav-dashboard-link', 'nav-logout-link']);
+
+  function getStaticNavLinks() {
+    const nav = document.querySelector('.site-nav');
+    if (!nav) return [];
+    return Array.from(nav.querySelectorAll('a')).filter(
+      a => !NAV_DYNAMIC_IDS.has(a.id) && !a.closest('#admin-nav-controls')
+    );
+  }
+
+  function updateNavDraggable(enabled) {
+    getStaticNavLinks().forEach(link => {
+      if (enabled) {
+        link.setAttribute('draggable', 'true');
+        link.classList.add('admin-nav-draggable');
+      } else {
+        link.removeAttribute('draggable');
+        link.classList.remove('admin-nav-draggable', 'admin-nav-drag-over', 'admin-nav-dragging');
+      }
+    });
+  }
+
+  function bindNavReorderEvents() {
+    const nav = document.querySelector('.site-nav');
+    if (!nav || nav.dataset.adminNavDragBound) return;
+    nav.dataset.adminNavDragBound = 'true';
+
+    let dragSource = null;
+
+    nav.addEventListener('dragstart', (e) => {
+      if (!state.editMode) return;
+      const link = e.target.closest('a[draggable="true"]');
+      if (!link || NAV_DYNAMIC_IDS.has(link.id) || link.closest('#admin-nav-controls')) return;
+      dragSource = link;
+      link.classList.add('admin-nav-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', '');
+    });
+
+    nav.addEventListener('dragover', (e) => {
+      if (!state.editMode || !dragSource) return;
+      const link = e.target.closest('a');
+      if (!link || link === dragSource || NAV_DYNAMIC_IDS.has(link.id) || link.closest('#admin-nav-controls')) return;
+      e.preventDefault();
+      nav.querySelectorAll('a.admin-nav-drag-over').forEach(el => el.classList.remove('admin-nav-drag-over'));
+      link.classList.add('admin-nav-drag-over');
+    });
+
+    nav.addEventListener('dragleave', (e) => {
+      const link = e.target.closest && e.target.closest('a');
+      if (link) link.classList.remove('admin-nav-drag-over');
+    });
+
+    nav.addEventListener('drop', async (e) => {
+      if (!state.editMode || !dragSource) return;
+      e.preventDefault();
+      const link = e.target.closest('a');
+      nav.querySelectorAll('a.admin-nav-drag-over').forEach(el => el.classList.remove('admin-nav-drag-over'));
+      dragSource.classList.remove('admin-nav-dragging');
+
+      if (!link || link === dragSource || NAV_DYNAMIC_IDS.has(link.id) || link.closest('#admin-nav-controls')) {
+        dragSource = null;
+        return;
+      }
+
+      nav.insertBefore(dragSource, link);
+      dragSource = null;
+      await saveNavOrder();
+    });
+
+    nav.addEventListener('dragend', () => {
+      if (dragSource) { dragSource.classList.remove('admin-nav-dragging'); dragSource = null; }
+      nav.querySelectorAll('a.admin-nav-drag-over').forEach(el => el.classList.remove('admin-nav-drag-over'));
+    });
+  }
+
+  async function saveNavOrder() {
+    const pagePath = state.pagePath === '/' ? '/index.html' : state.pagePath;
+    const token = getStoredToken();
+    updateSaveStatus('saving', 'Saving\u2026');
+
+    try {
+      const res = await fetch(`/api/admin/file-source?path=${encodeURIComponent(pagePath)}`, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to read file');
+
+      const links = getStaticNavLinks();
+      const indent = '          ';
+      const newNavInner = links.map(a => {
+        const href = a.getAttribute('href') || '#';
+        const text = a.textContent.trim();
+        return `${indent}<a href="${href}">${text}</a>`;
+      }).join('\n');
+
+      const newHtml = data.content.replace(
+        /(<nav[^>]*class="[^"]*site-nav[^"]*"[^>]*>)([\s\S]*?)(<\/nav>)/,
+        (_m, open, _inner, close) => `${open}\n${newNavInner}\n        ${close}`
+      );
+
+      if (newHtml === data.content) { updateSaveStatus('idle', 'Saved'); return; }
+
+      const saveRes = await fetch('/api/admin/file-source', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ path: pagePath, content: newHtml }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveData.error || 'Failed to save');
+
+      updateSaveStatus('saved', 'Saved');
+    } catch (err) {
+      console.error('Nav save error:', err);
+      updateSaveStatus('error', err.message);
     }
   }
 
@@ -6196,6 +6331,7 @@ if (countdownElements.days) {
     codeButton.addEventListener('click', openSourceCodeEditor);
 
     bindFreeDragHandlers();
+    bindNavReorderEvents();
     ensureElementToolbar();
     ensureInspectorPanel();
 
@@ -6246,7 +6382,6 @@ if (countdownElements.days) {
       if (siteNavLink) {
         event.preventDefault();
         event.stopPropagation();
-        hideElementToolbar();
         return;
       }
 
