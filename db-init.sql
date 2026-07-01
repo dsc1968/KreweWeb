@@ -103,6 +103,17 @@ ON photo_albums (page_path, position);
 CREATE INDEX IF NOT EXISTS album_images_album_position_idx
 ON album_images (album_id, position);
 
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  phone TEXT,
+  address TEXT,
+  spouse_name TEXT,
+  kids_names JSONB NOT NULL DEFAULT '[]',
+  guest_name TEXT,
+  float_riders JSONB NOT NULL DEFAULT '[]',
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
 -- Demo seed accounts (run only once in development)
 -- To add these, uncomment and run in psql or via the seed endpoint
 -- Demo Member: demo@krewe.local / demo123

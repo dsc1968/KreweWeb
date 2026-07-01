@@ -913,7 +913,7 @@ if (countdownElements.days) {
   }
 
   function isInsideAdminUi(element) {
-    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel'));
+    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel'));
   }
 
   function hasNestedEditableText(element) {
@@ -2539,6 +2539,10 @@ if (countdownElements.days) {
         cursor: pointer;
       }
 
+      body.admin-edit-mode {
+        padding-right: min(340px, 38vw) !important;
+      }
+
       body.admin-edit-mode [data-admin-editable="text"],
       body.admin-edit-mode [data-admin-editable="image"],
       body.admin-edit-mode [data-admin-editable="background-image"],
@@ -2547,9 +2551,9 @@ if (countdownElements.days) {
       body.admin-edit-mode [data-admin-editable="album-root"],
       body.admin-edit-mode [data-admin-editable="page-root"] {
         outline: 1px dashed rgba(255, 210, 98, 0.28);
-        outline-offset: 2px;
+        outline-offset: 0;
         cursor: pointer;
-        transition: outline-color 0.14s ease, outline-offset 0.14s ease, box-shadow 0.14s ease;
+        transition: outline-color 0.14s ease, box-shadow 0.14s ease;
       }
 
       body.admin-edit-mode [data-admin-editable="text"]:hover,
@@ -2560,7 +2564,7 @@ if (countdownElements.days) {
       body.admin-edit-mode [data-admin-editable="album-root"]:hover,
       body.admin-edit-mode [data-admin-editable="page-root"]:hover {
         outline-color: rgba(255, 210, 98, 0.62);
-        outline-offset: 4px;
+        outline-offset: 0;
       }
 
       body.admin-edit-mode [data-admin-editable="text"].admin-current-selection,
@@ -2571,7 +2575,7 @@ if (countdownElements.days) {
       body.admin-edit-mode [data-admin-editable="album-root"].admin-current-selection,
       body.admin-edit-mode [data-admin-editable="page-root"].admin-current-selection {
         outline: 2px solid rgba(255, 210, 98, 0.95);
-        outline-offset: 4px;
+        outline-offset: 0;
         box-shadow: 0 0 0 3px rgba(255, 210, 98, 0.2);
       }
 
@@ -2856,12 +2860,48 @@ if (countdownElements.days) {
         border: 1px solid rgba(255, 255, 255, 0.18);
         background: rgba(2, 8, 22, 0.95);
         box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        user-select: none;
       }
 
-      .admin-inspector-panel h3 {
+      .admin-inspector-panel.is-dragging {
+        opacity: 0.92;
+        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
+        transition: none;
+      }
+
+      .admin-inspector-drag-handle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: move;
+        margin-bottom: 0.2rem;
+      }
+
+      .admin-inspector-drag-handle h3 {
         margin: 0;
         font-size: 0.92rem;
         color: #ffd262;
+        pointer-events: none;
+      }
+
+      .admin-inspector-drag-dots {
+        display: grid;
+        grid-template-columns: repeat(3, 4px);
+        gap: 3px;
+        opacity: 0.4;
+        pointer-events: none;
+      }
+
+      .admin-inspector-drag-dots span {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: #b8c4e0;
+        display: block;
+      }
+
+      .admin-inspector-drag-handle:hover .admin-inspector-drag-dots {
+        opacity: 0.8;
       }
 
       .admin-inspector-meta {
@@ -2974,6 +3014,125 @@ if (countdownElements.days) {
         outline: 2px dashed rgba(255, 210, 98, 0.55);
         outline-offset: -4px;
         cursor: pointer;
+      }
+
+      .admin-code-editor-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10100;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        background: rgba(2, 8, 22, 0.78);
+        padding: 0;
+      }
+
+      .admin-code-editor-modal {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 1100px;
+        background: #08102a;
+        color: #f5f7ff;
+        border-left: 1px solid rgba(255, 210, 98, 0.24);
+        border-right: 1px solid rgba(255, 210, 98, 0.24);
+        overflow: hidden;
+      }
+
+      .admin-code-editor-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        background: #0b162e;
+        flex-shrink: 0;
+      }
+
+      .admin-code-editor-header h2 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        flex: 1;
+      }
+
+      .admin-code-editor-tabs {
+        display: flex;
+        gap: 0.25rem;
+        padding: 0.5rem 1.25rem 0;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        flex-shrink: 0;
+      }
+
+      .admin-code-tab {
+        padding: 0.4rem 1rem;
+        border-radius: 8px 8px 0 0;
+        border: 1px solid transparent;
+        border-bottom: none;
+        background: transparent;
+        color: #8fa0c8;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.85rem;
+        transition: background 0.15s, color 0.15s;
+      }
+
+      .admin-code-tab:hover {
+        background: rgba(255,255,255,0.06);
+        color: #d8e2fa;
+      }
+
+      .admin-code-tab.is-active {
+        background: #08102a;
+        border-color: rgba(255,210,98,0.3);
+        color: #ffd262;
+        position: relative;
+        bottom: -1px;
+      }
+
+      .admin-code-editor-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 0;
+      }
+
+      .admin-code-editor-textarea {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        padding: 1rem 1.25rem;
+        background: #030916;
+        color: #c9d7f5;
+        border: none;
+        outline: none;
+        resize: none;
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        tab-size: 2;
+        white-space: pre;
+        overflow-wrap: normal;
+        overflow-x: auto;
+        overflow-y: auto;
+        box-sizing: border-box;
+      }
+
+      .admin-code-editor-footer {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        background: #0b162e;
+        flex-shrink: 0;
+      }
+
+      .admin-code-editor-status {
+        flex: 1;
+        font-size: 0.82rem;
+        color: #8fa0c8;
       }
     `;
 
@@ -3673,7 +3832,12 @@ if (countdownElements.days) {
     const panel = document.createElement('aside');
     panel.className = 'admin-inspector-panel';
     panel.innerHTML = `
-      <h3>Inspector</h3>
+      <div class="admin-inspector-drag-handle" id="admin-inspector-handle">
+        <h3>Inspector</h3>
+        <div class="admin-inspector-drag-dots">
+          ${Array(6).fill('<span></span>').join('')}
+        </div>
+      </div>
       <div class="admin-inspector-meta" data-role="selected-kind">No selection</div>
       <div class="admin-inspector-meta" data-role="selected-key"></div>
       <div class="admin-inspector-meta" style="border-top:1px solid rgba(255,255,255,0.12);padding-top:0.45rem;">
@@ -3739,6 +3903,50 @@ if (countdownElements.days) {
     });
 
     document.body.appendChild(panel);
+
+    // — Drag to move —
+    const handle = panel.querySelector('#admin-inspector-handle');
+    let dragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      dragging = true;
+      handle.setPointerCapture(e.pointerId);
+      panel.classList.add('is-dragging');
+
+      // Convert right/top to left/top so we can freely position it
+      const rect = panel.getBoundingClientRect();
+      panel.style.right = 'auto';
+      panel.style.left = rect.left + 'px';
+      panel.style.top = rect.top + 'px';
+
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const maxX = window.innerWidth - panel.offsetWidth;
+      const maxY = window.innerHeight - panel.offsetHeight;
+      const newLeft = Math.max(0, Math.min(maxX, e.clientX - dragOffsetX));
+      const newTop = Math.max(0, Math.min(maxY, e.clientY - dragOffsetY));
+      panel.style.left = newLeft + 'px';
+      panel.style.top = newTop + 'px';
+    });
+
+    handle.addEventListener('pointerup', () => {
+      dragging = false;
+      panel.classList.remove('is-dragging');
+    });
+
+    handle.addEventListener('pointercancel', () => {
+      dragging = false;
+      panel.classList.remove('is-dragging');
+    });
+
     state.inspectorPanel = panel;
     return panel;
   }
@@ -5738,6 +5946,146 @@ if (countdownElements.days) {
     }, true);
   }
 
+  async function openSourceCodeEditor() {
+    // Remove any existing instance
+    const existing = document.getElementById('admin-code-editor-backdrop');
+    if (existing) { existing.remove(); return; }
+
+    const pagePath = state.pagePath === '/' ? '/index.html' : state.pagePath;
+    const cssPath = '/styles.css';
+    const token = getStoredToken();
+
+    async function fetchSource(filePath) {
+      const res = await fetch(`/api/admin/file-source?path=${encodeURIComponent(filePath)}`, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load file');
+      return data.content;
+    }
+
+    async function saveSource(filePath, content) {
+      const res = await fetch('/api/admin/file-source', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ path: filePath, content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save file');
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'admin-code-editor-backdrop';
+    backdrop.className = 'admin-code-editor-backdrop';
+
+    backdrop.innerHTML = `
+      <div class="admin-code-editor-modal" role="dialog" aria-modal="true" aria-labelledby="admin-code-editor-title">
+        <div class="admin-code-editor-header">
+          <h2 id="admin-code-editor-title">Source Code Editor</h2>
+          <button type="button" class="button secondary" id="admin-code-editor-close" aria-label="Close editor">&times; Close</button>
+        </div>
+        <div class="admin-code-editor-tabs">
+          <button type="button" class="admin-code-tab is-active" data-file="${pagePath}">HTML — ${pagePath}</button>
+          <button type="button" class="admin-code-tab" data-file="${cssPath}">CSS — ${cssPath}</button>
+        </div>
+        <div class="admin-code-editor-body">
+          <textarea class="admin-code-editor-textarea" id="admin-code-editor-textarea" spellcheck="false" autocorrect="off" autocapitalize="off">Loading…</textarea>
+        </div>
+        <div class="admin-code-editor-footer">
+          <span class="admin-code-editor-status" id="admin-code-editor-status">Loading file…</span>
+          <button type="button" class="button secondary" id="admin-code-editor-save">Save File</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+
+    const textarea = backdrop.querySelector('#admin-code-editor-textarea');
+    const statusEl = backdrop.querySelector('#admin-code-editor-status');
+    const tabs = backdrop.querySelectorAll('.admin-code-tab');
+
+    let activeFile = pagePath;
+    const cache = {};
+
+    function setStatus(msg, isError) {
+      statusEl.textContent = msg;
+      statusEl.style.color = isError ? '#ff9b9b' : '#8fa0c8';
+    }
+
+    async function loadFile(filePath) {
+      setStatus('Loading…', false);
+      textarea.value = '';
+      textarea.disabled = true;
+      try {
+        if (!cache[filePath]) {
+          cache[filePath] = await fetchSource(filePath);
+        }
+        textarea.value = cache[filePath];
+        textarea.disabled = false;
+        textarea.focus();
+        setStatus(`Editing: ${filePath}`, false);
+      } catch (err) {
+        textarea.value = '';
+        setStatus(err.message, true);
+      }
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', async () => {
+        if (activeFile !== tab.dataset.file && !textarea.disabled) {
+          cache[activeFile] = textarea.value;
+        }
+        activeFile = tab.dataset.file;
+        tabs.forEach((t) => t.classList.toggle('is-active', t === tab));
+        await loadFile(activeFile);
+      });
+    });
+
+    textarea.addEventListener('input', () => {
+      cache[activeFile] = textarea.value;
+    });
+
+    backdrop.querySelector('#admin-code-editor-save').addEventListener('click', async () => {
+      cache[activeFile] = textarea.value;
+      const btn = backdrop.querySelector('#admin-code-editor-save');
+      btn.disabled = true;
+      setStatus('Saving…', false);
+      try {
+        await saveSource(activeFile, cache[activeFile]);
+        setStatus('Saved. Reload the page to see changes.', false);
+      } catch (err) {
+        setStatus(err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    backdrop.querySelector('#admin-code-editor-close').addEventListener('click', () => {
+      backdrop.remove();
+    });
+
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape' && document.getElementById('admin-code-editor-backdrop')) {
+        backdrop.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    });
+
+    // Support Tab key for indentation in the textarea
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.value = textarea.value.slice(0, start) + '  ' + textarea.value.slice(end);
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+        cache[activeFile] = textarea.value;
+      }
+    });
+
+    await loadFile(activeFile);
+  }
+
   function setEditMode(nextValue) {
     state.editMode = nextValue;
     document.body.classList.toggle('admin-edit-mode', nextValue);
@@ -5818,7 +6166,19 @@ if (countdownElements.days) {
       </svg>
     `;
 
-    controls.replaceChildren(button, addButton);
+    const codeButton = document.createElement('button');
+    codeButton.id = 'admin-code-editor-toggle';
+    codeButton.type = 'button';
+    codeButton.className = 'admin-edit-nav-button';
+    codeButton.setAttribute('aria-label', 'Edit page source code');
+    codeButton.setAttribute('title', 'Edit HTML / CSS source files');
+    codeButton.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6z" />
+      </svg>
+    `;
+
+    controls.replaceChildren(button, addButton, codeButton);
     ensureSaveStatusNode();
     updateSaveStatus('idle', 'Saved');
 
@@ -5833,6 +6193,7 @@ if (countdownElements.days) {
       setEditMode(!state.editMode);
     });
     addButton.addEventListener('click', openAddSectionModal);
+    codeButton.addEventListener('click', openSourceCodeEditor);
 
     bindFreeDragHandlers();
     ensureElementToolbar();
@@ -5853,7 +6214,7 @@ if (countdownElements.days) {
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
-      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel')) return;
+      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
       if (calendarCell) {

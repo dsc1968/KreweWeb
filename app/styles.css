@@ -863,8 +863,338 @@ body.admin-edit-mode .album-tools {
 /* small utilities */
 .form-group { margin-bottom: 1rem; }
 
-/* Dashboard content */
-#profile { background: var(--surface); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border); }
+/* ── Dashboard ─────────────────────────────────────────── */
+
+.db-layout {
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Hero banner */
+.db-hero {
+  background: linear-gradient(135deg, rgba(10,19,44,0.98) 0%, rgba(20,35,72,0.98) 100%);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2rem 2.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+.db-avatar {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255,210,98,0.25), rgba(255,178,72,0.15));
+  border: 2px solid rgba(255,210,98,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+
+.db-hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.db-hero-name {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.3rem, 3vw, 1.75rem);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.db-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.db-hero-meta li {
+  font-size: 0.88rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.db-hero-meta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.db-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.db-badge--member {
+  background: rgba(255,210,98,0.14);
+  border: 1px solid rgba(255,210,98,0.35);
+  color: var(--accent);
+}
+
+.db-badge--admin {
+  background: rgba(100,180,255,0.14);
+  border: 1px solid rgba(100,180,255,0.35);
+  color: #7ec8f5;
+}
+
+/* Tab nav */
+.db-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 0;
+}
+
+.db-tab {
+  padding: 0.55rem 1.25rem;
+  border-radius: 10px 10px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+  bottom: -1px;
+}
+
+.db-tab:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.db-tab.is-active {
+  background: linear-gradient(180deg, rgba(15,26,56,0.98), rgba(10,19,44,0.98));
+  border-color: rgba(255,255,255,0.1);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Tab panels */
+.db-tab-panel {
+  display: none;
+}
+
+.db-tab-panel.is-active {
+  display: block;
+}
+
+/* Cards grid */
+.db-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.db-cards-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Single card */
+.db-card {
+  background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+}
+
+.db-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+.db-card-header svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: var(--accent);
+  flex-shrink: 0;
+}
+
+.db-card-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Form inside card */
+.db-form label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-form input[type="text"],
+.db-form input[type="tel"] {
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.db-form input:focus {
+  outline: none;
+  border-color: rgba(255,210,98,0.5);
+  background: rgba(255,210,98,0.04);
+}
+
+.db-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1.25rem;
+}
+
+.db-add-btn {
+  margin-top: 0.45rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.db-add-btn:hover {
+  border-color: rgba(255,210,98,0.4);
+  color: var(--accent);
+}
+
+.db-feedback {
+  min-height: 1.2em;
+  font-size: 0.88rem;
+  margin-bottom: 0.75rem;
+  color: var(--muted);
+}
+
+.db-save-btn {
+  margin-top: 0.25rem;
+}
+
+.db-cards-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.db-config-section-label {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.db-form select {
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  appearance: none;
+}
+
+.db-form select:focus {
+  outline: none;
+  border-color: rgba(255,210,98,0.5);
+}
+
+.db-form input[type="number"] {
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  box-sizing: border-box;
+}
+
+.db-form input[type="number"]:focus {
+  outline: none;
+  border-color: rgba(255,210,98,0.5);
+}
+
+.db-form input[type="password"] {
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  box-sizing: border-box;
+}
+
+.db-form input[type="password"]:focus {
+  outline: none;
+  border-color: rgba(255,210,98,0.5);
+}
+
+@media (max-width: 900px) {
+  .db-cards-grid--2 {
+    grid-template-columns: 1fr;
+  }
+}
+  .db-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.5rem;
+  }
+
+  .db-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Legacy #profile override (kept for compat) */
+#profile.db-hero { background: unset; padding: unset; border-radius: unset; border: unset; }
 
 .admin-user-select {
   padding: 0.5rem 0.75rem;

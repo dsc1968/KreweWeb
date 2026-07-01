@@ -407,6 +407,19 @@ async function ensureContentTable() {
     CREATE INDEX IF NOT EXISTS pending_registrations_expires_idx
     ON pending_registrations (expires_at)
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      phone TEXT,
+      address TEXT,
+      spouse_name TEXT,
+      kids_names JSONB NOT NULL DEFAULT '[]',
+      guest_name TEXT,
+      float_riders JSONB NOT NULL DEFAULT '[]',
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 function isAdmin(req) {
@@ -653,6 +666,164 @@ app.get('/api/admin/images', authenticateToken, (req, res) => {
   } catch (error) {
     console.error('Failed to list images', error);
     res.status(500).json({ error: 'Unable to list images' });
+  }
+});
+
+// File source editor endpoints (admin only) — reads/writes HTML and CSS files under app/
+const appDir = path.join(__dirname, 'app');
+const fileBackupsDir = path.join(__dirname, '_file_backups');
+
+function resolveEditableFilePath(requestedPath) {
+  if (!requestedPath || typeof requestedPath !== 'string') return null;
+  const ext = path.extname(requestedPath).toLowerCase();
+  if (!['.html', '.css'].includes(ext)) return null;
+  const relative = requestedPath.startsWith('/') ? requestedPath.slice(1) : requestedPath;
+  const resolved = path.resolve(appDir, relative);
+  // Must remain inside the app/ directory
+  if (!resolved.startsWith(appDir + path.sep) && resolved !== appDir) return null;
+  return resolved;
+}
+
+app.get('/api/admin/file-source', authenticateToken, (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const filePath = resolveEditableFilePath(req.query.path);
+  if (!filePath) return res.status(400).json({ error: 'Valid .html or .css path under app/ is required' });
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    res.json({ path: req.query.path, content });
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
+    console.error('Failed to read file source', err);
+    res.status(500).json({ error: 'Unable to read file' });
+  }
+});
+
+app.put('/api/admin/file-source', authenticateToken, (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const requestedPath = req.body.path;
+  const content = req.body.content;
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content is required' });
+  const filePath = resolveEditableFilePath(requestedPath);
+  if (!filePath) return res.status(400).json({ error: 'Valid .html or .css path under app/ is required' });
+  try {
+    // Write backup before overwriting
+    if (!fs.existsSync(fileBackupsDir)) fs.mkdirSync(fileBackupsDir, { recursive: true });
+    const ext = path.extname(filePath);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupName = path.basename(filePath, ext) + '_' + ts + ext;
+    if (fs.existsSync(filePath)) {
+      fs.copyFileSync(filePath, path.join(fileBackupsDir, backupName));
+    }
+    fs.writeFileSync(filePath, content, 'utf8');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to write file source', err);
+    res.status(500).json({ error: 'Unable to write file' });
+  }
+});
+
+// Allowlisted .env keys that admins may read/write via the dashboard
+const ENV_CONFIG_ALLOWLIST = [
+  'REGISTRATION_CODE_TTL_MINUTES',
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'SMTP_FROM',
+  'SMTP_REPLY_TO',
+  'CONTACT_RECIPIENT',
+];
+
+const envFilePath = path.join(__dirname, '.env');
+
+function parseEnvFile(content) {
+  const map = {};
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    map[key] = value;
+  }
+  return map;
+}
+
+function serializeEnvFile(originalContent, updates) {
+  const lines = originalContent.split('\n');
+  const written = new Set();
+
+  const result = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return line;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 1) return line;
+    const key = trimmed.slice(0, eqIdx).trim();
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      written.add(key);
+      const val = updates[key];
+      const needsQuotes = val.includes(' ') || val.includes('#') || val.includes('"');
+      return `${key}=${needsQuotes ? `"${val.replace(/"/g, '\\"')}"` : val}`;
+    }
+    return line;
+  });
+
+  // Append any keys that weren't already in the file
+  for (const key of Object.keys(updates)) {
+    if (!written.has(key)) {
+      const val = updates[key];
+      const needsQuotes = val.includes(' ') || val.includes('#') || val.includes('"');
+      result.push(`${key}=${needsQuotes ? `"${val.replace(/"/g, '\\"')}"` : val}`);
+    }
+  }
+
+  return result.join('\n');
+}
+
+app.get('/api/admin/config', authenticateToken, (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const content = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '';
+    const all = parseEnvFile(content);
+    const config = {};
+    for (const key of ENV_CONFIG_ALLOWLIST) {
+      config[key] = all[key] ?? '';
+    }
+    res.json({ config, allowlist: ENV_CONFIG_ALLOWLIST });
+  } catch (err) {
+    console.error('Failed to read config', err);
+    res.status(500).json({ error: 'Unable to read config' });
+  }
+});
+
+app.put('/api/admin/config', authenticateToken, (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const updates = req.body.config;
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    return res.status(400).json({ error: 'config object is required' });
+  }
+  // Strip any keys not on the allowlist
+  const safe = {};
+  for (const key of ENV_CONFIG_ALLOWLIST) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      if (typeof updates[key] !== 'string') return res.status(400).json({ error: `Value for ${key} must be a string` });
+      safe[key] = updates[key].trim();
+    }
+  }
+  try {
+    const original = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '';
+    const updated = serializeEnvFile(original, safe);
+    fs.writeFileSync(envFilePath, updated, 'utf8');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to write config', err);
+    res.status(500).json({ error: 'Unable to write config' });
   }
 });
 
@@ -1584,6 +1755,83 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
   }
 });
 
+// Get full details for one user (admin only)
+app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const userId = Number.parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+    const row = result.rows[0];
+    res.json({ ...row, kids_names: row.kids_names || [], float_riders: row.float_riders || [] });
+  } catch (error) {
+    console.error('Failed to fetch user details', error);
+    res.status(500).json({ error: 'Unable to fetch user details' });
+  }
+});
+
+// Update all editable fields for a user (admin only)
+app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const userId = Number.parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
+
+  const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
+  const email = normalizeEmailAddress(req.body.email);
+  const role = ['admin', 'member'].includes(req.body.role) ? req.body.role : null;
+
+  if (!fullName) return res.status(400).json({ error: 'Full name is required' });
+  if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
+  if (!role) return res.status(400).json({ error: 'Role must be member or admin' });
+
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
+  const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
+  const spouse_name = typeof req.body.spouse_name === 'string' ? req.body.spouse_name.trim().slice(0, 100) : null;
+  const guest_name = typeof req.body.guest_name === 'string' ? req.body.guest_name.trim().slice(0, 100) : null;
+  const kidsRaw = Array.isArray(req.body.kids_names) ? req.body.kids_names : [];
+  const ridersRaw = Array.isArray(req.body.float_riders) ? req.body.float_riders : [];
+  const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+  const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `UPDATE users SET full_name = $1, email = $2, role = $3 WHERE id = $4
+       RETURNING id, email, full_name, role, joined_at`,
+      [fullName, email, role, userId]
+    );
+    if (userResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'User not found' }); }
+
+    await client.query(
+      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, updated_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         phone=EXCLUDED.phone, address=EXCLUDED.address, spouse_name=EXCLUDED.spouse_name,
+         kids_names=EXCLUDED.kids_names, guest_name=EXCLUDED.guest_name,
+         float_riders=EXCLUDED.float_riders, updated_at=NOW()`,
+      [userId, phone||null, address||null, spouse_name||null, JSON.stringify(kids_names), guest_name||null, JSON.stringify(float_riders)]
+    );
+    await client.query('COMMIT');
+    res.json({ user: userResult.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.code === '23505') return res.status(409).json({ error: 'Email already in use by another account' });
+    console.error('Failed to update user details', error);
+    res.status(500).json({ error: 'Unable to update user details' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/admin/users', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
@@ -2109,12 +2357,60 @@ app.post('/api/auth/login', async (req, res) => {
 // Protected profile route
 app.get('/api/profile', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, email, full_name, role, joined_at FROM users WHERE id = $1', [req.user.userId]);
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [req.user.userId]
+    );
     if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    res.json({
+      ...row,
+      kids_names: row.kids_names || [],
+      float_riders: row.float_riders || [],
+    });
   } catch (error) {
     console.error('Failed to fetch profile', error);
     res.status(500).json({ error: 'Unable to fetch profile' });
+  }
+});
+
+app.put('/api/profile/details', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
+  const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
+  const spouse_name = typeof req.body.spouse_name === 'string' ? req.body.spouse_name.trim().slice(0, 100) : null;
+  const guest_name = typeof req.body.guest_name === 'string' ? req.body.guest_name.trim().slice(0, 100) : null;
+
+  const kidsRaw = req.body.kids_names;
+  if (!Array.isArray(kidsRaw)) return res.status(400).json({ error: 'kids_names must be an array' });
+  const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+
+  const ridersRaw = req.body.float_riders;
+  if (!Array.isArray(ridersRaw)) return res.status(400).json({ error: 'float_riders must be an array' });
+  const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
+
+  try {
+    await pool.query(
+      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         phone = EXCLUDED.phone,
+         address = EXCLUDED.address,
+         spouse_name = EXCLUDED.spouse_name,
+         kids_names = EXCLUDED.kids_names,
+         guest_name = EXCLUDED.guest_name,
+         float_riders = EXCLUDED.float_riders,
+         updated_at = NOW()`,
+      [userId, phone || null, address || null, spouse_name || null, JSON.stringify(kids_names), guest_name || null, JSON.stringify(float_riders)]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Failed to update profile details', error);
+    res.status(500).json({ error: 'Unable to update profile details' });
   }
 });
 
