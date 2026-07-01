@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Shop Management - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .sa-table { width: 100%; border-collapse: collapse; }
+      .sa-table th {
+        text-align: left;
+        padding: 0.7rem 0.85rem;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+      .sa-table td {
+        padding: 0.7rem 0.85rem;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        font-size: 0.88rem;
+        vertical-align: middle;
+      }
+      .sa-table tr:last-child td { border-bottom: none; }
+
+      .sa-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .sa-badge.active   { background: rgba(74,222,128,0.14); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+      .sa-badge.inactive { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.25); color: #f87171; }
+
+      .sa-action-btn {
+        padding: 0.3rem 0.65rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.05);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+        margin-right: 0.3rem;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .sa-action-btn:hover { border-color: rgba(255,210,98,0.4); background: rgba(255,210,98,0.06); color: var(--accent); }
+      .sa-action-btn.danger:hover { border-color: rgba(248,113,113,0.5); background: rgba(248,113,113,0.06); color: #f87171; }
+
+      .sa-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.72); z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+        padding: 1rem;
+      }
+      .sa-modal-box {
+        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.97));
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1.75rem;
+        width: min(560px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      }
+      .sa-modal-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 1.25rem;
+      }
+      .sa-modal-head h3 { margin: 0; font-size: 1rem; }
+      .sa-modal-close {
+        background: none; border: none; color: var(--muted);
+        font-size: 1.4rem; cursor: pointer; line-height: 1;
+      }
+
+      .sa-order-status {
+        display: inline-block; padding: 0.15rem 0.55rem;
+        border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      .sa-order-status.pending    { background: rgba(255,210,98,0.14); border:1px solid rgba(255,210,98,0.3); color: var(--accent); }
+      .sa-order-status.processing { background: rgba(96,165,250,0.14); border:1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+      .sa-order-status.shipped    { background: rgba(167,243,208,0.14); border:1px solid rgba(167,243,208,0.3); color: #6ee7b7; }
+      .sa-order-status.completed  { background: rgba(74,222,128,0.14); border:1px solid rgba(74,222,128,0.3); color: #4ade80; }
+      .sa-order-status.cancelled  { background: rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color: #f87171; }
+
+      .sa-status-select {
+        padding: 0.3rem 0.6rem; border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: #12203f; color: var(--text);
+        font: inherit; font-size: 0.82rem; cursor: pointer;
+      }
+
+      @media (max-width: 720px) {
+        .sa-table th:nth-child(3), .sa-table td:nth-child(3),
+        .sa-table th:nth-child(5), .sa-table td:nth-child(5) { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="shop-admin-page" class="section" style="display:none;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+          <h2 style="margin:0;">Shop Management</h2>
+          <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+        </div>
+
+        <!-- Tabs -->
+        <nav class="shop-tabs" style="margin-bottom:1.5rem;">
+          <button class="shop-tab-btn is-active" data-shop-tab="products">Products</button>
+          <button class="shop-tab-btn" data-shop-tab="orders">Orders</button>
+        </nav>
+
+        <!-- Products panel -->
+        <div class="shop-panel is-active" data-shop-panel="products">
+          <div style="display:flex; justify-content:flex-end; margin-bottom:1rem;">
+            <button id="sa-add-product-btn" class="button">+ Add Product</button>
+          </div>
+          <div id="sa-products-feedback" class="db-feedback"></div>
+          <div style="overflow-x:auto;">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-products-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Orders panel -->
+        <div class="shop-panel" data-shop-panel="orders">
+          <div id="sa-orders-feedback" class="db-feedback"></div>
+          <div style="overflow-x:auto;">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Buyer</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Items</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="sa-orders-tbody"></tbody>
+            </table>
+          </div>
+          <div id="sa-orders-pagination" style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;"></div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- Product edit modal -->
+    <div id="sa-product-modal" class="sa-modal-overlay" style="display:none;" role="dialog" aria-modal="true">
+      <div class="sa-modal-box">
+        <div class="sa-modal-head">
+          <h3 id="sa-modal-title">Add Product</h3>
+          <button class="sa-modal-close" id="sa-modal-close">&times;</button>
+        </div>
+        <form id="sa-product-form" class="db-form" novalidate>
+          <input type="hidden" id="sa-product-id" />
+          <div class="db-form-grid">
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="sa-name">Product Name</label>
+              <input type="text" id="sa-name" placeholder="e.g. Krewe T-Shirt" required />
+            </div>
+            <div class="form-group">
+              <label for="sa-price">Price ($)</label>
+              <input type="number" id="sa-price" placeholder="0.00" min="0" step="0.01" required />
+            </div>
+            <div class="form-group">
+              <label for="sa-category">Category</label>
+              <input type="text" id="sa-category" placeholder="e.g. Apparel" />
+            </div>
+            <div class="form-group">
+              <label for="sa-stock">Stock Qty <span style="font-weight:400;">(blank = unlimited)</span></label>
+              <input type="number" id="sa-stock" placeholder="Unlimited" min="0" />
+            </div>
+            <div class="form-group">
+              <label for="sa-active">Status</label>
+              <select id="sa-active">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="sa-image">Image URL / Path</label>
+              <input type="text" id="sa-image" placeholder="/assets/images/product.jpg or https://…" />
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="sa-desc">Description</label>
+              <textarea id="sa-desc" rows="3" style="width:100%;padding:0.7rem 0.95rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font:inherit;resize:vertical;box-sizing:border-box;" placeholder="Short product description…"></textarea>
+            </div>
+          </div>
+          <div id="sa-form-feedback" class="db-feedback" style="margin-top:0.75rem;"></div>
+          <div style="display:flex;gap:0.75rem;margin-top:0.5rem;flex-wrap:wrap;">
+            <button type="submit" class="button">Save Product</button>
+            <button type="button" id="sa-form-cancel" class="button secondary">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

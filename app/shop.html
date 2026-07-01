@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Shop - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* ── Shop page ───────────────────────────────────────────────────── */
+      .shop-layout {
+        padding-top: 2rem;
+        padding-bottom: 4rem;
+      }
+
+      .shop-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1.75rem;
+      }
+
+      .shop-header h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); }
+
+      .shop-cart-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 1.1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255,210,98,0.4);
+        background: rgba(255,210,98,0.08);
+        color: var(--accent);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.92rem;
+        font-weight: 600;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .shop-cart-btn:hover { background: rgba(255,210,98,0.16); border-color: rgba(255,210,98,0.6); }
+
+      .shop-cart-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.3rem;
+        height: 1.3rem;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #08102a;
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 0 0.25rem;
+      }
+
+      /* Category filter */
+      .shop-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .shop-filter-btn {
+        padding: 0.35rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.05);
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.82rem;
+        transition: all 0.15s;
+      }
+      .shop-filter-btn.is-active,
+      .shop-filter-btn:hover {
+        border-color: rgba(255,210,98,0.5);
+        background: rgba(255,210,98,0.1);
+        color: var(--accent);
+      }
+
+      /* Product grid */
+      .shop-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 1.25rem;
+      }
+
+      .shop-product-card {
+        background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.2s, transform 0.2s;
+      }
+      .shop-product-card:hover { border-color: rgba(255,210,98,0.4); transform: translateY(-2px); }
+
+      .shop-product-img {
+        width: 100%;
+        aspect-ratio: 4/3;
+        object-fit: cover;
+        background: rgba(2,8,22,0.8);
+      }
+
+      .shop-product-img-placeholder {
+        width: 100%;
+        aspect-ratio: 4/3;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(2,8,22,0.6);
+        font-size: 3rem;
+        color: rgba(255,255,255,0.15);
+      }
+
+      .shop-product-body {
+        padding: 1rem 1.1rem 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 1;
+      }
+
+      .shop-product-category {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+      }
+
+      .shop-product-name {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--text);
+      }
+
+      .shop-product-desc {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--muted);
+        line-height: 1.5;
+        flex: 1;
+      }
+
+      .shop-product-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .shop-product-price {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: var(--accent);
+      }
+
+      .shop-product-stock {
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+
+      .shop-add-btn {
+        padding: 0.45rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255,210,98,0.4);
+        background: rgba(255,210,98,0.1);
+        color: var(--accent);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .shop-add-btn:hover:not(:disabled) { background: rgba(255,210,98,0.2); border-color: rgba(255,210,98,0.7); }
+      .shop-add-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      /* ── Cart drawer ─────────────────────────────────────────────── */
+      .shop-cart-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2,8,22,0.7);
+        z-index: 500;
+        display: none;
+      }
+      .shop-cart-overlay.is-open { display: block; }
+
+      .shop-cart-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(420px, 100vw);
+        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.99));
+        border-left: 1px solid var(--border);
+        z-index: 501;
+        display: flex;
+        flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.28s ease;
+        box-shadow: -8px 0 40px rgba(0,0,0,0.4);
+      }
+      .shop-cart-drawer.is-open { transform: translateX(0); }
+
+      .shop-cart-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        flex-shrink: 0;
+      }
+
+      .shop-cart-head h2 { margin: 0; font-size: 1.05rem; }
+
+      .shop-cart-close {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 1.5rem;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0.2rem;
+      }
+
+      .shop-cart-items {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .shop-cart-empty {
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+        padding: 2rem 0;
+      }
+
+      .shop-cart-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.35rem 0.75rem;
+        align-items: start;
+        padding: 0.75rem;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.07);
+      }
+
+      .shop-cart-item-name {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text);
+        grid-column: 1;
+      }
+
+      .shop-cart-item-price {
+        font-size: 0.85rem;
+        color: var(--accent);
+        font-weight: 700;
+        text-align: right;
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .shop-cart-item-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        grid-column: 1;
+      }
+
+      .shop-cart-qty-btn {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.9rem;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .shop-cart-qty-btn:hover { background: rgba(255,255,255,0.12); }
+
+      .shop-cart-qty-val { font-size: 0.88rem; min-width: 1.5rem; text-align: center; }
+
+      .shop-cart-item-remove {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.78rem;
+        padding: 0;
+        grid-column: 2;
+        grid-row: 2;
+        text-align: right;
+        text-decoration: underline;
+        transition: color 0.15s;
+      }
+      .shop-cart-item-remove:hover { color: #f87171; }
+
+      .shop-cart-foot {
+        padding: 1rem 1.5rem 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        flex-shrink: 0;
+      }
+
+      .shop-cart-total {
+        display: flex;
+        justify-content: space-between;
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+      }
+
+      .shop-cart-total span:last-child { color: var(--accent); }
+
+      .shop-cart-feedback {
+        font-size: 0.85rem;
+        min-height: 1.2em;
+        margin-bottom: 0.6rem;
+        color: var(--muted);
+      }
+
+      /* ── Orders tab ──────────────────────────────────────────────── */
+      .shop-order-card {
+        background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.85rem;
+      }
+
+      .shop-order-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.65rem;
+      }
+
+      .shop-order-id { font-size: 0.8rem; color: var(--muted); }
+      .shop-order-date { font-size: 0.8rem; color: var(--muted); }
+      .shop-order-total { font-weight: 700; color: var(--accent); }
+
+      .shop-order-status {
+        display: inline-block;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .shop-order-status.pending   { background: rgba(255,210,98,0.14); border: 1px solid rgba(255,210,98,0.3); color: var(--accent); }
+      .shop-order-status.processing{ background: rgba(96,165,250,0.14); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+      .shop-order-status.shipped   { background: rgba(167,243,208,0.14); border: 1px solid rgba(167,243,208,0.3); color: #6ee7b7; }
+      .shop-order-status.completed { background: rgba(74,222,128,0.14); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+      .shop-order-status.cancelled { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
+
+      .shop-order-items { font-size: 0.85rem; color: var(--muted); line-height: 1.8; }
+
+      /* Tabs */
+      .shop-tabs {
+        display: flex;
+        gap: 0.25rem;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        margin-bottom: 1.5rem;
+      }
+      .shop-tab-btn {
+        padding: 0.5rem 1.1rem;
+        border-radius: 10px 10px 0 0;
+        border: 1px solid transparent;
+        border-bottom: none;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 500;
+        position: relative;
+        bottom: -1px;
+        transition: color 0.15s, background 0.15s;
+      }
+      .shop-tab-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+      .shop-tab-btn.is-active {
+        background: rgba(10,19,44,0.98);
+        border-color: rgba(255,255,255,0.1);
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .shop-panel { display: none; }
+      .shop-panel.is-active { display: block; }
+
+      @media (max-width: 600px) {
+        .shop-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+        .shop-cart-drawer { width: 100vw; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Cart overlay + drawer -->
+    <div id="shop-cart-overlay" class="shop-cart-overlay"></div>
+    <aside id="shop-cart-drawer" class="shop-cart-drawer" aria-label="Shopping cart">
+      <div class="shop-cart-head">
+        <h2>Your Cart</h2>
+        <button id="shop-cart-close" class="shop-cart-close" aria-label="Close cart">&times;</button>
+      </div>
+      <div id="shop-cart-items" class="shop-cart-items">
+        <p class="shop-cart-empty">Your cart is empty.</p>
+      </div>
+      <div class="shop-cart-foot">
+        <div class="shop-cart-total">
+          <span>Total</span>
+          <span id="shop-cart-total-val">$0.00</span>
+        </div>
+        <div id="shop-cart-feedback" class="shop-cart-feedback"></div>
+        <button id="shop-checkout-btn" class="button" style="width:100%;">Checkout</button>
+        <div id="paypal-button-container" style="margin-top:0.5rem;"></div>
+      </div>
+    </aside>
+
+    <main class="shop-layout container">
+      <div id="shop-page-content" style="display:none;">
+
+        <div class="shop-header">
+          <h1>Krewe Shop</h1>
+          <button id="shop-open-cart-btn" class="shop-cart-btn">
+            🛒 Cart <span id="shop-cart-count" class="shop-cart-count">0</span>
+          </button>
+        </div>
+
+        <nav class="shop-tabs">
+          <button class="shop-tab-btn is-active" data-shop-tab="products">Browse</button>
+          <button class="shop-tab-btn" data-shop-tab="orders">My Orders</button>
+        </nav>
+
+        <!-- Browse panel -->
+        <div class="shop-panel is-active" data-shop-panel="products">
+          <div id="shop-filters" class="shop-filters"></div>
+          <div id="shop-product-feedback" style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;"></div>
+          <div id="shop-grid" class="shop-grid"></div>
+        </div>
+
+        <!-- Orders panel -->
+        <div class="shop-panel" data-shop-panel="orders">
+          <div id="shop-orders-feedback" style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;"></div>
+          <div id="shop-orders-list"></div>
+        </div>
+
+      </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

@@ -120,6 +120,8 @@ const ADMIN_EDIT_EXCLUDED_PAGES = new Set([
   '/user-management.html',
   '/configuration.html',
   '/backup-restore.html',
+  '/shop.html',
+  '/shop-admin.html',
 ]);
 
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -445,13 +447,75 @@ async function ensureContentTable() {
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS beads_paid BOOLEAN NOT NULL DEFAULT FALSE',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS costume_paid BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS dues_paid_season INTEGER',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_fee_paid_season INTEGER',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS beads_paid_season INTEGER',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS costume_paid_season INTEGER',
   ]) {
     await pool.query(col);
   }
+
+  // ── Shop tables ─────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shop_products (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      price NUMERIC(10,2) NOT NULL DEFAULT 0,
+      image_path TEXT,
+      category TEXT,
+      stock_qty INTEGER,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shop_cart_items (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES shop_products(id) ON DELETE CASCADE,
+      quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+      added_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, product_id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shop_orders (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      buyer_name TEXT NOT NULL,
+      buyer_email TEXT NOT NULL,
+      total_amount NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      notes TEXT,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shop_order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES shop_orders(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES shop_products(id) ON DELETE SET NULL,
+      product_name TEXT NOT NULL,
+      unit_price NUMERIC(10,2) NOT NULL,
+      quantity INTEGER NOT NULL
+    )
+  `);
 }
 
 function isAdmin(req) {
   return Boolean(req.user && req.user.role === 'admin');
+}
+
+function isShopManager(req) {
+  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'store_admin'));
 }
 
 
@@ -761,9 +825,42 @@ const ENV_CONFIG_ALLOWLIST = [
   'SMTP_FROM',
   'SMTP_REPLY_TO',
   'CONTACT_RECIPIENT',
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'PAYPAL_MODE',
 ];
 
 const envFilePath = path.join(__dirname, '.env');
+
+// ── Mardi Gras season helpers ─────────────────────────────────────────────
+// Ash Wednesday is 46 days before Easter (Gregorian algorithm)
+function easterDate(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+function ashWednesdayDate(year) {
+  return new Date(easterDate(year).getTime() - 46 * 24 * 60 * 60 * 1000);
+}
+// The "season year" is the year of the UPCOMING Ash Wednesday.
+// After Ash Wednesday passes, dues are considered due for the next season.
+function currentSeasonYear() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const ash = ashWednesdayDate(year);
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return todayMs >= ash.getTime() ? year + 1 : year;
+}
+function ashWednesdayISO(year) {
+  return ashWednesdayDate(year).toISOString().slice(0, 10);
+}
 
 function parseEnvFile(content) {
   const map = {};
@@ -2164,12 +2261,24 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/current-season', authenticateToken, (req, res) => {
+  const sy = currentSeasonYear();
+  res.json({ season_year: sy, ash_wednesday: ashWednesdayISO(sy) });
+});
+
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
-
+  const sy = currentSeasonYear();
   try {
     const result = await pool.query(
-      'SELECT id, email, full_name, role, joined_at FROM users ORDER BY joined_at DESC, id DESC'
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+              (p.dues_paid_season = ${sy}) AS dues_paid,
+              (p.guest_fee_paid_season = ${sy}) AS guest_fee_paid,
+              (p.beads_paid_season = ${sy}) AS beads_paid,
+              (p.costume_paid_season = ${sy}) AS costume_paid
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       ORDER BY u.joined_at DESC, u.id DESC`
     );
     res.json(result.rows);
   } catch (error) {
@@ -2184,12 +2293,13 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
   const userId = Number.parseInt(req.params.userId, 10);
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
   try {
+    const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
               p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              p.dues_paid, p.guest_fee_paid, p.beads_paid, p.costume_paid
+              p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2199,6 +2309,11 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
     const row = result.rows[0];
     res.json({
       ...row,
+      current_season_year: sy,
+      dues_paid: row.dues_paid_season === sy,
+      guest_fee_paid: row.guest_fee_paid_season === sy,
+      beads_paid: row.beads_paid_season === sy,
+      costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
       float_riders: row.float_riders || [],
       kids_float_numbers: row.kids_float_numbers || [],
@@ -2249,6 +2364,11 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
   const guest_fee_paid = Boolean(req.body.guest_fee_paid);
   const beads_paid = Boolean(req.body.beads_paid);
   const costume_paid = Boolean(req.body.costume_paid);
+  const sy = currentSeasonYear();
+  const dues_paid_season = dues_paid ? sy : null;
+  const guest_fee_paid_season = guest_fee_paid ? sy : null;
+  const beads_paid_season = beads_paid ? sy : null;
+  const costume_paid_season = costume_paid ? sy : null;
 
   const client = await pool.connect();
   try {
@@ -2265,8 +2385,10 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          user_id, phone, address, spouse_name, kids_names, guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
-         dues_paid, guest_fee_paid, beads_paid, costume_paid, updated_at
-       ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,NOW())
+         dues_paid, guest_fee_paid, beads_paid, costume_paid,
+         dues_paid_season, guest_fee_paid_season, beads_paid_season, costume_paid_season,
+         updated_at
+       ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address, spouse_name=EXCLUDED.spouse_name,
          kids_names=EXCLUDED.kids_names, guest_name=EXCLUDED.guest_name,
@@ -2279,6 +2401,10 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          rider_float_names=EXCLUDED.rider_float_names,
          dues_paid=EXCLUDED.dues_paid, guest_fee_paid=EXCLUDED.guest_fee_paid,
          beads_paid=EXCLUDED.beads_paid, costume_paid=EXCLUDED.costume_paid,
+         dues_paid_season=EXCLUDED.dues_paid_season,
+         guest_fee_paid_season=EXCLUDED.guest_fee_paid_season,
+         beads_paid_season=EXCLUDED.beads_paid_season,
+         costume_paid_season=EXCLUDED.costume_paid_season,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, spouse_name||null,
@@ -2286,6 +2412,7 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
         dues_paid, guest_fee_paid, beads_paid, costume_paid,
+        dues_paid_season, guest_fee_paid_season, beads_paid_season, costume_paid_season,
       ]
     );
     await client.query('COMMIT');
@@ -2821,12 +2948,13 @@ app.post('/api/auth/login', async (req, res) => {
 // Protected profile route
 app.get('/api/profile', authenticateToken, async (req, res) => {
   try {
+    const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
               p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              p.dues_paid, p.guest_fee_paid, p.beads_paid, p.costume_paid
+              p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2836,6 +2964,11 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     const row = result.rows[0];
     res.json({
       ...row,
+      current_season_year: sy,
+      dues_paid: row.dues_paid_season === sy,
+      guest_fee_paid: row.guest_fee_paid_season === sy,
+      beads_paid: row.beads_paid_season === sy,
+      costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
       float_riders: row.float_riders || [],
       kids_float_numbers: row.kids_float_numbers || [],
@@ -2930,6 +3063,500 @@ if (process.env.NODE_ENV !== 'production') {
     }
   });
 }
+
+// ── Shop: Products (members) ──────────────────────────────────────────────
+app.get('/api/shop/products', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, description, price, image_path, category, stock_qty
+       FROM shop_products WHERE active = TRUE
+       ORDER BY position ASC, id ASC`
+    );
+    res.json({ products: result.rows });
+  } catch (err) {
+    console.error('Failed to fetch shop products', err);
+    res.status(500).json({ error: 'Unable to fetch products' });
+  }
+});
+
+// ── Shop: Products (admin/store_admin) ────────────────────────────────────
+app.get('/api/admin/shop/products', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const result = await pool.query(
+      `SELECT id, name, description, price, image_path, category, stock_qty, active, position, created_at
+       FROM shop_products ORDER BY position ASC, id ASC`
+    );
+    res.json({ products: result.rows });
+  } catch (err) {
+    console.error('Failed to fetch admin shop products', err);
+    res.status(500).json({ error: 'Unable to fetch products' });
+  }
+});
+
+app.post('/api/admin/shop/products', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const { name, description, price, image_path, category, stock_qty, active } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Product name is required' });
+  }
+  const parsedPrice = parseFloat(price);
+  if (!isFinite(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({ error: 'Invalid price' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [
+        name.trim(),
+        description ? description.trim() : null,
+        parsedPrice,
+        image_path ? image_path.trim() : null,
+        category ? category.trim() : null,
+        stock_qty != null && stock_qty !== '' ? parseInt(stock_qty, 10) : null,
+        active !== false,
+        req.user.userId,
+      ]
+    );
+    res.json({ product: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to create product', err);
+    res.status(500).json({ error: 'Unable to create product' });
+  }
+});
+
+app.put('/api/admin/shop/products/:id(\\d+)', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  const { name, description, price, image_path, category, stock_qty, active, position } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Product name is required' });
+  }
+  const parsedPrice = parseFloat(price);
+  if (!isFinite(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({ error: 'Invalid price' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE shop_products
+       SET name=$1, description=$2, price=$3, image_path=$4, category=$5,
+           stock_qty=$6, active=$7, position=COALESCE($8, position), updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
+      [
+        name.trim(),
+        description ? description.trim() : null,
+        parsedPrice,
+        image_path ? image_path.trim() : null,
+        category ? category.trim() : null,
+        stock_qty != null && stock_qty !== '' ? parseInt(stock_qty, 10) : null,
+        active !== false,
+        position != null && position !== '' ? parseInt(position, 10) : null,
+        id,
+      ]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Product not found' });
+    res.json({ product: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to update product', err);
+    res.status(500).json({ error: 'Unable to update product' });
+  }
+});
+
+app.delete('/api/admin/shop/products/:id(\\d+)', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  try {
+    await pool.query('DELETE FROM shop_products WHERE id=$1', [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to delete product', err);
+    res.status(500).json({ error: 'Unable to delete product' });
+  }
+});
+
+// ── Shop: Cart ────────────────────────────────────────────────────────────
+app.get('/api/shop/cart', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.quantity, p.id AS product_id, p.name, p.price, p.image_path, p.stock_qty, p.active
+       FROM shop_cart_items c
+       JOIN shop_products p ON p.id = c.product_id
+       WHERE c.user_id = $1 ORDER BY c.added_at ASC`,
+      [req.user.userId]
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error('Failed to fetch cart', err);
+    res.status(500).json({ error: 'Unable to fetch cart' });
+  }
+});
+
+app.post('/api/shop/cart', authenticateToken, async (req, res) => {
+  const { product_id, quantity = 1 } = req.body;
+  const qty = parseInt(quantity, 10);
+  if (!product_id || !Number.isInteger(qty) || qty < 1) {
+    return res.status(400).json({ error: 'Invalid product or quantity' });
+  }
+  try {
+    const prod = await pool.query(
+      'SELECT id FROM shop_products WHERE id=$1 AND active=TRUE', [product_id]
+    );
+    if (prod.rowCount === 0) return res.status(404).json({ error: 'Product not found' });
+    const result = await pool.query(
+      `INSERT INTO shop_cart_items (user_id, product_id, quantity) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, product_id)
+       DO UPDATE SET quantity = shop_cart_items.quantity + EXCLUDED.quantity
+       RETURNING *`,
+      [req.user.userId, product_id, qty]
+    );
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to add to cart', err);
+    res.status(500).json({ error: 'Unable to add to cart' });
+  }
+});
+
+app.put('/api/shop/cart/:itemId(\\d+)', authenticateToken, async (req, res) => {
+  const itemId = parseInt(req.params.itemId, 10);
+  const qty = parseInt(req.body.quantity, 10);
+  if (!Number.isInteger(qty) || qty < 0) {
+    return res.status(400).json({ error: 'Invalid quantity' });
+  }
+  try {
+    if (qty === 0) {
+      await pool.query('DELETE FROM shop_cart_items WHERE id=$1 AND user_id=$2', [itemId, req.user.userId]);
+      return res.json({ removed: true });
+    }
+    const result = await pool.query(
+      'UPDATE shop_cart_items SET quantity=$1 WHERE id=$2 AND user_id=$3 RETURNING *',
+      [qty, itemId, req.user.userId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Cart item not found' });
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to update cart item', err);
+    res.status(500).json({ error: 'Unable to update cart' });
+  }
+});
+
+app.delete('/api/shop/cart/:itemId(\\d+)', authenticateToken, async (req, res) => {
+  const itemId = parseInt(req.params.itemId, 10);
+  try {
+    await pool.query('DELETE FROM shop_cart_items WHERE id=$1 AND user_id=$2', [itemId, req.user.userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to remove cart item', err);
+    res.status(500).json({ error: 'Unable to remove item' });
+  }
+});
+
+// ── Shop: Checkout & Orders ───────────────────────────────────────────────
+app.post('/api/shop/checkout', authenticateToken, async (req, res) => {
+  const { notes } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const cartResult = await client.query(
+      `SELECT c.id AS cart_id, c.quantity, p.id AS product_id, p.name, p.price, p.stock_qty, p.active
+       FROM shop_cart_items c
+       JOIN shop_products p ON p.id = c.product_id
+       WHERE c.user_id = $1`,
+      [req.user.userId]
+    );
+    if (cartResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cart is empty' });
+    }
+    const inactive = cartResult.rows.filter((r) => !r.active);
+    if (inactive.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Some items are no longer available: ${inactive.map((r) => r.name).join(', ')}`,
+      });
+    }
+    const userResult = await client.query(
+      'SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]
+    );
+    const buyer = userResult.rows[0];
+    const total = cartResult.rows.reduce(
+      (sum, row) => sum + parseFloat(row.price) * row.quantity, 0
+    );
+    const orderResult = await client.query(
+      `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null]
+    );
+    const orderId = orderResult.rows[0].id;
+    for (const item of cartResult.rows) {
+      await client.query(
+        `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [orderId, item.product_id, item.name, item.price, item.quantity]
+      );
+      if (item.stock_qty != null) {
+        await client.query(
+          'UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2',
+          [item.quantity, item.product_id]
+        );
+      }
+    }
+    await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
+    await client.query('COMMIT');
+    res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Checkout failed', err);
+    res.status(500).json({ error: 'Checkout failed. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/shop/orders', authenticateToken, async (req, res) => {
+  try {
+    const orders = await pool.query(
+      `SELECT id, total_amount, status, notes, created_at
+       FROM shop_orders WHERE user_id=$1 ORDER BY created_at DESC`,
+      [req.user.userId]
+    );
+    const orderIds = orders.rows.map((r) => r.id);
+    let itemRows = [];
+    if (orderIds.length > 0) {
+      const itemResult = await pool.query(
+        `SELECT order_id, product_name, unit_price, quantity
+         FROM shop_order_items WHERE order_id = ANY($1::int[])`,
+        [orderIds]
+      );
+      itemRows = itemResult.rows;
+    }
+    const byOrder = {};
+    itemRows.forEach((i) => {
+      if (!byOrder[i.order_id]) byOrder[i.order_id] = [];
+      byOrder[i.order_id].push(i);
+    });
+    res.json({ orders: orders.rows.map((o) => ({ ...o, items: byOrder[o.id] || [] })) });
+  } catch (err) {
+    console.error('Failed to fetch orders', err);
+    res.status(500).json({ error: 'Unable to fetch orders' });
+  }
+});
+
+app.get('/api/admin/shop/orders', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const orders = await pool.query(
+      `SELECT id, buyer_name, buyer_email, total_amount, status, notes, created_at
+       FROM shop_orders ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    const countResult = await pool.query('SELECT COUNT(*) FROM shop_orders');
+    const total = parseInt(countResult.rows[0].count, 10);
+    const orderIds = orders.rows.map((r) => r.id);
+    let itemRows = [];
+    if (orderIds.length > 0) {
+      const itemResult = await pool.query(
+        `SELECT order_id, product_name, unit_price, quantity
+         FROM shop_order_items WHERE order_id = ANY($1::int[])`,
+        [orderIds]
+      );
+      itemRows = itemResult.rows;
+    }
+    const byOrder = {};
+    itemRows.forEach((i) => {
+      if (!byOrder[i.order_id]) byOrder[i.order_id] = [];
+      byOrder[i.order_id].push(i);
+    });
+    res.json({
+      orders: orders.rows.map((o) => ({ ...o, items: byOrder[o.id] || [] })),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error('Failed to fetch admin orders', err);
+    res.status(500).json({ error: 'Unable to fetch orders' });
+  }
+});
+
+app.delete('/api/admin/shop/orders/:id(\\d+)', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  try {
+    const result = await pool.query('DELETE FROM shop_orders WHERE id=$1 RETURNING id', [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to delete order', err);
+    res.status(500).json({ error: 'Unable to delete order' });
+  }
+});
+
+app.put('/api/admin/shop/orders/:id(\\d+)/status', authenticateToken, async (req, res) => {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  const { status } = req.body;
+  const validStatuses = ['pending', 'processing', 'shipped', 'completed', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  try {
+    const result = await pool.query(
+      'UPDATE shop_orders SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+      [status, id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
+    res.json({ order: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to update order status', err);
+    res.status(500).json({ error: 'Unable to update order' });
+  }
+});
+
+// ── PayPal helpers ─────────────────────────────────────────────────────────
+function getPayPalConfig() {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  const mode = env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox';
+  const baseUrl = mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+  return { clientId: env.PAYPAL_CLIENT_ID || '', clientSecret: env.PAYPAL_CLIENT_SECRET || '', mode, baseUrl };
+}
+
+function paypalHttpRequest(hostname, urlPath, method, headers, body) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : null;
+    const reqHeaders = { ...headers };
+    if (bodyStr) reqHeaders['Content-Length'] = Buffer.byteLength(bodyStr);
+    const req = https.request({ hostname, path: urlPath, method, headers: reqHeaders }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch (_e) { resolve({ status: res.statusCode, body: data }); }
+      });
+    });
+    req.on('error', reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function getPayPalAccessToken(cfg) {
+  if (!cfg.clientId || !cfg.clientSecret) throw new Error('PayPal credentials not configured');
+  const credentials = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
+  const hostname = cfg.mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+  const result = await paypalHttpRequest(hostname, '/v1/oauth2/token', 'POST', {
+    'Authorization': 'Basic ' + credentials,
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json',
+  }, 'grant_type=client_credentials');
+  if (!result.body.access_token) throw new Error('Failed to obtain PayPal access token');
+  return result.body.access_token;
+}
+
+app.get('/api/shop/paypal/config', authenticateToken, (req, res) => {
+  const cfg = getPayPalConfig();
+  res.json({ client_id: cfg.clientId, mode: cfg.mode, configured: !!(cfg.clientId && cfg.clientSecret) });
+});
+
+app.post('/api/shop/paypal/create-order', authenticateToken, async (req, res) => {
+  try {
+    const cfg = getPayPalConfig();
+    if (!cfg.clientId || !cfg.clientSecret) return res.status(503).json({ error: 'PayPal is not configured' });
+    const cartResult = await pool.query(
+      `SELECT c.quantity, p.price, p.name, p.active
+       FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
+       WHERE c.user_id = $1`,
+      [req.user.userId]
+    );
+    if (cartResult.rowCount === 0) return res.status(400).json({ error: 'Cart is empty' });
+    const inactive = cartResult.rows.filter((r) => !r.active);
+    if (inactive.length) return res.status(400).json({ error: `Items unavailable: ${inactive.map((r) => r.name).join(', ')}` });
+    const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+    const accessToken = await getPayPalAccessToken(cfg);
+    const hostname = cfg.mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+    const ppOrder = await paypalHttpRequest(hostname, '/v2/checkout/orders', 'POST', {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    }, { intent: 'CAPTURE', purchase_units: [{ amount: { currency_code: 'USD', value: total.toFixed(2) }, description: 'Krewe Mystique Shop' }] });
+    if (ppOrder.status !== 201) {
+      console.error('PayPal create-order failed', ppOrder.body);
+      return res.status(502).json({ error: 'Payment provider error. Please try again.' });
+    }
+    res.json({ paypal_order_id: ppOrder.body.id });
+  } catch (err) {
+    console.error('PayPal create-order error', err);
+    res.status(500).json({ error: 'Unable to initiate payment' });
+  }
+});
+
+app.post('/api/shop/paypal/capture-order', authenticateToken, async (req, res) => {
+  const { paypal_order_id, notes } = req.body;
+  if (!paypal_order_id || typeof paypal_order_id !== 'string') {
+    return res.status(400).json({ error: 'paypal_order_id is required' });
+  }
+  try {
+    const cfg = getPayPalConfig();
+    if (!cfg.clientId || !cfg.clientSecret) return res.status(503).json({ error: 'PayPal is not configured' });
+    const accessToken = await getPayPalAccessToken(cfg);
+    const hostname = cfg.mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+    const capture = await paypalHttpRequest(hostname, `/v2/checkout/orders/${paypal_order_id}/capture`, 'POST', {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    }, {});
+    if (capture.status !== 201 || capture.body.status !== 'COMPLETED') {
+      console.error('PayPal capture failed', capture.body);
+      return res.status(402).json({ error: 'Payment was not completed' });
+    }
+    // Payment confirmed — record order in DB
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const cartResult = await client.query(
+        `SELECT c.id AS cart_id, c.quantity, p.id AS product_id, p.name, p.price, p.stock_qty, p.active
+         FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
+         WHERE c.user_id = $1`,
+        [req.user.userId]
+      );
+      if (cartResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
+      const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]);
+      const buyer = userResult.rows[0];
+      const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+      const orderResult = await client.query(
+        `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status)
+         VALUES ($1,$2,$3,$4,$5,'processing') RETURNING id`,
+        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null]
+      );
+      const orderId = orderResult.rows[0].id;
+      for (const item of cartResult.rows) {
+        await client.query(
+          `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity) VALUES ($1,$2,$3,$4,$5)`,
+          [orderId, item.product_id, item.name, item.price, item.quantity]
+        );
+        if (item.stock_qty != null) {
+          await client.query('UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2', [item.quantity, item.product_id]);
+        }
+      }
+      await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
+      await client.query('COMMIT');
+      res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      console.error('DB order recording failed after PayPal capture', dbErr);
+      res.status(500).json({ error: 'Payment received but order recording failed. Contact support.' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('PayPal capture-order error', err);
+    res.status(500).json({ error: 'Payment capture failed' });
+  }
+});
 
 ensureContentTable()
   .then(() => {

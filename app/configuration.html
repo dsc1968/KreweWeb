@@ -18,6 +18,7 @@
           <a href="/events.html">Events</a>
           <a href="/contact.html">Contact</a>
           <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
         </nav>
       </div>
     </header>
@@ -77,6 +78,26 @@
                 <input type="text" id="cfg-contact-recipient" name="CONTACT_RECIPIENT" placeholder="you@example.com" />
               </div>
             </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">PayPal Payments</p>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-paypal-mode">Mode</label>
+                <select id="cfg-paypal-mode" name="PAYPAL_MODE">
+                  <option value="sandbox">Sandbox (testing)</option>
+                  <option value="live">Live (production)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-paypal-client-id">Client ID</label>
+                <input type="text" id="cfg-paypal-client-id" name="PAYPAL_CLIENT_ID" placeholder="AaBb…" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-paypal-secret">Client Secret</label>
+                <input type="password" id="cfg-paypal-secret" name="PAYPAL_CLIENT_SECRET" placeholder="••••••••" autocomplete="new-password" />
+              </div>
+            </div>
+            <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
 
             <p class="db-config-section-label" style="margin-top:1rem;">Registration</p>
             <div class="db-form-grid">
