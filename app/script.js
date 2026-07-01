@@ -514,24 +514,18 @@ if (countdownElements.days) {
   async function createPageSection(payload) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry('/api/admin/page-sections', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          pagePath: state.pagePath,
-          title: payload.title,
-          body: payload.body,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to create section');
-      }
+      const item = {
+        id: Date.now(),
+        title: payload.title || '',
+        body: payload.body || '',
+        image_path: '',
+        background_path: '',
+        position: (state.pageSections.length || 0) + 1,
+        updated_at: new Date().toISOString(),
+      };
+      savePageToFile();
       finishSaveAttempt(true);
-      return data.item;
+      return item;
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
@@ -541,39 +535,26 @@ if (countdownElements.days) {
   async function updatePageSection(sectionId, field, value) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry(`/api/admin/page-sections/${sectionId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ field, value }),
-      });
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to update section');
+      const section = state.pageSections.find((s) => s.id === sectionId);
+      if (section) {
+        section[field] = value;
+        section.updated_at = new Date().toISOString();
       }
+      savePageToFile();
       finishSaveAttempt(true);
-      return data.item;
+      return section ? { ...section } : { id: sectionId, [field]: value, updated_at: new Date().toISOString() };
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
     }
   }
 
-  async function deletePageSection(sectionId) {
+  async function deletePageSection(_sectionId) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry(`/api/admin/page-sections/${sectionId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to delete section');
-      }
+      savePageToFile();
       finishSaveAttempt(true);
-      return data;
+      return {};
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
@@ -583,50 +564,36 @@ if (countdownElements.days) {
   async function saveElementOverride(elementKey, patch) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
       const current = state.elementOverrides.get(elementKey) || {};
-      const payload = {
-        pagePath: state.pagePath,
-        elementKey,
+      const merged = {
+        element_key: elementKey,
         hidden: patch.hidden ?? current.hidden ?? false,
         deleted: patch.deleted ?? current.deleted ?? false,
-        textAlign: patch.textAlign ?? current.text_align ?? null,
-        fontFamily: patch.fontFamily ?? current.font_family ?? null,
-        fontWeight: patch.fontWeight ?? current.font_weight ?? null,
-        fontStyle: patch.fontStyle ?? current.font_style ?? null,
-        textTransform: patch.textTransform ?? current.text_transform ?? null,
-        fontSize: patch.fontSize ?? current.font_size ?? null,
-        opacityValue: patch.opacityValue ?? current.opacity_value ?? null,
-        textColor: patch.textColor ?? current.text_color ?? null,
-        backgroundColor: patch.backgroundColor ?? current.background_color ?? null,
-        backgroundOpacityValue: patch.backgroundOpacityValue ?? current.background_opacity_value ?? null,
-        widthValue: patch.widthValue ?? current.width_value ?? null,
-        heightValue: patch.heightValue ?? current.height_value ?? null,
-        borderStyle: patch.borderStyle ?? current.border_style ?? null,
-        borderWidth: patch.borderWidth ?? current.border_width ?? null,
-        borderColor: patch.borderColor ?? current.border_color ?? null,
-        borderRadius: patch.borderRadius ?? current.border_radius ?? null,
-        positionMode: patch.positionMode ?? current.position_mode ?? null,
-        posX: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
-        posY: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
+        text_align: patch.textAlign ?? current.text_align ?? null,
+        font_family: patch.fontFamily ?? current.font_family ?? null,
+        font_weight: patch.fontWeight ?? current.font_weight ?? null,
+        font_style: patch.fontStyle ?? current.font_style ?? null,
+        text_transform: patch.textTransform ?? current.text_transform ?? null,
+        font_size: patch.fontSize ?? current.font_size ?? null,
+        opacity_value: patch.opacityValue ?? current.opacity_value ?? null,
+        text_color: patch.textColor ?? current.text_color ?? null,
+        background_color: patch.backgroundColor ?? current.background_color ?? null,
+        background_opacity_value: patch.backgroundOpacityValue ?? current.background_opacity_value ?? null,
+        width_value: patch.widthValue ?? current.width_value ?? null,
+        height_value: patch.heightValue ?? current.height_value ?? null,
+        border_style: patch.borderStyle ?? current.border_style ?? null,
+        border_width: patch.borderWidth ?? current.border_width ?? null,
+        border_color: patch.borderColor ?? current.border_color ?? null,
+        border_radius: patch.borderRadius ?? current.border_radius ?? null,
+        position_mode: patch.positionMode ?? current.position_mode ?? null,
+        pos_x: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
+        pos_y: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
         position: Number.isInteger(patch.position) ? patch.position : (Number.isInteger(current.position) ? current.position : null),
       };
-
-      const { response, data } = await fetchWithRetry('/api/admin/element-overrides', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to save element settings');
-      }
-
-      state.elementOverrides.set(elementKey, data.item);
+      state.elementOverrides.set(elementKey, merged);
+      savePageToFile();
       finishSaveAttempt(true);
-      return data.item;
+      return merged;
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
@@ -636,20 +603,17 @@ if (countdownElements.days) {
   async function reorderDynamicSections(orderedIds) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry('/api/admin/page-sections/reorder', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ orderedIds }),
-      });
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to reorder sections');
+      if (Array.isArray(orderedIds)) {
+        const ordered = orderedIds.map((id, index) => {
+          const s = state.pageSections.find((item) => item.id === id);
+          if (s) s.position = index + 1;
+          return s;
+        }).filter(Boolean);
+        if (ordered.length) state.pageSections = ordered;
       }
+      savePageToFile();
       finishSaveAttempt(true);
-      return data;
+      return {};
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
@@ -1605,10 +1569,10 @@ if (countdownElements.days) {
       const key = element.dataset.adminKey;
       if (!key) return;
       const override = state.elementOverrides.get(key);
+      if (!override) return; // Preserve existing HTML state; only apply session overrides
 
-      // Compatibility path: old image deletes stored as element-overrides should behave as true deletes.
+      // Compatibility: old image deletes stored as element-overrides.
       if (
-        override &&
         override.deleted &&
         element.dataset.adminEditable === 'image' &&
         !isDynamicContentKey(key)
@@ -1619,15 +1583,16 @@ if (countdownElements.days) {
         return;
       }
 
-      setAdminHiddenState(element, override && override.hidden, override && override.deleted);
-      if (!override) return;
+      setAdminHiddenState(element, override.hidden, override.deleted);
       applyElementStyles(element, override);
     });
 
     getStaticSections().forEach((section) => {
       const key = section.dataset.adminStaticSectionKey;
       const override = key ? state.elementOverrides.get(key) : null;
-      setAdminHiddenState(section, override && override.hidden, override && override.deleted);
+      if (override) {
+        setAdminHiddenState(section, override.hidden, override.deleted);
+      }
     });
 
     applySectionSizeOverrides();
@@ -1651,8 +1616,10 @@ if (countdownElements.days) {
     sections.forEach((section) => {
       const key = getSectionResizeKey(section);
       const override = key ? state.elementOverrides.get(key) : null;
-      const heightValue = override && override.height_value ? override.height_value : '';
-      section.style.minHeight = heightValue || '';
+      if (override && override.height_value) {
+        section.style.minHeight = override.height_value;
+      }
+      // Don't clear minHeight when no override — preserve the value from the HTML file.
       section.dataset.adminResizeKey = key || '';
     });
   }
@@ -2093,11 +2060,22 @@ if (countdownElements.days) {
     const root = getAlbumsRoot();
     if (!root) return;
 
+    const isAdminEdit = state.isAdmin && state.editMode;
+
     const cards = state.albums.map((album) => {
       const cover = album.cover_image_path
         ? `<img src="${withCacheBust(album.cover_image_path, album.updated_at)}" alt="${escapeHtml(album.title)}" />`
         : '<div class="album-cover-empty">No cover image</div>';
       const description = album.description ? `<p>${escapeHtml(album.description)}</p>` : '';
+      const adminTools = isAdminEdit ? `
+          <div class="album-tools">
+            <button type="button" data-album-action="move-up" data-album-id="${album.id}">Up</button>
+            <button type="button" data-album-action="move-down" data-album-id="${album.id}">Down</button>
+            <button type="button" data-album-action="add-photo" data-album-id="${album.id}">Add Photo</button>
+            <button type="button" data-album-action="manage" data-album-id="${album.id}">Manage</button>
+            <button type="button" data-album-action="edit" data-album-id="${album.id}">Edit</button>
+            <button type="button" data-album-action="delete" data-album-id="${album.id}" style="color:#ff9b9b;">Delete</button>
+          </div>` : '';
 
       return `
         <article class="album-card" data-album-id="${album.id}">
@@ -2109,24 +2087,20 @@ if (countdownElements.days) {
             ${description}
             <p>${album.image_count || 0} photos</p>
           </div>
-          <div class="album-tools">
-            <button type="button" data-album-action="move-up" data-album-id="${album.id}">Up</button>
-            <button type="button" data-album-action="move-down" data-album-id="${album.id}">Down</button>
-            <button type="button" data-album-action="add-photo" data-album-id="${album.id}">Add Photo</button>
-            <button type="button" data-album-action="manage" data-album-id="${album.id}">Manage</button>
-            <button type="button" data-album-action="edit" data-album-id="${album.id}">Edit</button>
-            <button type="button" data-album-action="delete" data-album-id="${album.id}" style="color:#ff9b9b;">Delete</button>
-          </div>
+          ${adminTools}
         </article>
       `;
     }).join('');
 
+    const adminToolbar = isAdminEdit
+      ? '<div class="album-admin-toolbar"><button type="button" data-album-action="create">Create Album</button></div>'
+      : '';
+    const emptyMsg = isAdminEdit ? '<p class="section-intro">No albums yet.</p>' : '';
+
     root.innerHTML = `
-      <div class="album-admin-toolbar">
-        <button type="button" data-album-action="create">Create Album</button>
-      </div>
+      ${adminToolbar}
       <div class="album-grid">
-        ${cards || '<p class="section-intro">No albums yet.</p>'}
+        ${cards || emptyMsg}
       </div>
     `;
   }
@@ -2317,21 +2291,7 @@ if (countdownElements.days) {
   }
 
   async function loadSavedContent() {
-    try {
-      const res = await fetch(`/api/content?page=${encodeURIComponent(state.pagePath)}`);
-      if (!res.ok) return;
-      const data = await parseApiResponse(res);
-      (data.items || []).forEach((item) => {
-        // Check if this is a dynamically added element
-        if (item.content_key.includes('dynamic-text-') || item.content_key.includes('dynamic-image-')) {
-          createAndRenderDynamicElement(item);
-        } else {
-          applyContentItem(item);
-        }
-      });
-    } catch (_error) {
-      // Ignore content load failures on the public site.
-    }
+    // Content is stored directly in HTML files — no DB load needed.
   }
 
   function createAndRenderDynamicElement(item) {
@@ -2392,6 +2352,29 @@ if (countdownElements.days) {
     state.registry.set(`${item.content_type}:${item.content_key}`, newElement);
   }
 
+  function loadPageSectionsFromDom() {
+    state.pageSections = [];
+    const host = document.getElementById('dynamic-page-sections');
+    if (!host) return;
+    let position = 1;
+    host.querySelectorAll('[data-admin-dynamic-section="true"]').forEach((section) => {
+      const id = Number.parseInt(section.dataset.adminSectionId || '', 10);
+      if (!Number.isFinite(id)) return;
+      const titleEl = section.querySelector('[data-admin-section-field="title"]');
+      const bodyEl = section.querySelector('[data-admin-section-field="body"]');
+      const imageEl = section.querySelector('[data-admin-section-field="image_path"]');
+      state.pageSections.push({
+        id,
+        position: position++,
+        title: titleEl && titleEl.dataset.adminSectionEmpty !== 'true' ? titleEl.textContent.trim() : '',
+        body: bodyEl && bodyEl.dataset.adminSectionEmpty !== 'true' ? bodyEl.textContent.trim() : '',
+        image_path: imageEl ? (imageEl.dataset.adminImagePath || '') : '',
+        background_path: section.dataset.adminImagePath || '',
+        updated_at: new Date().toISOString(),
+      });
+    });
+  }
+
   async function loadPageSections() {
     try {
       state.pageSections = await fetchPageSections();
@@ -2402,14 +2385,8 @@ if (countdownElements.days) {
   }
 
   async function loadElementOverrides() {
-    try {
-      const items = await fetchElementOverrides();
-      state.elementOverrides = new Map(items.map((item) => [item.element_key, item]));
-      applyStaticSectionOrder();
-      applyElementOverrides();
-    } catch (_error) {
-      state.elementOverrides = new Map();
-    }
+    // Element overrides are stored as inline styles in HTML files — no DB load needed.
+    state.elementOverrides = new Map();
   }
 
   function ensureAdminStyles() {
@@ -3316,33 +3293,85 @@ if (countdownElements.days) {
     return backdrop;
   }
 
-  async function deleteContentItem(contentKey, contentType) {
+  async function deleteContentItem(_contentKey, _contentType) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry('/api/admin/content', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          pagePath: state.pagePath,
-          contentKey,
-          contentType,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Delete failed');
-      }
-
+      savePageToFile();
       finishSaveAttempt(true);
-      return data.item;
+      return {};
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
     }
+  }
+
+  function serializePageHtml() {
+    const clone = document.documentElement.cloneNode(true);
+
+    // Remove admin-injected UI elements
+    [
+      '#admin-nav-controls',
+      '#nav-auth-link', '#nav-dashboard-link', '#nav-logout-link', '#login-actions',
+      '.admin-inspector-panel', '.admin-element-toolbar',
+      '.admin-editor-backdrop', '.admin-code-editor-backdrop',
+      '#admin-editor-styles',
+    ].forEach((sel) => {
+      clone.querySelectorAll(sel).forEach((el) => el.remove());
+    });
+
+    // Remove transient admin attributes
+    const transientAttrs = [
+      'data-admin-editable', 'data-admin-key', 'data-admin-canvas-dropzone',
+      'data-admin-drag-target', 'data-admin-drag-position', 'data-admin-text-drop-target',
+      'data-admin-resize-key', 'data-admin-nav-drag-bound',
+    ];
+    const transientClasses = [
+      'admin-is-dragging', 'admin-current-selection', 'admin-free-positioned',
+      'admin-nav-draggable', 'admin-nav-drag-over', 'admin-nav-dragging',
+      'admin-empty-section-field',
+    ];
+    clone.querySelectorAll('[draggable]').forEach((el) => el.removeAttribute('draggable'));
+    clone.querySelectorAll('*').forEach((el) => {
+      transientAttrs.forEach((attr) => el.removeAttribute(attr));
+      transientClasses.forEach((cls) => el.classList.remove(cls));
+      if (el.classList.length === 0 && el.hasAttribute('class')) el.removeAttribute('class');
+    });
+
+    // Clean body edit-mode state
+    const body = clone.querySelector('body');
+    if (body) {
+      body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+      if (body.style.paddingRight) body.style.paddingRight = '';
+      if (body.classList.length === 0) body.removeAttribute('class');
+    }
+
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+
+  let _pageSaveTimer = null;
+
+  function savePageToFile() {
+    if (_pageSaveTimer) clearTimeout(_pageSaveTimer);
+    _pageSaveTimer = setTimeout(async () => {
+      _pageSaveTimer = null;
+      const pagePath = state.pagePath === '/' ? '/index.html' : state.pagePath;
+      const token = getStoredToken();
+      updateSaveStatus('saving', 'Saving\u2026');
+      try {
+        const content = serializePageHtml();
+        const res = await fetch('/api/admin/file-source', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ path: pagePath, content }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Save failed');
+        updateSaveStatus('saved', 'Saved');
+      } catch (err) {
+        console.error('Page save error:', err);
+        updateSaveStatus('error', err.message);
+      }
+    }, 400);
   }
 
   function isDynamicContentKey(key) {
@@ -3352,27 +3381,15 @@ if (countdownElements.days) {
   async function saveContentUpdate(payload) {
     beginSaveAttempt();
     try {
-      const token = getStoredToken();
-      const { response, data } = await fetchWithRetry('/api/admin/content', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          pagePath: state.pagePath,
-          contentKey: payload.contentKey,
-          contentType: payload.contentType,
-          contentValue: payload.contentValue,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Save failed');
-      }
-
+      const fakeItem = {
+        content_key: payload.contentKey,
+        content_type: payload.contentType,
+        content_value: payload.contentValue,
+        updated_at: new Date().toISOString(),
+      };
+      savePageToFile();
       finishSaveAttempt(true);
-      return data.item;
+      return fakeItem;
     } catch (error) {
       finishSaveAttempt(false, error.message);
       throw error;
@@ -6399,18 +6416,16 @@ if (countdownElements.days) {
     }
 
     initHeaderState();
-    await loadMediaAlbums();
-    await loadPageSections();
+    loadPageSectionsFromDom();
     registerEditableElements();
-    await Promise.all([loadSavedContent(), loadElementOverrides()]);
-    applyElementOverrides();
     initializeCalendarUi();
     await loadCalendarEvents();
 
     const profile = await fetchCurrentProfile();
     state.isAdmin = Boolean(profile && profile.role === 'admin');
+    await loadMediaAlbums();
+
     if (!state.isAdmin) return;
-    renderMediaAlbums();
 
     ensureAdminStyles();
     attachAdminNavButton();
