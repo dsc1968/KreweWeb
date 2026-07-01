@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   kids_names JSONB NOT NULL DEFAULT '[]',
   guest_name TEXT,
   float_riders JSONB NOT NULL DEFAULT '[]',
+  member_float_number TEXT,
+  spouse_float_number TEXT,
+  guest_float_number TEXT,
+  kids_float_numbers JSONB NOT NULL DEFAULT '[]',
+  rider_float_numbers JSONB NOT NULL DEFAULT '[]',
+  rider_float_names JSONB NOT NULL DEFAULT '[]',
+  dues_paid BOOLEAN NOT NULL DEFAULT FALSE,
+  guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
+  beads_paid BOOLEAN NOT NULL DEFAULT FALSE,
+  costume_paid BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 

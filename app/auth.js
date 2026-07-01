@@ -348,7 +348,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   backdrop.style.cssText = 'position:fixed;inset:0;z-index:11000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(2,8,22,0.8);overflow-y:auto;';
 
   backdrop.innerHTML = `
-    <div style="width:min(700px,100%);background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;max-height:90vh;overflow-y:auto;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
+    <div style="width:min(720px,100%);background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;max-height:90vh;overflow-y:auto;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
         <h2 id="uem-title" style="margin:0;font-size:1.1rem;">Edit User</h2>
         <button type="button" id="uem-close" style="background:none;border:none;color:#b8c4e0;font-size:1.4rem;cursor:pointer;line-height:1;" aria-label="Close">&times;</button>
@@ -374,20 +374,55 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
           <input id="uem-guest" type="text" value="${escHtml(full.guest_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem;">
-        <div class="form-group">
-          <label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Children's Names</label>
-          <div id="uem-kids"></div>
-          <button type="button" id="uem-add-kid" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Child</button>
+      <!-- Float Assignments -->
+      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+        <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Float Assignments</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 1rem;">
+          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Member Float #</label>
+            <input id="uem-member-float" type="text" value="${escHtml(full.member_float_number||'')}" placeholder="e.g. 3A" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Spouse Float #</label>
+            <input id="uem-spouse-float" type="text" value="${escHtml(full.spouse_float_number||'')}" placeholder="e.g. 3B" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Guest Float #</label>
+            <input id="uem-guest-float" type="text" value="${escHtml(full.guest_float_number||'')}" placeholder="e.g. 3C" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
         </div>
-        <div class="form-group">
-          <label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders</label>
-          <div id="uem-riders"></div>
-          <button type="button" id="uem-add-rider" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Rider</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem;margin-top:0.5rem;">
+          <div class="form-group">
+            <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Children <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name &amp; Float #)</span></label>
+            <div id="uem-kids"></div>
+            <button type="button" id="uem-add-kid" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Child</button>
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name &amp; Float #)</span></label>
+            <div id="uem-riders"></div>
+            <button type="button" id="uem-add-rider" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Rider</button>
+          </div>
         </div>
       </div>
 
-      <div style="margin-top:0.5rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
+      <!-- Payment Status -->
+      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+        <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Payment Status</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem;">
+          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+            <input type="checkbox" id="uem-dues-paid" ${full.dues_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
+            Membership Dues Paid
+          </label>
+          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+            <input type="checkbox" id="uem-guest-fee-paid" ${full.guest_fee_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
+            Guest Fee Paid
+          </label>
+          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+            <input type="checkbox" id="uem-beads-paid" ${full.beads_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
+            Beads Cost Paid
+          </label>
+          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+            <input type="checkbox" id="uem-costume-paid" ${full.costume_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
+            Costume Cost Paid
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
         <p style="margin:0 0 0.6rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Reset Password</p>
         <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
           <input id="uem-password" type="password" placeholder="New password (min 8 chars)" autocomplete="new-password" style="flex:1;min-width:160px;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;" />
@@ -410,30 +445,53 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   document.body.appendChild(backdrop);
 
   // Populate list inputs
-  function addListItem(containerId, value) {
+  // Kids: Name | Float # | ×
+  // Riders: Name | Float Name | Float # | ×
+  function addListItem(containerId, name, floatNum, floatName) {
+    const isRider = containerId === 'uem-riders';
     const container = backdrop.querySelector('#' + containerId);
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:center;';
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.value = value;
-    inp.className = 'uem-list-input';
-    inp.style.cssText = 'flex:1;padding:0.55rem 0.8rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+    wrapper.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;';
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.value = name || '';
+    nameInp.placeholder = 'Name';
+    nameInp.className = 'uem-list-name';
+    nameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+    wrapper.appendChild(nameInp);
+    if (isRider) {
+      const floatNameInp = document.createElement('input');
+      floatNameInp.type = 'text';
+      floatNameInp.value = floatName || '';
+      floatNameInp.placeholder = 'Float name';
+      floatNameInp.className = 'uem-list-float-name';
+      floatNameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+      wrapper.appendChild(floatNameInp);
+    }
+    const floatInp = document.createElement('input');
+    floatInp.type = 'text';
+    floatInp.value = floatNum || '';
+    floatInp.placeholder = 'Float #';
+    floatInp.className = 'uem-list-float';
+    floatInp.style.cssText = 'flex:1;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;max-width:75px;';
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.textContent = '×';
-    rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;';
+    rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;flex-shrink:0;';
     rm.addEventListener('click', () => wrapper.remove());
-    wrapper.appendChild(inp);
+    wrapper.appendChild(floatInp);
     wrapper.appendChild(rm);
     container.appendChild(wrapper);
   }
 
-  (full.kids_names || []).forEach((n) => addListItem('uem-kids', n));
-  (full.float_riders || []).forEach((n) => addListItem('uem-riders', n));
+  const kidsFloatNums = full.kids_float_numbers || [];
+  const riderFloatNums = full.rider_float_numbers || [];
+  const riderFloatNames = full.rider_float_names || [];
+  (full.kids_names || []).forEach((n, i) => addListItem('uem-kids', n, kidsFloatNums[i] || ''));
+  (full.float_riders || []).forEach((n, i) => addListItem('uem-riders', n, riderFloatNums[i] || '', riderFloatNames[i] || ''));
 
-  backdrop.querySelector('#uem-add-kid').addEventListener('click', () => addListItem('uem-kids', ''));
-  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', ''));
+  backdrop.querySelector('#uem-add-kid').addEventListener('click', () => addListItem('uem-kids', '', ''));
+  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', ''));
 
   const feedbackEl = backdrop.querySelector('#uem-feedback');
   function setFeedback(msg, isError) {
@@ -458,8 +516,27 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
       guest_name: backdrop.querySelector('#uem-guest').value.trim(),
-      kids_names: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-input')).map(i=>i.value.trim()).filter(Boolean),
-      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-input')).map(i=>i.value.trim()).filter(Boolean),
+      member_float_number: backdrop.querySelector('#uem-member-float').value.trim(),
+      spouse_float_number: backdrop.querySelector('#uem-spouse-float').value.trim(),
+      guest_float_number: backdrop.querySelector('#uem-guest-float').value.trim(),
+      kids_names: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
+      kids_float_numbers: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map((nameInp) => {
+        const row = nameInp.closest('div');
+        return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
+      }),
+      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
+      rider_float_names: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
+        const row = nameInp.closest('div');
+        return row ? (row.querySelector('.uem-list-float-name')?.value.trim() || '') : '';
+      }),
+      rider_float_numbers: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
+        const row = nameInp.closest('div');
+        return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
+      }),
+      dues_paid: backdrop.querySelector('#uem-dues-paid').checked,
+      guest_fee_paid: backdrop.querySelector('#uem-guest-fee-paid').checked,
+      beads_paid: backdrop.querySelector('#uem-beads-paid').checked,
+      costume_paid: backdrop.querySelector('#uem-costume-paid').checked,
     };
     try {
       const r = await fetch(`/api/admin/users/${user.id}/details`, {

@@ -419,9 +419,35 @@ async function ensureContentTable() {
       kids_names JSONB NOT NULL DEFAULT '[]',
       guest_name TEXT,
       float_riders JSONB NOT NULL DEFAULT '[]',
+      member_float_number TEXT,
+      spouse_float_number TEXT,
+      guest_float_number TEXT,
+      kids_float_numbers JSONB NOT NULL DEFAULT '[]',
+      rider_float_numbers JSONB NOT NULL DEFAULT '[]',
+      rider_float_names JSONB NOT NULL DEFAULT '[]',
+      dues_paid BOOLEAN NOT NULL DEFAULT FALSE,
+      guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
+      beads_paid BOOLEAN NOT NULL DEFAULT FALSE,
+      costume_paid BOOLEAN NOT NULL DEFAULT FALSE,
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Migrations for existing databases
+  for (const col of [
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS member_float_number TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS spouse_float_number TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_float_number TEXT',
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS kids_float_numbers JSONB NOT NULL DEFAULT '[]'",
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS rider_float_numbers JSONB NOT NULL DEFAULT '[]'",
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS rider_float_names JSONB NOT NULL DEFAULT '[]'",
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS dues_paid BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS beads_paid BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS costume_paid BOOLEAN NOT NULL DEFAULT FALSE',
+  ]) {
+    await pool.query(col);
+  }
 }
 
 function isAdmin(req) {
@@ -2160,7 +2186,10 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders
+              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
+              p.member_float_number, p.spouse_float_number, p.guest_float_number,
+              p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
+              p.dues_paid, p.guest_fee_paid, p.beads_paid, p.costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2168,7 +2197,14 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     const row = result.rows[0];
-    res.json({ ...row, kids_names: row.kids_names || [], float_riders: row.float_riders || [] });
+    res.json({
+      ...row,
+      kids_names: row.kids_names || [],
+      float_riders: row.float_riders || [],
+      kids_float_numbers: row.kids_float_numbers || [],
+      rider_float_numbers: row.rider_float_numbers || [],
+      rider_float_names: row.rider_float_names || [],
+    });
   } catch (error) {
     console.error('Failed to fetch user details', error);
     res.status(500).json({ error: 'Unable to fetch user details' });
@@ -2198,6 +2234,22 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
   const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
   const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
 
+  const kidsFloatRaw = Array.isArray(req.body.kids_float_numbers) ? req.body.kids_float_numbers : [];
+  const riderFloatRaw = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
+  const riderFloatNamesRaw = Array.isArray(req.body.rider_float_names) ? req.body.rider_float_names : [];
+  const kids_float_numbers = kidsFloatRaw.map((v) => String(v ?? '').trim().slice(0, 20));
+  const rider_float_numbers = riderFloatRaw.map((v) => String(v ?? '').trim().slice(0, 20));
+  const rider_float_names = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
+
+  const member_float_number = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim().slice(0, 20) : null;
+  const spouse_float_number = typeof req.body.spouse_float_number === 'string' ? req.body.spouse_float_number.trim().slice(0, 20) : null;
+  const guest_float_number = typeof req.body.guest_float_number === 'string' ? req.body.guest_float_number.trim().slice(0, 20) : null;
+
+  const dues_paid = Boolean(req.body.dues_paid);
+  const guest_fee_paid = Boolean(req.body.guest_fee_paid);
+  const beads_paid = Boolean(req.body.beads_paid);
+  const costume_paid = Boolean(req.body.costume_paid);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -2209,13 +2261,32 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
     if (userResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'User not found' }); }
 
     await client.query(
-      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, updated_at)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,NOW())
+      `INSERT INTO user_profiles (
+         user_id, phone, address, spouse_name, kids_names, guest_name, float_riders,
+         member_float_number, spouse_float_number, guest_float_number,
+         kids_float_numbers, rider_float_numbers, rider_float_names,
+         dues_paid, guest_fee_paid, beads_paid, costume_paid, updated_at
+       ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address, spouse_name=EXCLUDED.spouse_name,
          kids_names=EXCLUDED.kids_names, guest_name=EXCLUDED.guest_name,
-         float_riders=EXCLUDED.float_riders, updated_at=NOW()`,
-      [userId, phone||null, address||null, spouse_name||null, JSON.stringify(kids_names), guest_name||null, JSON.stringify(float_riders)]
+         float_riders=EXCLUDED.float_riders,
+         member_float_number=EXCLUDED.member_float_number,
+         spouse_float_number=EXCLUDED.spouse_float_number,
+         guest_float_number=EXCLUDED.guest_float_number,
+         kids_float_numbers=EXCLUDED.kids_float_numbers,
+         rider_float_numbers=EXCLUDED.rider_float_numbers,
+         rider_float_names=EXCLUDED.rider_float_names,
+         dues_paid=EXCLUDED.dues_paid, guest_fee_paid=EXCLUDED.guest_fee_paid,
+         beads_paid=EXCLUDED.beads_paid, costume_paid=EXCLUDED.costume_paid,
+         updated_at=NOW()`,
+      [
+        userId, phone||null, address||null, spouse_name||null,
+        JSON.stringify(kids_names), guest_name||null, JSON.stringify(float_riders),
+        member_float_number||null, spouse_float_number||null, guest_float_number||null,
+        JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
+        dues_paid, guest_fee_paid, beads_paid, costume_paid,
+      ]
     );
     await client.query('COMMIT');
     res.json({ user: userResult.rows[0] });
@@ -2752,7 +2823,10 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders
+              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
+              p.member_float_number, p.spouse_float_number, p.guest_float_number,
+              p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
+              p.dues_paid, p.guest_fee_paid, p.beads_paid, p.costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2764,6 +2838,9 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
       ...row,
       kids_names: row.kids_names || [],
       float_riders: row.float_riders || [],
+      kids_float_numbers: row.kids_float_numbers || [],
+      rider_float_numbers: row.rider_float_numbers || [],
+      rider_float_names: row.rider_float_names || [],
     });
   } catch (error) {
     console.error('Failed to fetch profile', error);
