@@ -37,25 +37,8 @@
         <p>
           New here? <a href="/register.html">Create an account</a>
         </p>
-
-        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
-          <p style="font-size: 0.9rem; color: var(--muted); margin: 0 0 1rem 0;">Demo Accounts (Development Only):</p>
-          <button type="button" class="button secondary" style="width: 100%; margin-bottom: 0.5rem;" onclick="autofill('demo@krewe.local', 'demo123')">
-            Demo Member
-          </button>
-          <button type="button" class="button secondary" style="width: 100%;" onclick="autofill('admin@krewe.local', 'admin123')">
-            Demo Admin
-          </button>
-        </div>
       </div>
     </main>
-
-    <script>
-      function autofill(email, password) {
-        document.getElementById('login_email').value = email;
-        document.getElementById('login_password').value = password;
-      }
-    </script>
 
     <script src="script.js"></script>
     <script src="auth.js"></script>

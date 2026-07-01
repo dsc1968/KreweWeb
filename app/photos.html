@@ -1,14 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Photos & Tableau - Krewe Mystique de la Capitale</title>
-    <link rel="stylesheet" href="styles.css" />
+<html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photos &amp; Tableau - Krewe Mystique de la Capitale</title>
+    <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
+  <body style="cursor: n-resize;">
     <header class="site-header">
-      <div class="container header-inner">
+      <div class="container header-inner" style="cursor: move;">
         <a class="brand" href="/">Krewe Mystique</a>
         <nav class="site-nav" aria-label="Primary navigation">
           <a href="/">Home</a>
@@ -17,31 +16,56 @@
           <a href="/photos.html">Photos</a>
           <a href="/events.html">Events</a>
           <a href="/contact.html">Contact</a>
-          <a href="/register.html">Join</a>
+          <a href="/register.html" style="display: none;">Join</a>
         </nav>
-      </div>
+      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button></div>
     </header>
 
     <main>
-      <section class="hero-alt">
+      <section class="hero-alt" data-admin-static-section-key="static-section:0" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true" style="cursor: move;">
         <div class="container">
-          <h1>Krewe Mystique Photos</h1>
-          <p class="hero-copy">2026 Tableau & Parade Moments</p>
+          <h1 style="cursor: n-resize;">Krewe Mystique Photos</h1>
+          
         </div>
       </section>
 
-      <section class="section">
+      <section class="section" data-admin-static-section-key="static-section:1" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true" style="cursor: n-resize;">
         <div class="container">
           <p class="section-intro">
             Beautiful court and a great time was had by all. Explore memories from our
             2026 parade season and celebrate the pageantry of Krewe Mystique.
           </p>
 
-          <div id="media-albums-root" class="media-albums-root" data-albums-page="photos"></div>
+          <div id="media-albums-root" class="media-albums-root" data-albums-page="photos">
+      <div class="album-admin-toolbar"><button type="button" data-album-action="create">Create Album</button></div>
+      <div class="album-grid">
+        
+        <article class="album-card" data-album-id="3">
+          <button type="button" class="album-cover" data-album-action="open" data-album-id="3" title="Open album">
+            <img src="/assets/images/1782732826289_635158413_1282592780399261_7062715103043893499_n__1_.jpg?v=2026-06-29T11%3A33%3A48.504Z" alt="2026 Parade">
+          </button>
+          <div class="album-meta">
+            <h3>2026 Parade</h3>
+            <p>026 Parade</p>
+            <p>3 photos</p>
+          </div>
+          
+          <div class="album-tools">
+            <button type="button" data-album-action="move-up" data-album-id="3">Up</button>
+            <button type="button" data-album-action="move-down" data-album-id="3">Down</button>
+            <button type="button" data-album-action="add-photo" data-album-id="3">Add Photo</button>
+            <button type="button" data-album-action="manage" data-album-id="3">Manage</button>
+            <button type="button" data-album-action="edit" data-album-id="3">Edit</button>
+            <button type="button" data-album-action="delete" data-album-id="3" style="color:#ff9b9b;">Delete</button>
+          </div>
+        </article>
+      
+      </div>
+    </div>
         </div>
       </section>
 
-      <section class="section section-alt">
+      <section class="section section-alt" data-admin-static-section-key="static-section:2" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true">
         <div class="container">
           <h2>Get Involved</h2>
           <p>
@@ -57,7 +81,7 @@
 
       <footer class="footer">
         <div class="container">
-          <p>&copy; 2026 Krewe Mystique de la Capitale. All rights reserved.</p>
+          <p>© 2026 Krewe Mystique de la Capitale. All rights reserved.</p>
           <nav class="footer-nav">
             <a href="/">Home</a>
             <a href="/contact.html">Contact</a>
@@ -67,5 +91,6 @@
     </main>
 
     <script src="script.js"></script>
-  </body>
-</html>
+  
+
+</body></html>
