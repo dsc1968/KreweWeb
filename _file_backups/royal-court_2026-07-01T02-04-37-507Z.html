@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact - Krewe Mystique de la Capitale</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-alt">
+        <div class="container">
+          <h1>Contact Us</h1>
+          <p class="hero-copy">Get in Touch with Krewe Mystique</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="grid-two contact-layout">
+            <div class="contact-copy-card">
+              <h2>How Can We Help?</h2>
+              <p>
+                Whether you want to join our krewe, participate in our parade, nominate
+                a veteran, or have questions about our events, we're here to help.
+              </p>
+              <p>
+                Fill out the contact form or reach out directly using the information below.
+              </p>
+
+              <h3 style="margin-top: 2rem;">Contact Information</h3>
+              <p>
+                <strong>Krewe Mystique de la Capitale</strong><br />
+                Baton Rouge, Louisiana
+              </p>
+              <p>
+                For parade participation, veteran nominations, or general inquiries, please
+                use the contact form or send us a message.
+              </p>
+            </div>
+
+            <form class="contact-form contact-form-card">
+              <div class="contact-form-grid">
+                <div class="form-group contact-form-field contact-form-field-half">
+                <label for="name">Name *</label>
+                <input 
+                  type="text" 
+                  id="name" 
+                  name="name" 
+                  required
+                  placeholder="Your full name"
+                  autocomplete="name"
+                  aria-label="Your name"
+                />
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-half">
+                <label for="email">Email *</label>
+                <input 
+                  type="email" 
+                  id="email" 
+                  name="email" 
+                  required
+                  placeholder="name@example.com"
+                  autocomplete="email"
+                  aria-label="Your email address"
+                />
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-full">
+                <label for="subject">Subject *</label>
+                <select 
+                  id="subject" 
+                  name="subject" 
+                  required
+                  aria-label="Inquiry subject"
+                >
+                  <option value="">Select a subject</option>
+                  <option value="membership">Krewe Membership</option>
+                  <option value="parade">Parade Participation</option>
+                  <option value="veteran">Veteran Nomination</option>
+                  <option value="events">Event Information</option>
+                  <option value="general">General Inquiry</option>
+                </select>
+                </div>
+
+                <div class="form-group contact-form-field contact-form-field-full">
+                <label for="message">Message *</label>
+                <textarea 
+                  id="message" 
+                  name="message" 
+                  rows="8" 
+                  required
+                  placeholder="Tell us how we can help, who this is for, and any details we should know."
+                  aria-label="Your message"
+                ></textarea>
+                </div>
+              </div>
+
+              <button type="submit" class="button primary">Send Message</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="container">
+          <p>&copy; 2026 Krewe Mystique de la Capitale. All rights reserved.</p>
+        </div>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
