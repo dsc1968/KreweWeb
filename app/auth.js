@@ -354,7 +354,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         <button type="button" id="uem-close" style="background:none;border:none;color:#b8c4e0;font-size:1.4rem;cursor:pointer;line-height:1;" aria-label="Close">&times;</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem;">
+      <div class="uem-grid-2">
         <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Full Name</label>
           <input id="uem-name" type="text" value="${escHtml(full.full_name)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
         <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Email</label>
@@ -377,15 +377,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       <!-- Float Assignments -->
       <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
         <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Float Assignments</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 1rem;">
-          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Member Float #</label>
-            <input id="uem-member-float" type="text" value="${escHtml(full.member_float_number||'')}" placeholder="e.g. 3A" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Spouse Float #</label>
-            <input id="uem-spouse-float" type="text" value="${escHtml(full.spouse_float_number||'')}" placeholder="e.g. 3B" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-          <div class="form-group"><label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Guest Float #</label>
-            <input id="uem-guest-float" type="text" value="${escHtml(full.guest_float_number||'')}" placeholder="e.g. 3C" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem;margin-top:0.5rem;">
+        <div class="uem-grid-2" style="margin-top:0.5rem;">
           <div class="form-group">
             <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Children <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name &amp; Float #)</span></label>
             <div id="uem-kids"></div>
@@ -402,7 +394,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       <!-- Payment Status -->
       <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
         <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Payment Status</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.5rem 1.5rem;">
           <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
             <input type="checkbox" id="uem-dues-paid" ${full.dues_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
             Membership Dues Paid
@@ -516,9 +508,6 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
       guest_name: backdrop.querySelector('#uem-guest').value.trim(),
-      member_float_number: backdrop.querySelector('#uem-member-float').value.trim(),
-      spouse_float_number: backdrop.querySelector('#uem-spouse-float').value.trim(),
-      guest_float_number: backdrop.querySelector('#uem-guest-float').value.trim(),
       kids_names: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
       kids_float_numbers: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map((nameInp) => {
         const row = nameInp.closest('div');
@@ -781,6 +770,36 @@ function buildRemovableInput(container, value, placeholder) {
   input.focus();
 }
 
+function buildRiderInput(container, name, floatName, floatNum) {
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex; gap:0.4rem; margin-bottom:0.4rem; align-items:center;';
+
+  const mkInp = (value, placeholder, cls, maxWidth) => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = value || '';
+    inp.placeholder = placeholder;
+    inp.className = cls;
+    inp.style.cssText = `flex:1; min-width:0;${maxWidth ? ' max-width:' + maxWidth + ';' : ''}`;
+    return inp;
+  };
+
+  wrapper.appendChild(mkInp(name, 'Rider name', 'rider-name-input'));
+  wrapper.appendChild(mkInp(floatName, 'Float name', 'rider-float-name-input'));
+  wrapper.appendChild(mkInp(floatNum, 'Float #', 'rider-float-num-input', '75px'));
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'button secondary';
+  removeBtn.textContent = '×';
+  removeBtn.style.padding = '0.25rem 0.6rem';
+  removeBtn.addEventListener('click', () => wrapper.remove());
+
+  wrapper.appendChild(removeBtn);
+  container.appendChild(wrapper);
+  wrapper.querySelector('.rider-name-input').focus();
+}
+
 function getListValues(container) {
   return Array.from(container.querySelectorAll('.profile-list-input'))
     .map((i) => i.value.trim())
@@ -802,13 +821,17 @@ function initProfileDetailsForm(profile) {
   const ridersList = document.getElementById('riders-list');
 
   (profile.kids_names || []).forEach((name) => buildRemovableInput(kidsList, name, 'Child name'));
-  (profile.float_riders || []).forEach((name) => buildRemovableInput(ridersList, name, 'Rider name'));
+  const riderFloatNames = profile.rider_float_names || [];
+  const riderFloatNums  = profile.rider_float_numbers || [];
+  (profile.float_riders || []).forEach((name, i) =>
+    buildRiderInput(ridersList, name, riderFloatNames[i] || '', riderFloatNums[i] || '')
+  );
 
   document.getElementById('add-kid-btn').addEventListener('click', () => {
     buildRemovableInput(kidsList, '', 'Child name');
   });
   document.getElementById('add-rider-btn').addEventListener('click', () => {
-    buildRemovableInput(ridersList, '', 'Rider name');
+    buildRiderInput(ridersList, '', '', '');
   });
 
   const feedback = document.getElementById('profile-details-feedback');
@@ -834,7 +857,15 @@ function initProfileDetailsForm(profile) {
           spouse_name: document.getElementById('pd-spouse').value.trim(),
           guest_name: document.getElementById('pd-guest').value.trim(),
           kids_names: getListValues(kidsList),
-          float_riders: getListValues(ridersList),
+          float_riders: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => i.value.trim()).filter(Boolean),
+          rider_float_names: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => {
+            const row = i.closest('div');
+            return row ? (row.querySelector('.rider-float-name-input')?.value.trim() || '') : '';
+          }),
+          rider_float_numbers: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => {
+            const row = i.closest('div');
+            return row ? (row.querySelector('.rider-float-num-input')?.value.trim() || '') : '';
+          }),
         }),
       });
       const data = await parseJSONResponse(res);
@@ -872,15 +903,30 @@ async function initDashboard() {
   const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : 'db-badge--member';
   const badgeLabel = profile.role === 'admin' ? 'Admin' : 'Member';
 
+  function payBadge(paid, label) {
+    const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
+    const icon = paid ? '✓' : '✗';
+    return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'}">${icon} ${label}</span>`;
+  }
+
+  const paymentHtml = [
+    payBadge(profile.dues_paid,      'Dues'),
+    payBadge(profile.guest_fee_paid, 'Guest Fee'),
+    payBadge(profile.beads_paid,     'Beads &amp; Throws'),
+    payBadge(profile.costume_paid,   'Costume'),
+  ].join('');
+
   el.innerHTML = `
     <div class="db-avatar" aria-hidden="true">${initials}</div>
     <div class="db-hero-info">
-      <h1 class="db-hero-name">Welcome back, ${profile.full_name}</h1>
+      <p class="db-hero-label">Welcome back</p>
+      <h1 class="db-hero-name">${profile.full_name}</h1>
       <ul class="db-hero-meta">
         <li><strong>Email:</strong> ${profile.email}</li>
         <li><strong>Member since:</strong> ${new Date(profile.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</li>
         <li><span class="db-badge ${badgeClass}">${badgeLabel}</span></li>
       </ul>
+      <div class="db-payment-status">${paymentHtml}</div>
     </div>
   `;
 
@@ -889,10 +935,6 @@ async function initDashboard() {
     if (adminTab) adminTab.hidden = false;
     const adminTools = document.getElementById('admin-tools');
     if (adminTools) adminTools.style.display = 'block';
-    const adminConfigCard = document.getElementById('admin-config-card');
-    if (adminConfigCard) adminConfigCard.style.display = 'block';
-    const adminBackupCard = document.getElementById('admin-backup-card');
-    if (adminBackupCard) adminBackupCard.style.display = 'block';
   }
 
   // Wire up tabs

@@ -2863,10 +2863,15 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
   if (!Array.isArray(ridersRaw)) return res.status(400).json({ error: 'float_riders must be an array' });
   const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
 
+  const riderFloatNamesRaw = Array.isArray(req.body.rider_float_names) ? req.body.rider_float_names : [];
+  const riderFloatNumsRaw  = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
+  const rider_float_names   = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
+  const rider_float_numbers = riderFloatNumsRaw.map((v) => String(v ?? '').trim().slice(0, 20));
+
   try {
     await pool.query(
-      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, NOW())
+      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, rider_float_names, rider_float_numbers, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9::jsonb, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone = EXCLUDED.phone,
          address = EXCLUDED.address,
@@ -2874,8 +2879,10 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
          kids_names = EXCLUDED.kids_names,
          guest_name = EXCLUDED.guest_name,
          float_riders = EXCLUDED.float_riders,
+         rider_float_names = EXCLUDED.rider_float_names,
+         rider_float_numbers = EXCLUDED.rider_float_numbers,
          updated_at = NOW()`,
-      [userId, phone || null, address || null, spouse_name || null, JSON.stringify(kids_names), guest_name || null, JSON.stringify(float_riders)]
+      [userId, phone || null, address || null, spouse_name || null, JSON.stringify(kids_names), guest_name || null, JSON.stringify(float_riders), JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers)]
     );
     res.json({ ok: true });
   } catch (error) {

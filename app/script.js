@@ -1,4 +1,34 @@
 const countdownTarget = new Date('2027-03-01T12:00:00').getTime();
+
+// ── Mobile hamburger nav ──────────────────────────────────────
+(function () {
+  const nav = document.querySelector('.site-nav');
+  const headerInner = document.querySelector('.header-inner');
+  if (!nav || !headerInner) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'nav-toggle';
+  btn.setAttribute('aria-label', 'Toggle navigation');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.innerHTML = '&#9776;';
+  headerInner.appendChild(btn);
+
+  btn.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.innerHTML = open ? '&times;' : '&#9776;';
+  });
+
+  // Close nav when a link is clicked
+  nav.addEventListener('click', (e) => {
+    if (e.target.tagName === 'A') {
+      nav.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.innerHTML = '&#9776;';
+    }
+  });
+})();
+
 const countdownElements = {
   days: document.getElementById('days'),
   hours: document.getElementById('hours'),
