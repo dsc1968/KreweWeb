@@ -80,11 +80,7 @@ if (registerForm) {
       if (resendButton) resendButton.hidden = false;
       submitButton.textContent = 'Verify and create account';
 
-      let message = resp.message || 'Verification code sent.';
-      if (resp.devVerificationCode) {
-        message += ` Dev code: ${resp.devVerificationCode}`;
-      }
-      setRegisterFeedback(message, false);
+      setRegisterFeedback(resp.message || 'Verification code sent.', false);
     } finally {
       submitButton.disabled = false;
     }
@@ -101,11 +97,7 @@ if (registerForm) {
         const resp = await postJSON('/api/auth/register/request-code', { full_name, email, password });
         verificationCodeInput.value = '';
         verificationCodeInput.focus();
-        let message = resp.message || 'New verification code sent.';
-        if (resp.devVerificationCode) {
-          message += ` Dev code: ${resp.devVerificationCode}`;
-        }
-        setRegisterFeedback(resp.error ? (resp.error) : message, Boolean(resp.error));
+        setRegisterFeedback(resp.error ? (resp.error) : (resp.message || 'New verification code sent.'), Boolean(resp.error));
       } finally {
         resendButton.disabled = false;
       }

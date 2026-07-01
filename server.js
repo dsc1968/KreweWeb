@@ -2649,10 +2649,6 @@ app.post('/api/auth/register/request-code', async (req, res) => {
       expiresInMinutes: REGISTRATION_CODE_TTL_MINUTES,
     };
 
-    if (process.env.NODE_ENV !== 'production') {
-      response.devVerificationCode = verificationCode;
-    }
-
     res.status(202).json(response);
   } catch (error) {
     console.error('Registration verification request failed', error);
