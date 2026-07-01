@@ -348,88 +348,94 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   backdrop.style.cssText = 'position:fixed;inset:0;z-index:11000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(2,8,22,0.8);overflow-y:auto;';
 
   backdrop.innerHTML = `
-    <div style="width:min(720px,100%);background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;max-height:90vh;overflow-y:auto;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
-        <h2 id="uem-title" style="margin:0;font-size:1.1rem;">Edit User</h2>
+    <div style="width:min(780px,100%);background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <h2 id="uem-title" style="margin:0;font-size:1.05rem;">Edit: ${escHtml(full.full_name)}</h2>
         <button type="button" id="uem-close" style="background:none;border:none;color:#b8c4e0;font-size:1.4rem;cursor:pointer;line-height:1;" aria-label="Close">&times;</button>
       </div>
 
-      <div class="uem-grid-2">
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Full Name</label>
-          <input id="uem-name" type="text" value="${escHtml(full.full_name)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Email</label>
-          <input id="uem-email" type="email" value="${escHtml(full.email)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Role</label>
-          <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
-            <option value="member" ${full.role==='member'?'selected':''}>Member</option>
-            <option value="admin" ${full.role==='admin'?'selected':''}>Admin</option>
-          </select></div>
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Phone</label>
-          <input id="uem-phone" type="tel" value="${escHtml(full.phone||'')}" placeholder="555-867-5309" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        <div class="form-group" style="grid-column:1/-1;"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Home Address</label>
-          <input id="uem-address" type="text" value="${escHtml(full.address||'')}" placeholder="123 Main St, New Orleans, LA 70130" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Spouse / Partner</label>
-          <input id="uem-spouse" type="text" value="${escHtml(full.spouse_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-        <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Guest Name</label>
-          <input id="uem-guest" type="text" value="${escHtml(full.guest_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+      <!-- Tab nav -->
+      <div class="uem-tabs">
+        <button type="button" class="uem-tab-btn is-active" data-uem-tab="personal">Personal</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="floats">Float &amp; Riders</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="payment">Payment</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="security">Security</button>
       </div>
 
-      <!-- Float Assignments -->
-      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-        <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Float Assignments</p>
-        <div class="uem-grid-2" style="margin-top:0.5rem;">
-          <div class="form-group">
-            <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Children <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name &amp; Float #)</span></label>
-            <div id="uem-kids"></div>
-            <button type="button" id="uem-add-kid" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Child</button>
-          </div>
-          <div class="form-group">
-            <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name &amp; Float #)</span></label>
-            <div id="uem-riders"></div>
-            <button type="button" id="uem-add-rider" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Rider</button>
-          </div>
+      <!-- Panel: Personal -->
+      <div class="uem-panel is-active" data-uem-panel="personal">
+        <div class="uem-grid-2">
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Full Name</label>
+            <input id="uem-name" type="text" value="${escHtml(full.full_name)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Email</label>
+            <input id="uem-email" type="email" value="${escHtml(full.email)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Role</label>
+            <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
+              <option value="member" ${full.role==='member'?'selected':''}>Member</option>
+              <option value="admin" ${full.role==='admin'?'selected':''}>Admin</option>
+            </select></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Phone</label>
+            <input id="uem-phone" type="tel" value="${escHtml(full.phone||'')}" placeholder="555-867-5309" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group" style="grid-column:1/-1;"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Home Address</label>
+            <input id="uem-address" type="text" value="${escHtml(full.address||'')}" placeholder="123 Main St, New Orleans, LA 70130" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Spouse / Partner</label>
+            <input id="uem-spouse" type="text" value="${escHtml(full.spouse_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Guest Name</label>
+            <input id="uem-guest" type="text" value="${escHtml(full.guest_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
         </div>
       </div>
 
-      <!-- Payment Status -->
-      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-        <p style="margin:0 0 0.75rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Payment Status</p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.5rem 1.5rem;">
-          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
-            <input type="checkbox" id="uem-dues-paid" ${full.dues_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
-            Membership Dues Paid
+      <!-- Panel: Float & Riders -->
+      <div class="uem-panel" data-uem-panel="floats">
+        <div class="form-group">
+          <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name, Float Name &amp; #)</span></label>
+          <div id="uem-riders"></div>
+          <button type="button" id="uem-add-rider" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Rider</button>
+        </div>
+      </div>
+
+      <!-- Panel: Payment -->
+      <div class="uem-panel" data-uem-panel="payment">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.65rem 1rem;padding:0.25rem 0;">
+          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+            <input type="checkbox" id="uem-dues-paid" ${full.dues_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
+            Membership Dues
           </label>
-          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
-            <input type="checkbox" id="uem-guest-fee-paid" ${full.guest_fee_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
-            Guest Fee Paid
+          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+            <input type="checkbox" id="uem-guest-fee-paid" ${full.guest_fee_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
+            Guest Fee
           </label>
-          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
-            <input type="checkbox" id="uem-beads-paid" ${full.beads_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
-            Beads Cost Paid
+          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+            <input type="checkbox" id="uem-beads-paid" ${full.beads_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
+            Beads &amp; Throws
           </label>
-          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
-            <input type="checkbox" id="uem-costume-paid" ${full.costume_paid?'checked':''} style="accent-color:#ffd262;width:1rem;height:1rem;" />
-            Costume Cost Paid
+          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
+            <input type="checkbox" id="uem-costume-paid" ${full.costume_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
+            Costume
           </label>
         </div>
       </div>
 
-      <div style="margin-top:1rem;padding:1rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
-        <p style="margin:0 0 0.6rem;font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#ffd262;">Reset Password</p>
+      <!-- Panel: Security -->
+      <div class="uem-panel" data-uem-panel="security">
+        <p style="margin:0 0 0.65rem;font-size:0.85rem;color:#b8c4e0;">Reset this user's password:</p>
         <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-          <input id="uem-password" type="password" placeholder="New password (min 8 chars)" autocomplete="new-password" style="flex:1;min-width:160px;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;" />
+          <input id="uem-password" type="password" placeholder="New password (min 8 chars)" autocomplete="new-password" style="flex:1;min-width:180px;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;" />
           <button type="button" id="uem-reset-pw" class="button secondary">Reset Password</button>
         </div>
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);">
+          <p style="margin:0 0 0.65rem;font-size:0.85rem;color:#b8c4e0;">Account status:</p>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <button type="button" id="uem-toggle-disable" class="button secondary" ${user.id===currentUserId?'disabled':''}>${full.role==='disabled'?'Enable Account':'Disable Account'}</button>
+            <button type="button" id="uem-delete" class="button secondary" style="border-color:rgba(255,155,155,0.45);color:#ff9b9b;" ${user.id===currentUserId?'disabled':''}>Delete User</button>
+          </div>
+        </div>
       </div>
 
-      <div id="uem-feedback" style="min-height:1.2em;font-size:0.88rem;color:#b8c4e0;margin:0.75rem 0;"></div>
-
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-          <button type="button" id="uem-save" class="button">Save Changes</button>
-          <button type="button" id="uem-toggle-disable" class="button secondary" ${user.id===currentUserId?'disabled':''}>${full.role==='disabled'?'Enable Account':'Disable Account'}</button>
-        </div>
-        <button type="button" id="uem-delete" class="button secondary" style="border-color:rgba(255,155,155,0.45);color:#ff9b9b;" ${user.id===currentUserId?'disabled':''}>Delete User</button>
+      <!-- Always-visible footer -->
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <button type="button" id="uem-save" class="button">Save Changes</button>
+        <div id="uem-feedback" style="flex:1;min-height:1.2em;font-size:0.88rem;color:#b8c4e0;"></div>
       </div>
     </div>
   `;
@@ -476,13 +482,10 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     container.appendChild(wrapper);
   }
 
-  const kidsFloatNums = full.kids_float_numbers || [];
   const riderFloatNums = full.rider_float_numbers || [];
   const riderFloatNames = full.rider_float_names || [];
-  (full.kids_names || []).forEach((n, i) => addListItem('uem-kids', n, kidsFloatNums[i] || ''));
   (full.float_riders || []).forEach((n, i) => addListItem('uem-riders', n, riderFloatNums[i] || '', riderFloatNames[i] || ''));
 
-  backdrop.querySelector('#uem-add-kid').addEventListener('click', () => addListItem('uem-kids', '', ''));
   backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', ''));
 
   const feedbackEl = backdrop.querySelector('#uem-feedback');
@@ -494,6 +497,17 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   function close() { backdrop.remove(); }
   backdrop.querySelector('#uem-close').addEventListener('click', close);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+
+  // Tab switching
+  backdrop.querySelectorAll('.uem-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      backdrop.querySelectorAll('.uem-tab-btn').forEach((b) => b.classList.remove('is-active'));
+      backdrop.querySelectorAll('.uem-panel').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      const panel = backdrop.querySelector(`[data-uem-panel="${btn.dataset.uemTab}"]`);
+      if (panel) panel.classList.add('is-active');
+    });
+  });
 
   // Save changes
   backdrop.querySelector('#uem-save').addEventListener('click', async () => {
@@ -508,11 +522,6 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
       guest_name: backdrop.querySelector('#uem-guest').value.trim(),
-      kids_names: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
-      kids_float_numbers: Array.from(backdrop.querySelectorAll('#uem-kids .uem-list-name')).map((nameInp) => {
-        const row = nameInp.closest('div');
-        return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
-      }),
       float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
       rider_float_names: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
         const row = nameInp.closest('div');

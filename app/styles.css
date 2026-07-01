@@ -1256,6 +1256,47 @@ body.admin-edit-mode .album-tools {
   border-color: rgba(255,210,98,0.5);
 }
 
+/* User Edit Modal tabs */
+.uem-tabs {
+  display: flex;
+  gap: 0.2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.uem-tab-btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  position: relative;
+  bottom: -1px;
+}
+
+.uem-tab-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.uem-tab-btn.is-active {
+  background: rgba(15,26,56,0.98);
+  border-color: rgba(255,255,255,0.12);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.uem-panel { display: none; }
+.uem-panel.is-active { display: block; }
+
 /* Admin user-edit modal CSS grids (responsive via classes) */
 .uem-grid-2 {
   display: grid;
