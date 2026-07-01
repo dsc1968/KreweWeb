@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Backup &amp; Restore - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .br-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+      .br-modal-box {
+        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.97));
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 2rem;
+        max-width: 480px;
+        width: 100%;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      }
+      .br-modal-box h3 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+      .br-modal-box p  { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
+      .br-scope-label {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+      .br-scope-label input { accent-color: var(--accent); width: 1rem; height: 1rem; cursor: pointer; }
+      .br-warning {
+        background: rgba(180, 35, 24, 0.12);
+        border: 1px solid rgba(180, 35, 24, 0.3);
+        border-radius: 10px;
+        padding: 0.65rem 0.9rem;
+        font-size: 0.82rem;
+        color: #f87171;
+        margin: 0.75rem 0;
+        line-height: 1.5;
+      }
+      .br-type-label {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.5rem 0.1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+      .br-type-label input { accent-color: var(--accent); width: 1rem; height: 1rem; cursor: pointer; }
+      .br-table { width: 100%; border-collapse: collapse; }
+      .br-table th {
+        text-align: left;
+        padding: 0.75rem;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+      .br-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        font-size: 0.88rem;
+        vertical-align: middle;
+      }
+      .br-table tr:last-child td { border-bottom: none; }
+      .br-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        background: rgba(255,210,98,0.12);
+        color: var(--accent);
+        border: 1px solid rgba(255,210,98,0.25);
+        margin-right: 0.25rem;
+      }
+      .br-badge.db { background: rgba(100,180,255,0.12); color: #93c5fd; border-color: rgba(100,180,255,0.25); }
+      .br-action-btn {
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.05);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+        margin-right: 0.4rem;
+      }
+      .br-action-btn:hover { border-color: rgba(255,210,98,0.4); background: rgba(255,210,98,0.06); color: var(--accent); }
+      .br-action-btn.danger:hover { border-color: rgba(248,113,113,0.5); background: rgba(248,113,113,0.06); color: #f87171; }
+      .br-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .br-pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 1.25rem; flex-wrap: wrap; }
+      .br-page-btn {
+        padding: 0.3rem 0.7rem;
+        border-radius: 7px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .br-page-btn:hover:not(:disabled) { border-color: rgba(255,210,98,0.4); background: rgba(255,210,98,0.06); color: var(--accent); }
+      .br-page-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+      .br-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .br-empty { color: var(--muted); font-size: 0.9rem; padding: 1.5rem 0; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Restore scope modal -->
+    <div id="br-restore-modal" class="br-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="br-modal-title">
+      <div class="br-modal-box">
+        <h3 id="br-modal-title">Restore Backup</h3>
+        <p id="br-modal-desc"></p>
+        <div id="br-modal-scope-options"></div>
+        <div id="br-modal-warning" class="br-warning" style="display:none;">
+          <strong>Warning:</strong> Restoring the database will <strong>replace all current data</strong>
+          including user accounts. You will need credentials that existed at backup time to log in again.
+        </div>
+        <div id="br-modal-feedback" class="db-feedback" aria-live="polite"></div>
+        <div style="display:flex; gap:0.75rem; margin-top:1rem; flex-wrap:wrap;">
+          <button id="br-modal-confirm" class="button">Restore</button>
+          <button id="br-modal-cancel" class="button secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <main class="container">
+      <section id="admin-backup-restore-page" class="section" style="display:none;">
+        <h2>Backup &amp; Restore</h2>
+        <p>Create and manage backups of site pages, configuration, and database data.</p>
+        <div style="margin-bottom:1.75rem;">
+          <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+        </div>
+
+        <!-- Backup Location card -->
+        <div class="db-card" style="margin-bottom:1.5rem;">
+          <div class="db-card-header">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
+            <h3>Backup Location</h3>
+          </div>
+          <p style="color:var(--muted); margin:0 0 1rem; font-size:0.9rem;">Choose where backups are stored and retrieved from.</p>
+
+          <label class="br-type-label">
+            <input type="radio" name="br-provider" value="local" checked />
+            <span><strong>Local filesystem</strong> &mdash; store on this server</span>
+          </label>
+          <label class="br-type-label">
+            <input type="radio" name="br-provider" value="s3" />
+            <span><strong>AWS S3 / S3-compatible</strong> &mdash; store in cloud object storage (R2, MinIO, B2&hellip;)</span>
+          </label>
+
+          <div id="br-local-fields" class="db-form" style="margin-top:1rem;">
+            <div style="max-width:420px;">
+              <div class="form-group">
+                <label for="br-local-path">Directory path</label>
+                <input type="text" id="br-local-path" placeholder="_backups" />
+              </div>
+            </div>
+            <p style="font-size:0.78rem; color:var(--muted); margin:0.3rem 0 0;">Relative to server root or absolute. Default: <code style="font-size:0.78rem; background:rgba(255,255,255,0.07); padding:0.1rem 0.35rem; border-radius:4px;">_backups</code></p>
+          </div>
+
+          <div id="br-s3-fields" class="db-form" style="display:none; margin-top:1rem;">
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="br-s3-bucket">Bucket name</label>
+                <input type="text" id="br-s3-bucket" placeholder="my-krewe-backups" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="br-s3-region">Region</label>
+                <input type="text" id="br-s3-region" placeholder="us-east-1" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="br-s3-prefix">Key prefix / folder</label>
+                <input type="text" id="br-s3-prefix" placeholder="krewe-backups/" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="br-s3-endpoint">Custom endpoint <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+                <input type="text" id="br-s3-endpoint" placeholder="https://… (MinIO, R2, B2, etc.)" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="br-s3-key-id">AWS Access Key ID</label>
+                <input type="text" id="br-s3-key-id" placeholder="AKIA…" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="br-s3-secret">AWS Secret Access Key</label>
+                <input type="password" id="br-s3-secret" placeholder="••••••••" autocomplete="new-password" />
+              </div>
+            </div>
+            <p style="font-size:0.78rem; color:var(--muted); margin:0.3rem 0 0;">Leave credentials blank to use an IAM role or environment variables already set on the server.</p>
+          </div>
+
+          <div id="br-location-feedback" class="db-feedback" style="margin-top:0.9rem;" aria-live="polite"></div>
+          <button id="br-save-location-btn" class="button db-save-btn">Save Location</button>
+        </div>
+
+        <!-- Create Backup card -->
+        <div class="db-card" style="margin-bottom:1.5rem;">
+          <div class="db-card-header">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67 2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+            <h3>Create Backup</h3>
+          </div>
+          <p style="color:var(--muted); margin:0 0 1rem; font-size:0.9rem;">Select what to include in this backup:</p>
+          <div>
+            <label class="br-type-label">
+              <input type="radio" name="br-create-type" value="full" checked />
+              <span><strong>Full backup</strong> &mdash; pages, config &amp; database</span>
+            </label>
+            <label class="br-type-label">
+              <input type="radio" name="br-create-type" value="files" />
+              <span><strong>Pages &amp; config only</strong> &mdash; all HTML, CSS, JS and .env</span>
+            </label>
+            <label class="br-type-label">
+              <input type="radio" name="br-create-type" value="database" />
+              <span><strong>Database only</strong> &mdash; all table data</span>
+            </label>
+          </div>
+          <div id="br-create-feedback" class="db-feedback" style="margin-top:0.9rem;" aria-live="polite"></div>
+          <button id="br-create-btn" class="button db-save-btn">Create Backup</button>
+        </div>
+
+        <!-- Backup list card -->
+        <div class="db-card">
+          <div class="db-card-header">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6h-2.18c.07-.44.18-.86.18-1a2 2 0 0 0-4 0c0 .14.11.56.18 1H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-1a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm6 15H6V8h14v12z"/></svg>
+            <h3>Saved Backups</h3>
+          </div>
+          <div id="br-list-feedback" class="db-feedback" aria-live="polite"></div>
+          <div style="overflow-x:auto;">
+            <table class="br-table">
+              <thead>
+                <tr>
+                  <th>Date / Time</th>
+                  <th>Type</th>
+                  <th>Created By</th>
+                  <th>Contains</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="br-table-body">
+                <tr><td colspan="5" class="br-empty">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="br-pagination" class="br-pagination"></div>
+        </div>
+
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

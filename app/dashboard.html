@@ -99,68 +99,22 @@
             <a id="open-user-management" class="button secondary" href="/user-management.html">Open User Management</a>
           </section>
 
-          <section id="site-config-card" class="db-card" style="display:none;">
+          <section id="admin-config-card" class="db-card" style="display:none;">
             <div class="db-card-header">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a6.97 6.97 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.48.48 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
               <h3>Site Configuration</h3>
             </div>
-            <form id="site-config-form" class="db-form" novalidate>
+            <p style="color:var(--muted); margin-top:0;">Manage email/SMTP settings and other site configuration options.</p>
+            <a id="open-site-config" class="button secondary" href="/configuration.html">Open Site Configuration</a>
+          </section>
 
-              <p class="db-config-section-label">Email / SMTP</p>
-              <div class="db-form-grid">
-                <div class="form-group">
-                  <label for="cfg-smtp-host">SMTP Host</label>
-                  <input type="text" id="cfg-smtp-host" name="SMTP_HOST" placeholder="smtp.gmail.com" />
-                </div>
-                <div class="form-group">
-                  <label for="cfg-smtp-port">SMTP Port</label>
-                  <input type="text" id="cfg-smtp-port" name="SMTP_PORT" placeholder="587" />
-                </div>
-                <div class="form-group">
-                  <label for="cfg-smtp-user">SMTP Username</label>
-                  <input type="text" id="cfg-smtp-user" name="SMTP_USER" placeholder="you@gmail.com" autocomplete="off" />
-                </div>
-                <div class="form-group">
-                  <label for="cfg-smtp-pass">SMTP Password / App Key</label>
-                  <input type="password" id="cfg-smtp-pass" name="SMTP_PASS" placeholder="••••••••" autocomplete="new-password" />
-                </div>
-              </div>
-              <div class="db-form-grid">
-                <div class="form-group">
-                  <label for="cfg-smtp-from">From Address</label>
-                  <input type="text" id="cfg-smtp-from" name="SMTP_FROM" placeholder='Krewe Mystique &lt;no-reply@example.com&gt;' />
-                </div>
-                <div class="form-group">
-                  <label for="cfg-smtp-reply-to">Reply-To Address</label>
-                  <input type="text" id="cfg-smtp-reply-to" name="SMTP_REPLY_TO" placeholder="you@example.com" />
-                </div>
-                <div class="form-group">
-                  <label for="cfg-smtp-secure">Use TLS (SMTP_SECURE)</label>
-                  <select id="cfg-smtp-secure" name="SMTP_SECURE">
-                    <option value="false">false (STARTTLS / port 587)</option>
-                    <option value="true">true (SSL / port 465)</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="cfg-contact-recipient">Contact Form Recipient</label>
-                  <input type="text" id="cfg-contact-recipient" name="CONTACT_RECIPIENT" placeholder="you@example.com" />
-                </div>
-              </div>
-
-              <p class="db-config-section-label" style="margin-top:1rem;">Registration</p>
-              <div class="db-form-grid">
-                <div class="form-group">
-                  <label for="cfg-code-ttl">Verification Code TTL (minutes)</label>
-                  <input type="number" id="cfg-code-ttl" name="REGISTRATION_CODE_TTL_MINUTES" min="1" max="60" placeholder="10" />
-                </div>
-              </div>
-
-              <div id="site-config-feedback" class="db-feedback" aria-live="polite"></div>
-              <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                <button type="submit" class="button db-save-btn">Save Configuration</button>
-                <span style="font-size:0.8rem; color:var(--muted);">Changes take effect after a server restart.</span>
-              </div>
-            </form>
+          <section id="admin-backup-card" class="db-card" style="display:none;">
+            <div class="db-card-header">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67 2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+              <h3>Backup &amp; Restore</h3>
+            </div>
+            <p style="color:var(--muted); margin-top:0;">Create and restore backups of site pages, configuration, and database data.</p>
+            <a id="open-backup-restore" class="button secondary" href="/backup-restore.html">Open Backup &amp; Restore</a>
           </section>
 
         </div>

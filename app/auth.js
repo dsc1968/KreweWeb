@@ -820,6 +820,10 @@ async function initDashboard() {
     if (adminTab) adminTab.hidden = false;
     const adminTools = document.getElementById('admin-tools');
     if (adminTools) adminTools.style.display = 'block';
+    const adminConfigCard = document.getElementById('admin-config-card');
+    if (adminConfigCard) adminConfigCard.style.display = 'block';
+    const adminBackupCard = document.getElementById('admin-backup-card');
+    if (adminBackupCard) adminBackupCard.style.display = 'block';
   }
 
   // Wire up tabs
@@ -836,7 +840,6 @@ async function initDashboard() {
   });
 
   initProfileDetailsForm(profile);
-  if (profile.role === 'admin') initSiteConfig();
 }
 
 async function initSiteConfig() {
@@ -899,6 +902,25 @@ async function initSiteConfig() {
   });
 }
 
+async function initConfigurationPage() {
+  const section = document.getElementById('admin-configuration-page');
+  if (!section) return;
+
+  const profile = await fetchProfile();
+  if (!profile) {
+    window.location.href = '/login.html';
+    return;
+  }
+
+  if (profile.role !== 'admin') {
+    window.location.href = '/dashboard.html';
+    return;
+  }
+
+  section.style.display = 'block';
+  initSiteConfig();
+}
+
 async function initUserManagementPage() {
   const section = document.getElementById('admin-user-management-page') || document.getElementById('admin-user-management');
   if (!section) return;
@@ -926,9 +948,356 @@ async function initUserManagementPage() {
   setAdminFeedback((result.data && result.data.error) || 'Unable to load users', true);
 }
 
+async function initBackupRestorePage() {
+  const section = document.getElementById('admin-backup-restore-page');
+  if (!section) return;
+
+  const profile = await fetchProfile();
+  if (!profile) { window.location.href = '/login.html'; return; }
+  if (profile.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+
+  section.style.display = 'block';
+
+  const token = getToken();
+  let currentPage = 1;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function setCreateFeedback(msg, isError) {
+    const el = document.getElementById('br-create-feedback');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? '#b42318' : 'var(--muted)';
+  }
+
+  function setListFeedback(msg, isError) {
+    const el = document.getElementById('br-list-feedback');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? '#b42318' : 'var(--muted)';
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch { return iso; }
+  }
+
+  function typeLabel(type) {
+    return type === 'full' ? 'Full' : type === 'files' ? 'Pages & Config' : type === 'database' ? 'Database' : type || '—';
+  }
+
+  // ── Location config ──────────────────────────────────────────────────────────
+  const locationFeedback = document.getElementById('br-location-feedback');
+  function setLocationFeedback(msg, isError) {
+    if (!locationFeedback) return;
+    locationFeedback.textContent = msg;
+    locationFeedback.style.color = isError ? '#b42318' : 'var(--muted)';
+  }
+
+  const providerRadios = document.querySelectorAll('input[name="br-provider"]');
+  const localFields = document.getElementById('br-local-fields');
+  const s3Fields = document.getElementById('br-s3-fields');
+
+  function updateProviderFields() {
+    const chosen = document.querySelector('input[name="br-provider"]:checked');
+    const val = chosen ? chosen.value : 'local';
+    if (localFields) localFields.style.display = val === 'local' ? '' : 'none';
+    if (s3Fields) s3Fields.style.display = val === 's3' ? '' : 'none';
+  }
+  providerRadios.forEach((r) => r.addEventListener('change', updateProviderFields));
+  updateProviderFields();
+
+  // Load current location config
+  setLocationFeedback('Loading location config…', false);
+  try {
+    const lcRes = await fetch('/api/admin/backup-location', { headers: { Authorization: 'Bearer ' + token } });
+    const lcData = await parseJSONResponse(lcRes);
+    if (lcRes.ok) {
+      const c = lcData.config || {};
+      const radio = document.querySelector(`input[name="br-provider"][value="${c.BACKUP_PROVIDER || 'local'}"]`);
+      if (radio) radio.checked = true;
+      const lp = document.getElementById('br-local-path');
+      if (lp) lp.value = c.BACKUP_LOCAL_PATH || '';
+      [
+        ['br-s3-bucket', 'BACKUP_S3_BUCKET'],
+        ['br-s3-region', 'BACKUP_S3_REGION'],
+        ['br-s3-prefix', 'BACKUP_S3_PREFIX'],
+        ['br-s3-endpoint', 'BACKUP_S3_ENDPOINT'],
+        ['br-s3-key-id', 'BACKUP_AWS_ACCESS_KEY_ID'],
+        ['br-s3-secret', 'BACKUP_AWS_SECRET_ACCESS_KEY'],
+      ].forEach(([elId, key]) => {
+        const el = document.getElementById(elId);
+        if (el) el.value = c[key] || '';
+      });
+      updateProviderFields();
+      setLocationFeedback('', false);
+    } else {
+      setLocationFeedback(lcData.error || 'Unable to load config.', true);
+    }
+  } catch {
+    setLocationFeedback('Network error loading config.', true);
+  }
+
+  const saveLocationBtn = document.getElementById('br-save-location-btn');
+  if (saveLocationBtn) {
+    saveLocationBtn.addEventListener('click', async () => {
+      saveLocationBtn.disabled = true;
+      setLocationFeedback('Saving…', false);
+      const chosen = document.querySelector('input[name="br-provider"]:checked');
+      const config = {
+        BACKUP_PROVIDER: chosen ? chosen.value : 'local',
+        BACKUP_LOCAL_PATH: document.getElementById('br-local-path')?.value || '',
+        BACKUP_S3_BUCKET: document.getElementById('br-s3-bucket')?.value || '',
+        BACKUP_S3_REGION: document.getElementById('br-s3-region')?.value || '',
+        BACKUP_S3_PREFIX: document.getElementById('br-s3-prefix')?.value || '',
+        BACKUP_S3_ENDPOINT: document.getElementById('br-s3-endpoint')?.value || '',
+        BACKUP_AWS_ACCESS_KEY_ID: document.getElementById('br-s3-key-id')?.value || '',
+        BACKUP_AWS_SECRET_ACCESS_KEY: document.getElementById('br-s3-secret')?.value || '',
+      };
+      try {
+        const res = await fetch('/api/admin/backup-location', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ config }),
+        });
+        const data = await parseJSONResponse(res);
+        setLocationFeedback(res.ok ? 'Location saved.' : (data.error || 'Unable to save.'), !res.ok);
+        if (res.ok) loadBackupList(1);
+      } catch {
+        setLocationFeedback('Network error. Please try again.', true);
+      } finally {
+        saveLocationBtn.disabled = false;
+      }
+    });
+  }
+
+  // ── Restore modal ────────────────────────────────────────────────────────
+  const modal = document.getElementById('br-restore-modal');
+  const modalDesc = document.getElementById('br-modal-desc');
+  const modalScopeOptions = document.getElementById('br-modal-scope-options');
+  const modalWarning = document.getElementById('br-modal-warning');
+  const modalFeedback = document.getElementById('br-modal-feedback');
+  const modalConfirm = document.getElementById('br-modal-confirm');
+  const modalCancel = document.getElementById('br-modal-cancel');
+
+  function hideRestoreModal() {
+    modal.style.display = 'none';
+  }
+
+  modalCancel.addEventListener('click', hideRestoreModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) hideRestoreModal(); });
+
+  function showRestoreModal(backup) {
+    modalFeedback.textContent = '';
+    modalFeedback.style.color = 'var(--muted)';
+    modalConfirm.disabled = false;
+
+    modalDesc.textContent = `Backup: ${formatDate(backup.created_at)} (${typeLabel(backup.type)})`;
+
+    const contains = Array.isArray(backup.contains) ? backup.contains : [];
+    const scopeOptions = [];
+    if (contains.includes('files') && contains.includes('database')) {
+      scopeOptions.push({ value: 'full', label: 'Full restore (pages & database)' });
+    }
+    if (contains.includes('files')) {
+      scopeOptions.push({ value: 'files', label: 'Pages & config only' });
+    }
+    if (contains.includes('database')) {
+      scopeOptions.push({ value: 'database', label: 'Database only' });
+    }
+
+    modalScopeOptions.innerHTML = scopeOptions.map((opt, i) => `
+      <label class="br-scope-label">
+        <input type="radio" name="br-restore-scope" value="${opt.value}" ${i === 0 ? 'checked' : ''} />
+        ${opt.label}
+      </label>`).join('');
+
+    function updateWarning() {
+      const chosen = modalScopeOptions.querySelector('input[name="br-restore-scope"]:checked');
+      const val = chosen ? chosen.value : '';
+      modalWarning.style.display = (val === 'database' || val === 'full') ? 'block' : 'none';
+    }
+    modalScopeOptions.querySelectorAll('input').forEach((r) => r.addEventListener('change', updateWarning));
+    updateWarning();
+
+    modal.style.display = 'flex';
+
+    modalConfirm.onclick = async () => {
+      const chosen = modalScopeOptions.querySelector('input[name="br-restore-scope"]:checked');
+      if (!chosen) { modalFeedback.textContent = 'Please select a restore scope.'; return; }
+      const scope = chosen.value;
+      modalConfirm.disabled = true;
+      modalFeedback.textContent = 'Restoring… please wait.';
+      modalFeedback.style.color = 'var(--muted)';
+
+      try {
+        const res = await fetch(`/api/admin/backups/${encodeURIComponent(backup.id)}/restore`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ scope }),
+        });
+        const data = await parseJSONResponse(res);
+        if (!res.ok) {
+          modalFeedback.textContent = data.error || 'Restore failed.';
+          modalFeedback.style.color = '#b42318';
+          modalConfirm.disabled = false;
+          return;
+        }
+        modalFeedback.textContent = `Restored: ${data.restored.join(' & ')}.${data.restored.includes('files') ? ' Reload the page to see changes.' : ''}`;
+        modalFeedback.style.color = 'var(--muted)';
+        modalConfirm.disabled = true;
+      } catch {
+        modalFeedback.textContent = 'Network error. Please try again.';
+        modalFeedback.style.color = '#b42318';
+        modalConfirm.disabled = false;
+      }
+    };
+  }
+
+  // ── Backup list ──────────────────────────────────────────────────────────
+  async function loadBackupList(page) {
+    const tbody = document.getElementById('br-table-body');
+    const pager = document.getElementById('br-pagination');
+    tbody.innerHTML = '<tr><td colspan="5" class="br-empty">Loading…</td></tr>';
+    pager.innerHTML = '';
+    setListFeedback('', false);
+
+    try {
+      const res = await fetch(`/api/admin/backups?page=${page}`, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await parseJSONResponse(res);
+      if (!res.ok) { setListFeedback(data.error || 'Unable to load backups.', true); tbody.innerHTML = '<tr><td colspan="5" class="br-empty">—</td></tr>'; return; }
+
+      const { items, total, totalPages } = data;
+      currentPage = data.page;
+
+      if (!items || items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="br-empty">No backups yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map((b) => {
+        const contains = Array.isArray(b.contains) ? b.contains : [];
+        const badges = [
+          contains.includes('files') ? '<span class="br-badge">Files</span>' : '',
+          contains.includes('database') ? '<span class="br-badge db">DB</span>' : '',
+        ].join('');
+        return `
+          <tr>
+            <td style="white-space:nowrap;">${formatDate(b.created_at)}</td>
+            <td>${typeLabel(b.type)}</td>
+            <td style="color:var(--muted); font-size:0.82rem;">${b.created_by || '—'}</td>
+            <td>${badges || '—'}</td>
+            <td style="white-space:nowrap;">
+              <button class="br-action-btn" data-action="restore" data-id="${b.id}">Restore</button>
+              <button class="br-action-btn danger" data-action="delete" data-id="${b.id}">Delete</button>
+            </td>
+          </tr>`;
+      }).join('');
+
+      // Wire row buttons
+      tbody.querySelectorAll('button[data-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const { action, id } = btn.dataset;
+          const backup = items.find((b) => b.id === id);
+          if (!backup) return;
+
+          if (action === 'restore') {
+            showRestoreModal(backup);
+          } else if (action === 'delete') {
+            if (!window.confirm(`Delete backup from ${formatDate(backup.created_at)}? This cannot be undone.`)) return;
+            btn.disabled = true;
+            setListFeedback('Deleting…', false);
+            try {
+              const res2 = await fetch(`/api/admin/backups/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+                headers: { Authorization: 'Bearer ' + token },
+              });
+              const d2 = await parseJSONResponse(res2);
+              if (!res2.ok) { setListFeedback(d2.error || 'Delete failed.', true); btn.disabled = false; return; }
+              setListFeedback('Backup deleted.', false);
+              loadBackupList(currentPage);
+            } catch {
+              setListFeedback('Network error.', true);
+              btn.disabled = false;
+            }
+          }
+        });
+      });
+
+      // Pagination
+      if (totalPages > 1) {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'br-page-btn';
+        prevBtn.textContent = '← Prev';
+        prevBtn.disabled = currentPage <= 1;
+        prevBtn.addEventListener('click', () => loadBackupList(currentPage - 1));
+        pager.appendChild(prevBtn);
+
+        for (let p = 1; p <= totalPages; p++) {
+          const pb = document.createElement('button');
+          pb.className = 'br-page-btn' + (p === currentPage ? ' active' : '');
+          pb.textContent = String(p);
+          pb.addEventListener('click', () => loadBackupList(p));
+          pager.appendChild(pb);
+        }
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'br-page-btn';
+        nextBtn.textContent = 'Next →';
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.addEventListener('click', () => loadBackupList(currentPage + 1));
+        pager.appendChild(nextBtn);
+
+        const info = document.createElement('span');
+        info.style.cssText = 'font-size:0.8rem; color:var(--muted); margin-left:0.5rem;';
+        info.textContent = `${total} backup${total !== 1 ? 's' : ''}`;
+        pager.appendChild(info);
+      }
+    } catch {
+      setListFeedback('Network error loading backups.', true);
+      tbody.innerHTML = '<tr><td colspan="5" class="br-empty">—</td></tr>';
+    }
+  }
+
+  // ── Create backup ────────────────────────────────────────────────────────
+  const createBtn = document.getElementById('br-create-btn');
+  createBtn.addEventListener('click', async () => {
+    const checked = document.querySelector('input[name="br-create-type"]:checked');
+    const type = checked ? checked.value : 'full';
+    createBtn.disabled = true;
+    setCreateFeedback('Creating backup… this may take a moment.', false);
+
+    try {
+      const res = await fetch('/api/admin/backups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ type }),
+      });
+      const data = await parseJSONResponse(res);
+      if (!res.ok) {
+        setCreateFeedback(data.error || 'Unable to create backup.', true);
+      } else {
+        setCreateFeedback(`Backup created: ${formatDate(data.backup.created_at)}`, false);
+        loadBackupList(1);
+      }
+    } catch {
+      setCreateFeedback('Network error. Please try again.', true);
+    } finally {
+      createBtn.disabled = false;
+    }
+  });
+
+  loadBackupList(1);
+}
+
 function initAuthPages() {
   initDashboard();
   initUserManagementPage();
+  initConfigurationPage();
+  initBackupRestorePage();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAuthPages);
