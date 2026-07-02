@@ -460,9 +460,12 @@
 
         <div class="shop-header">
           <h1>Krewe Shop</h1>
-          <button id="shop-open-cart-btn" class="shop-cart-btn">
-            🛒 Cart <span id="shop-cart-count" class="shop-cart-count">0</span>
-          </button>
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <a id="shop-manage-btn" href="/shop-admin.html" class="button secondary" style="font-size:0.85rem;padding:0.4rem 1rem;text-decoration:none;display:none;">Manage Store</a>
+            <button id="shop-open-cart-btn" class="shop-cart-btn">
+              🛒 Cart <span id="shop-cart-count" class="shop-cart-count">0</span>
+            </button>
+          </div>
         </div>
 
         <nav class="shop-tabs">

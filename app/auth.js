@@ -1931,6 +1931,13 @@ async function initShopPage() {
 
   pageContent.style.display = '';
 
+  // Show "Manage Store" button for admins and store admins
+  const profile = await fetchProfile();
+  if (profile && (profile.role === 'admin' || profile.role === 'store_admin')) {
+    const manageBtn = document.getElementById('shop-manage-btn');
+    if (manageBtn) manageBtn.style.display = '';
+  }
+
   let cartItems = [];
 
   // ── Cart helpers ────────────────────────────────────────────────────────
