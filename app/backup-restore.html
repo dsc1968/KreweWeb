@@ -179,6 +179,10 @@
             <input type="radio" name="br-provider" value="s3" />
             <span><strong>AWS S3 / S3-compatible</strong> &mdash; store in cloud object storage (R2, MinIO, B2&hellip;)</span>
           </label>
+          <label class="br-type-label">
+            <input type="radio" name="br-provider" value="rclone" />
+            <span><strong>rclone</strong> &mdash; OneDrive (personal &amp; M365), Google Drive, Dropbox, and 70+ other providers</span>
+          </label>
 
           <div id="br-local-fields" class="db-form" style="margin-top:1rem;">
             <div style="max-width:420px;">
@@ -218,6 +222,32 @@
               </div>
             </div>
             <p style="font-size:0.78rem; color:var(--muted); margin:0.3rem 0 0;">Leave credentials blank to use an IAM role or environment variables already set on the server.</p>
+          </div>
+
+          <div id="br-rclone-fields" class="db-form" style="display:none; margin-top:1rem;">
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="br-rclone-remote">rclone remote name</label>
+                <input type="text" id="br-rclone-remote" placeholder="onedrive" autocomplete="off" />
+                <p style="font-size:0.78rem; color:var(--muted); margin:0.25rem 0 0;">The name you gave the remote when running <code style="background:rgba(255,255,255,0.07);padding:0.1rem 0.35rem;border-radius:4px;">rclone config</code></p>
+              </div>
+              <div class="form-group">
+                <label for="br-rclone-folder">Remote folder path</label>
+                <input type="text" id="br-rclone-folder" placeholder="krewe-backups" autocomplete="off" />
+              </div>
+            </div>
+            <div id="br-rclone-status-bar" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.75rem;">
+              <span id="br-rclone-status-label" style="font-size:0.85rem;color:var(--muted);">Save config, then click Test to verify.</span>
+              <button id="br-rclone-test-btn" class="button secondary" type="button" style="padding:0.4rem 1rem;font-size:0.85rem;">Test Connection</button>
+            </div>
+            <div style="background:rgba(255,210,98,0.07); border:1px solid rgba(255,210,98,0.2); border-radius:10px; padding:0.7rem 1rem; margin-top:0.75rem; font-size:0.8rem; color:var(--muted); line-height:1.7;">
+              <strong style="color:var(--accent);">Setup — one-time on the server:</strong><br>
+              1. Install rclone: <a href="https://rclone.org/install/" target="_blank" rel="noopener" style="color:var(--accent);">rclone.org/install</a> (Linux: <code style="background:rgba(255,255,255,0.08);padding:0.1rem 0.35rem;border-radius:4px;">sudo -v ; curl https://rclone.org/install.sh | sudo bash</code>)<br>
+              2. Run <code style="background:rgba(255,255,255,0.08);padding:0.1rem 0.35rem;border-radius:4px;">rclone config</code> in a terminal on the server and follow the prompts for your provider (e.g. <em>OneDrive</em>, <em>Google Drive</em>, <em>Dropbox</em>…).<br>
+              3. Give the remote a simple name (e.g. <code style="background:rgba(255,255,255,0.08);padding:0.1rem 0.35rem;border-radius:4px;">onedrive</code>) and paste it in the field above.<br>
+              4. Click <strong>Save Location</strong> then <strong>Test Connection</strong>.<br>
+              <strong style="color:var(--accent);">OneDrive personal:</strong> rclone includes its own built-in Microsoft app — <em>no Azure app registration needed</em>.
+            </div>
           </div>
 
           <div id="br-location-feedback" class="db-feedback" style="margin-top:0.9rem;" aria-live="polite"></div>

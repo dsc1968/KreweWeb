@@ -131,3 +131,9 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 -- INSERT INTO users (email, full_name, role, password_hash, joined_at) VALUES
 -- ('demo@krewe.local', 'Demo Member', 'member', '$2a$10$YourHashHereForDemo123', NOW()),
 -- ('admin@krewe.local', 'Admin User', 'admin', '$2a$10$YourHashHereForAdmin123', NOW());
+
+CREATE TABLE IF NOT EXISTS site_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);

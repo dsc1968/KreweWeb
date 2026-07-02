@@ -477,6 +477,15 @@ async function ensureContentTable() {
     `, [sy]);
   }
 
+  // ── Site settings table ──────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // ── Shop tables ─────────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shop_products (
@@ -851,12 +860,14 @@ const ENV_CONFIG_ALLOWLIST = [
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_MODE',
   'PAYMENT_SIMULATE',
+  'SEASON_END_DATE',
 ];
 
 const envFilePath = path.join(__dirname, '.env');
 
-// ── Mardi Gras season helpers ─────────────────────────────────────────────
-// Ash Wednesday is 46 days before Easter (Gregorian algorithm)
+// ── Season helpers ────────────────────────────────────────────────────────
+// Ash Wednesday is 46 days before Easter (Gregorian algorithm). Used as the
+// default season-end date when no SEASON_END_DATE is configured.
 function easterDate(year) {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100;
   const d = Math.floor(b / 4), e = b % 4;
@@ -872,17 +883,136 @@ function easterDate(year) {
 function ashWednesdayDate(year) {
   return new Date(easterDate(year).getTime() - 46 * 24 * 60 * 60 * 1000);
 }
-// The "season year" is the year of the UPCOMING Ash Wednesday.
-// After Ash Wednesday passes, dues are considered due for the next season.
+
+// Parse the SEASON_END_DATE value from the .env file.
+// Returns null (fall back to Ash Wednesday) or one of:
+//   { type: 'fixed',    month: 1-12, day: 1-31 }
+//   { type: 'relative', ordinal: 1-4 | -1, dow: 0-6, month: 1-12 }
+//
+// .env format examples:
+//   SEASON_END_DATE=fixed:7:15        → July 15 every year
+//   SEASON_END_DATE=relative:1:3:7    → 1st Wednesday of July
+//   SEASON_END_DATE=relative:-1:5:8   → Last Friday of August
+function parseSeasonEndConfig() {
+  try {
+    const content = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '';
+    const raw = (parseEnvFile(content).SEASON_END_DATE || '').trim();
+    if (!raw) return null;
+    const parts = raw.split(':');
+    if (parts[0] === 'fixed' && parts.length === 3) {
+      const month = Number.parseInt(parts[1], 10);
+      const day   = Number.parseInt(parts[2], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return { type: 'fixed', month, day };
+      }
+    }
+    if (parts[0] === 'relative' && parts.length === 4) {
+      const ordinal = Number.parseInt(parts[1], 10); // 1-4 or -1 (last)
+      const dow     = Number.parseInt(parts[2], 10); // 0=Sun … 6=Sat
+      const month   = Number.parseInt(parts[3], 10); // 1-12
+      if ((ordinal >= 1 && ordinal <= 4 || ordinal === -1) &&
+          dow >= 0 && dow <= 6 && month >= 1 && month <= 12) {
+        return { type: 'relative', ordinal, dow, month };
+      }
+    }
+  } catch (_) { /* fall through to default */ }
+  return null;
+}
+
+// Resolve the configured season end date for a specific calendar year.
+// Falls back to Ash Wednesday when no SEASON_END_DATE is configured.
+function resolveSeasonEndDate(year) {
+  const cfg = parseSeasonEndConfig();
+  if (!cfg) return ashWednesdayDate(year);
+  if (cfg.type === 'fixed') {
+    return new Date(Date.UTC(year, cfg.month - 1, cfg.day));
+  }
+  // relative: Nth DOW of MONTH
+  const { ordinal, dow, month } = cfg;
+  if (ordinal === -1) {
+    // Last occurrence: find last day of month, walk back to the desired DOW
+    const lastDay = new Date(Date.UTC(year, month, 0)); // day-0 = last day of month
+    const diff = (lastDay.getUTCDay() - dow + 7) % 7;
+    return new Date(lastDay.getTime() - diff * 24 * 60 * 60 * 1000);
+  }
+  // First occurrence of DOW in MONTH, then advance (ordinal-1) weeks
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const diff = (dow - first.getUTCDay() + 7) % 7;
+  const day = 1 + diff + (ordinal - 1) * 7;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+// The "season year" is the year of the season currently in effect.
+// Once the season end date passes, we advance to the next season year so that
+// dues/fees paid in the previous season are treated as unpaid.
 function currentSeasonYear() {
   const now = new Date();
   const year = now.getUTCFullYear();
-  const ash = ashWednesdayDate(year);
+  const end = resolveSeasonEndDate(year);
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return todayMs >= ash.getTime() ? year + 1 : year;
+  return todayMs >= end.getTime() ? year + 1 : year;
+}
+function seasonEndISO(year) {
+  return resolveSeasonEndDate(year).toISOString().slice(0, 10);
 }
 function ashWednesdayISO(year) {
   return ashWednesdayDate(year).toISOString().slice(0, 10);
+}
+
+// ── Season reset ──────────────────────────────────────────────────────────
+// Sets dues_paid, guest_fee_paid, beads_paid, and costume_paid to FALSE for
+// all members and records the reset date in site_settings so the scheduler
+// does not double-reset if the server restarts on the same day.
+async function performSeasonReset() {
+  const today = new Date().toISOString().slice(0, 10);
+  console.log(`[Season Reset] Running season reset for ${today}`);
+  await pool.query(`
+    UPDATE user_profiles
+    SET dues_paid      = FALSE,
+        guest_fee_paid = FALSE,
+        beads_paid     = FALSE,
+        costume_paid   = FALSE,
+        updated_at     = NOW()
+    WHERE dues_paid = TRUE
+       OR guest_fee_paid = TRUE
+       OR beads_paid     = TRUE
+       OR costume_paid   = TRUE
+  `);
+  await pool.query(
+    `INSERT INTO site_settings (key, value, updated_at) VALUES ('last_season_reset_date', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [today],
+  );
+  console.log('[Season Reset] Reset complete.');
+}
+
+// Called at startup and once daily. Runs performSeasonReset() when the
+// current calendar date matches (or has passed) the configured season end
+// date and no reset has been recorded for that date yet.
+async function checkAndRunSeasonReset() {
+  try {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const endDate  = resolveSeasonEndDate(year);
+    const todayISO = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+                       .toISOString().slice(0, 10);
+    const endISO   = endDate.toISOString().slice(0, 10);
+
+    if (todayISO < endISO) return; // Season end date has not arrived yet
+
+    // Check when we last reset to avoid double-resetting
+    const result = await pool.query(
+      `SELECT value FROM site_settings WHERE key = 'last_season_reset_date'`,
+    );
+    const lastReset = result.rows.length > 0 ? result.rows[0].value : null;
+
+    // Skip if we already reset on or after this season's end date
+    if (lastReset && lastReset >= endISO) return;
+
+    await performSeasonReset();
+  } catch (err) {
+    console.error('[Season Reset] Scheduled check failed:', err);
+  }
 }
 
 function parseEnvFile(content) {
@@ -975,6 +1105,18 @@ app.put('/api/admin/config', authenticateToken, (req, res) => {
   }
 });
 
+// Manually trigger a season reset (admin only)
+app.post('/api/admin/season-reset', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await performSeasonReset();
+    res.json({ ok: true, reset_date: new Date().toISOString().slice(0, 10) });
+  } catch (err) {
+    console.error('Manual season reset failed', err);
+    res.status(500).json({ error: 'Season reset failed' });
+  }
+});
+
 // ── Backup / Restore ──────────────────────────────────────────────────────────
 const os = require('os');
 const archiver = require('archiver');
@@ -989,6 +1131,8 @@ const BACKUP_CONFIG_KEYS = [
   'BACKUP_S3_ENDPOINT',
   'BACKUP_AWS_ACCESS_KEY_ID',
   'BACKUP_AWS_SECRET_ACCESS_KEY',
+  'BACKUP_RCLONE_REMOTE',
+  'BACKUP_RCLONE_FOLDER',
 ];
 
 function readBackupConfig() {
@@ -1006,7 +1150,80 @@ function readBackupConfig() {
     s3Endpoint: env.BACKUP_S3_ENDPOINT || '',
     s3AccessKeyId: env.BACKUP_AWS_ACCESS_KEY_ID || '',
     s3SecretAccessKey: env.BACKUP_AWS_SECRET_ACCESS_KEY || '',
+    rcloneRemote: env.BACKUP_RCLONE_REMOTE || '',
+    rcloneFolder: (env.BACKUP_RCLONE_FOLDER || 'krewe-backups'),
   };
+}
+
+// ── rclone helpers ─────────────────────────────────────────────────────────
+// rclone is a free, open-source CLI that supports OneDrive (personal & business),
+// Google Drive, Dropbox, S3, and 70+ other cloud storage providers.
+// Install: https://rclone.org/install/
+// Configure: run `rclone config` once on the server to create a named remote.
+// rclone has its own built-in Microsoft app credentials, so no Azure app
+// registration is needed for personal OneDrive.
+
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+// Basic safety check: remote names and folder paths must not contain shell-special chars.
+// execFile is used (not exec) so this is defense-in-depth, not the primary boundary.
+function isSafeRclonePath(v) {
+  return typeof v === 'string' && v.length > 0 && v.length <= 200 && /^[A-Za-z0-9_.\-/:]+$/.test(v);
+}
+
+async function rcloneRun(args) {
+  const { stdout, stderr } = await execFileAsync('rclone', args, {
+    timeout: 120_000,
+    maxBuffer: 10 * 1024 * 1024,
+  }).catch((err) => {
+    throw new Error(`rclone ${args[0] || ''} failed: ${(err.stderr || err.message || '').toString().slice(0, 500)}`);
+  });
+  return { stdout, stderr };
+}
+
+async function rcloneListFiles(remote, folder) {
+  try {
+    const { stdout } = await rcloneRun(['lsjson', `${remote}:${folder}`, '--files-only', '--no-modtime']);
+    return JSON.parse(stdout || '[]');
+  } catch (err) {
+    // Treat "directory not found" / "not exist" as empty folder rather than error
+    if (/not found|doesn.t exist|directory not found|object not found/i.test(err.message)) return [];
+    throw err;
+  }
+}
+
+async function rcloneUploadFile(remote, folder, filename, localPath) {
+  await rcloneRun(['copyto', localPath, `${remote}:${folder}/${filename}`]);
+}
+
+async function rcloneDownloadFile(remote, folder, filename, localPath) {
+  await rcloneRun(['copyto', `${remote}:${folder}/${filename}`, localPath]);
+}
+
+async function rcloneDeleteFile(remote, folder, filename) {
+  try {
+    await rcloneRun(['deletefile', `${remote}:${folder}/${filename}`]);
+  } catch (err) {
+    if (!/not found|doesn.t exist|object not found/i.test(err.message)) throw err;
+  }
+}
+
+async function listRcloneBackupManifests(cfg) {
+  const files = await rcloneListFiles(cfg.rcloneRemote, cfg.rcloneFolder);
+  const manifests = [];
+  for (const f of files) {
+    if (!f.Name || !f.Name.endsWith('.json')) continue;
+    const tmp = path.join(os.tmpdir(), `krewe-rc-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    try {
+      await rcloneDownloadFile(cfg.rcloneRemote, cfg.rcloneFolder, f.Name, tmp);
+      manifests.push(JSON.parse(fs.readFileSync(tmp, 'utf8')));
+    } catch { /* skip corrupted/unreadable */ } finally {
+      try { fs.unlinkSync(tmp); } catch { }
+    }
+  }
+  return manifests.sort((a, b) => (!a.created_at ? 1 : !b.created_at ? -1 : b.created_at.localeCompare(a.created_at)));
 }
 
 function makeS3Client(cfg) {
@@ -1141,6 +1358,22 @@ app.put('/api/admin/backup-location', authenticateToken, (req, res) => {
   }
 });
 
+// ── rclone check endpoint ─────────────────────────────────────────────────
+
+// Returns whether rclone is installed and the configured remote is reachable
+app.get('/api/admin/backup/rclone-check', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const cfg = readBackupConfig();
+  if (!cfg.rcloneRemote) return res.json({ ok: false, error: 'BACKUP_RCLONE_REMOTE not set' });
+  if (!isSafeRclonePath(cfg.rcloneRemote)) return res.json({ ok: false, error: 'Invalid remote name' });
+  try {
+    await rcloneRun(['lsd', `${cfg.rcloneRemote}:`, '--max-depth', '1']);
+    res.json({ ok: true, remote: cfg.rcloneRemote });
+  } catch (err) {
+    res.json({ ok: false, error: err.message.slice(0, 300) });
+  }
+});
+
 app.get('/api/admin/backups', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
   const page = Math.max(1, Number.parseInt(req.query.page || '1', 10));
@@ -1151,6 +1384,10 @@ app.get('/api/admin/backups', authenticateToken, async (req, res) => {
     if (cfg.provider === 's3') {
       if (!cfg.s3Bucket) return res.status(400).json({ error: 'S3 bucket is not configured' });
       all = await listS3BackupManifests(cfg);
+    } else if (cfg.provider === 'rclone') {
+      if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
+      if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
+      all = await listRcloneBackupManifests(cfg);
     } else {
       all = await listLocalBackupsFromDir(cfg.localPath);
     }
@@ -1220,6 +1457,18 @@ app.post('/api/admin/backups', authenticateToken, async (req, res) => {
         Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.json',
         Body: JSON.stringify(manifest, null, 2), ContentType: 'application/json',
       }));
+    } else if (cfg.provider === 'rclone') {
+      if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
+      if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
+      if (!isSafeRclonePath(cfg.rcloneFolder)) return res.status(400).json({ error: 'Invalid rclone folder name' });
+      const tmpManifestJson = path.join(os.tmpdir(), `krewe-manifest-${id}.json`);
+      fs.writeFileSync(tmpManifestJson, JSON.stringify(manifest, null, 2), 'utf8');
+      try {
+        await rcloneUploadFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.zip', tmpZip);
+        await rcloneUploadFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.json', tmpManifestJson);
+      } finally {
+        try { fs.unlinkSync(tmpManifestJson); } catch { }
+      }
     } else {
       fs.mkdirSync(cfg.localPath, { recursive: true });
       fs.copyFileSync(tmpZip, path.join(cfg.localPath, id + '.zip'));
@@ -1262,6 +1511,20 @@ app.post('/api/admin/backups/:id/restore', authenticateToken, async (req, res) =
       } catch { return res.status(404).json({ error: 'Backup not found' }); }
       const zRes = await s3.send(new GetObjectCommand({ Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.zip' }));
       fs.writeFileSync(tmpZip, Buffer.from(await zRes.Body.transformToByteArray()));
+    } else if (cfg.provider === 'rclone') {
+      if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
+      if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
+      const tmpManJson = path.join(os.tmpdir(), `krewe-man-${id}.json`);
+      try {
+        await rcloneDownloadFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.json', tmpManJson);
+        manifest = JSON.parse(fs.readFileSync(tmpManJson, 'utf8'));
+      } catch (err) {
+        if (/not found|doesn.t exist/i.test(err.message)) return res.status(404).json({ error: 'Backup not found' });
+        throw err;
+      } finally {
+        try { fs.unlinkSync(tmpManJson); } catch { }
+      }
+      await rcloneDownloadFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.zip', tmpZip);
     } else {
       const localManifest = path.join(cfg.localPath, id + '.json');
       const localZip = path.join(cfg.localPath, id + '.zip');
@@ -1353,6 +1616,11 @@ app.delete('/api/admin/backups/:id', authenticateToken, async (req, res) => {
       const s3 = makeS3Client(cfg);
       await s3.send(new DeleteObjectCommand({ Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.zip' }));
       await s3.send(new DeleteObjectCommand({ Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.json' }));
+    } else if (cfg.provider === 'rclone') {
+      if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
+      if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
+      await rcloneDeleteFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.zip');
+      await rcloneDeleteFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.json');
     } else {
       const localZip = path.join(cfg.localPath, id + '.zip');
       const localJson = path.join(cfg.localPath, id + '.json');
@@ -2291,7 +2559,17 @@ app.get('/api/shop/payment-mode', authenticateToken, (req, res) => {
 
 app.get('/api/current-season', authenticateToken, (req, res) => {
   const sy = currentSeasonYear();
-  res.json({ season_year: sy, ash_wednesday: ashWednesdayISO(sy) });
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const end = resolveSeasonEndDate(year);
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const nextEnd = todayMs >= end.getTime() ? resolveSeasonEndDate(year + 1) : end;
+  res.json({
+    season_year: sy,
+    ash_wednesday: ashWednesdayISO(sy),
+    season_end_date: nextEnd.toISOString().slice(0, 10),
+    season_end_config: parseSeasonEndConfig(),
+  });
 });
 
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
@@ -2393,11 +2671,11 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
 
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const email = normalizeEmailAddress(req.body.email);
-  const role = ['admin', 'member'].includes(req.body.role) ? req.body.role : null;
+  const role = ['admin', 'store_admin', 'member'].includes(req.body.role) ? req.body.role : null;
 
   if (!fullName) return res.status(400).json({ error: 'Full name is required' });
   if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
-  if (!role) return res.status(400).json({ error: 'Role must be member or admin' });
+  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
@@ -2500,7 +2778,7 @@ app.post('/api/admin/users', authenticateToken, async (req, res) => {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = req.body.role === 'admin' ? 'admin' : 'member';
+  const role = ['admin', 'store_admin'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -2540,7 +2818,7 @@ app.post('/api/users', authenticateToken, async (req, res) => {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = req.body.role === 'admin' ? 'admin' : 'member';
+  const role = ['admin', 'store_admin'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -2584,8 +2862,8 @@ app.put('/api/admin/users/:userId/role', authenticateToken, async (req, res) => 
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be member or admin' });
+  if (!['member', 'store_admin', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
   }
 
   if (userId === req.user.userId && role !== 'admin') {
@@ -2619,8 +2897,8 @@ app.put('/api/users/:userId/role', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be member or admin' });
+  if (!['member', 'store_admin', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
   }
 
   if (userId === req.user.userId && role !== 'admin') {
@@ -2649,6 +2927,9 @@ app.put('/api/admin/users/:userId/disable', authenticateToken, async (req, res) 
 
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
+  // When re-enabling, caller may pass restore_role so a store_admin comes back as store_admin
+  const restoreRole = ['member', 'store_admin', 'admin'].includes(req.body && req.body.restore_role)
+    ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
     return res.status(400).json({ error: 'Valid user id is required' });
@@ -2663,7 +2944,7 @@ app.put('/api/admin/users/:userId/disable', authenticateToken, async (req, res) 
   }
 
   try {
-    const nextRole = disabled ? 'disabled' : 'member';
+    const nextRole = disabled ? 'disabled' : restoreRole;
     const result = await pool.query(
       'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
       [nextRole, userId]
@@ -2685,6 +2966,8 @@ app.put('/api/users/:userId/disable', authenticateToken, async (req, res) => {
 
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
+  const restoreRole = ['member', 'store_admin', 'admin'].includes(req.body && req.body.restore_role)
+    ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
     return res.status(400).json({ error: 'Valid user id is required' });
@@ -2699,7 +2982,7 @@ app.put('/api/users/:userId/disable', authenticateToken, async (req, res) => {
   }
 
   try {
-    const nextRole = disabled ? 'disabled' : 'member';
+    const nextRole = disabled ? 'disabled' : restoreRole;
     const result = await pool.query(
       'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
       [nextRole, userId]
@@ -3444,6 +3727,39 @@ app.get('/api/shop/orders', authenticateToken, async (req, res) => {
   }
 });
 
+// Fetch all orders for a specific user (admin only)
+app.get('/api/admin/users/:userId/orders', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const userId = Number.parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
+  try {
+    const orders = await pool.query(
+      `SELECT id, total_amount, status, notes, created_at
+       FROM shop_orders WHERE user_id=$1 ORDER BY created_at DESC`,
+      [userId],
+    );
+    const orderIds = orders.rows.map((r) => r.id);
+    let itemRows = [];
+    if (orderIds.length > 0) {
+      const itemResult = await pool.query(
+        `SELECT order_id, product_name, unit_price, quantity
+         FROM shop_order_items WHERE order_id = ANY($1::int[])`,
+        [orderIds],
+      );
+      itemRows = itemResult.rows;
+    }
+    const byOrder = {};
+    itemRows.forEach((i) => {
+      if (!byOrder[i.order_id]) byOrder[i.order_id] = [];
+      byOrder[i.order_id].push(i);
+    });
+    res.json({ orders: orders.rows.map((o) => ({ ...o, items: byOrder[o.id] || [] })) });
+  } catch (err) {
+    console.error('Failed to fetch user orders (admin)', err);
+    res.status(500).json({ error: 'Unable to fetch orders' });
+  }
+});
+
 app.get('/api/admin/shop/orders', authenticateToken, async (req, res) => {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -3661,7 +3977,21 @@ app.post('/api/shop/paypal/capture-order', authenticateToken, async (req, res) =
 });
 
 ensureContentTable()
-  .then(() => {
+  .then(async () => {
+    // Check whether a season reset is due (catches up if server was down on the reset date)
+    await checkAndRunSeasonReset();
+
+    // Schedule the next check at UTC midnight, then every 24 hours
+    const nowMs = Date.now();
+    const nextMidnight = (() => {
+      const d = new Date();
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+    })();
+    setTimeout(() => {
+      checkAndRunSeasonReset();
+      setInterval(checkAndRunSeasonReset, 24 * 60 * 60 * 1000);
+    }, nextMidnight - nowMs);
+
     app.listen(port, () => {
       console.log(`Server listening on port ${port}`);
     });

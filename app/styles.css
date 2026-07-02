@@ -1010,6 +1010,12 @@ body.admin-edit-mode .album-tools {
   color: #7ec8f5;
 }
 
+.db-badge--store-admin {
+  background: rgba(167,139,250,0.14);
+  border: 1px solid rgba(167,139,250,0.35);
+  color: #c4b5fd;
+}
+
 .db-badge--paid {
   background: rgba(74,222,128,0.14);
   border: 1px solid rgba(74,222,128,0.35);

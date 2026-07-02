@@ -211,8 +211,10 @@ async function updateUserRole(userId, role) {
   };
 }
 
-async function setUserDisabled(userId, disabled) {
+async function setUserDisabled(userId, disabled, previousRole) {
   const token = getToken();
+  const restoreRole = (!disabled && ['member', 'store_admin', 'admin'].includes(previousRole))
+    ? previousRole : 'member';
   const endpoints = [`/api/admin/users/${userId}/disable`, `/api/users/${userId}/disable`];
 
   for (const endpoint of endpoints) {
@@ -222,7 +224,7 @@ async function setUserDisabled(userId, disabled) {
         'Content-Type': 'application/json',
         Authorization: 'Bearer ' + token,
       },
-      body: JSON.stringify({ disabled }),
+      body: JSON.stringify({ disabled, restore_role: restoreRole }),
     });
     const data = await parseJSONResponse(res);
 
@@ -338,6 +340,7 @@ function setAdminFeedback(message, isError) {
 
 function getFilteredUsers(users, filterValue) {
   if (filterValue === 'all') return users;
+  if (filterValue === 'member') return users.filter((user) => user.role === 'member' || user.role === 'store_admin');
   return users.filter((user) => user.role === filterValue);
 }
 
@@ -345,11 +348,13 @@ function updateAdminSummary(users) {
   const summary = document.getElementById('admin-user-summary');
   if (!summary) return;
 
-  const memberCount = users.filter((user) => user.role === 'member').length;
-  const adminCount = users.filter((user) => user.role === 'admin').length;
-  const disabledCount = users.filter((user) => user.role === 'disabled').length;
-  const totalCount = users.length;
-  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
+  const memberCount    = users.filter((user) => user.role === 'member').length;
+  const storeAdminCount = users.filter((user) => user.role === 'store_admin').length;
+  const adminCount     = users.filter((user) => user.role === 'admin').length;
+  const disabledCount  = users.filter((user) => user.role === 'disabled').length;
+  const totalCount     = users.length;
+  const storeAdminPart = storeAdminCount > 0 ? `, ${storeAdminCount} store admin${storeAdminCount === 1 ? '' : 's'}` : '';
+  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}${storeAdminPart}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
 }
 
 async function openUserEditModal(user, currentUserId, onUpdate) {
@@ -381,6 +386,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         <button type="button" class="uem-tab-btn is-active" data-uem-tab="personal">Personal</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="floats">Float &amp; Riders</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="payment">Payments</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="orders">Orders</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="security">Security</button>
       </div>
 
@@ -440,6 +446,13 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
               <span data-pay-pill style="font-size:0.75rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.18rem 0.65rem;border-radius:999px;border:1px solid ${pillC}4d;background:${pillBg};color:${pillC};">${pillTx}</span>
             </label>`;
           }).join('')}
+        </div>
+      </div>
+
+      <!-- Panel: Orders -->
+      <div class="uem-panel" data-uem-panel="orders">
+        <div id="uem-orders-content">
+          <p style="color:#b8c4e0;font-size:0.88rem;">Loading orders…</p>
         </div>
       </div>
 
@@ -600,8 +613,59 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       btn.classList.add('is-active');
       const panel = backdrop.querySelector(`[data-uem-panel="${btn.dataset.uemTab}"]`);
       if (panel) panel.classList.add('is-active');
+      // Lazy-load orders the first time the tab is opened
+      if (btn.dataset.uemTab === 'orders' && !btn.dataset.ordersLoaded) {
+        btn.dataset.ordersLoaded = 'true';
+        loadUserOrders();
+      }
     });
   });
+
+  // Load and render this user's orders
+  async function loadUserOrders() {
+    const container = backdrop.querySelector('#uem-orders-content');
+    if (!container) return;
+    container.innerHTML = '<p style="color:#b8c4e0;font-size:0.88rem;">Loading orders…</p>';
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/orders`, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await parseJSONResponse(res);
+      if (!res.ok) {
+        container.innerHTML = `<p style="color:#ff9b9b;font-size:0.88rem;">${escHtml(data.error || 'Unable to load orders.')}</p>`;
+        return;
+      }
+      const orders = data.orders || [];
+      if (orders.length === 0) {
+        container.innerHTML = '<p style="color:#b8c4e0;font-size:0.88rem;">No orders found for this member.</p>';
+        return;
+      }
+      const statusColor = { pending: '#facc15', processing: '#60a5fa', shipped: '#a78bfa', completed: '#4ade80', cancelled: '#f87171' };
+      container.innerHTML = orders.map((o) => {
+        const sc = statusColor[o.status] || '#b8c4e0';
+        const items = (o.items || []).map((i) =>
+          `<div style="display:flex;justify-content:space-between;padding:0.25rem 0;font-size:0.82rem;color:#b8c4e0;border-bottom:1px solid rgba(255,255,255,0.05);">
+             <span>${escHtml(i.product_name)}</span>
+             <span style="white-space:nowrap;margin-left:1rem;">${i.quantity} &times; $${Number(i.unit_price).toFixed(2)}</span>
+           </div>`).join('');
+        const dateStr = new Date(o.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:0.9rem 1rem;margin-bottom:0.75rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.4rem;">
+            <span style="font-size:0.82rem;color:#b8c4e0;">${escHtml(dateStr)}</span>
+            <span style="font-size:0.75rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.15rem 0.6rem;border-radius:999px;border:1px solid ${sc}66;background:${sc}1a;color:${sc};">${escHtml(o.status || 'pending')}</span>
+          </div>
+          ${items}
+          <div style="display:flex;justify-content:space-between;margin-top:0.55rem;font-weight:700;font-size:0.9rem;">
+            <span>Total</span>
+            <span>$${Number(o.total_amount).toFixed(2)}</span>
+          </div>
+          ${o.notes ? `<p style="margin:0.4rem 0 0;font-size:0.78rem;color:#b8c4e0;">Note: ${escHtml(o.notes)}</p>` : ''}
+        </div>`;
+      }).join('');
+    } catch (_) {
+      container.innerHTML = '<p style="color:#ff9b9b;font-size:0.88rem;">Network error loading orders.</p>';
+    }
+  }
 
   // Save changes
   backdrop.querySelector('#uem-save').addEventListener('click', async () => {
@@ -666,7 +730,8 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     const btn = backdrop.querySelector('#uem-toggle-disable');
     btn.disabled = true;
     setFeedback(shouldDisable ? 'Disabling account…' : 'Enabling account…', false);
-    const result = await setUserDisabled(user.id, shouldDisable);
+    // Pass the user's pre-disable role so re-enable restores it correctly (e.g. store_admin)
+    const result = await setUserDisabled(user.id, shouldDisable, full.role);
     if (result.ok && result.data.user) {
       full.role = result.data.user.role;
       btn.textContent = full.role === 'disabled' ? 'Enable Account' : 'Disable Account';
@@ -726,9 +791,10 @@ function renderAdminUsers(users, currentUserId) {
         return;
       }
 
-      const roleInput = window.prompt('Role for new user (member/admin).', 'member');
+      const roleInput = window.prompt('Role for new user (member / store_admin / admin).', 'member');
       if (roleInput === null) return;
-      const role = roleInput.trim().toLowerCase() === 'admin' ? 'admin' : 'member';
+      const roleNorm = roleInput.trim().toLowerCase();
+      const role = roleNorm === 'admin' ? 'admin' : roleNorm === 'store_admin' ? 'store_admin' : 'member';
 
       const passwordInput = window.prompt('Enter temporary password (minimum 8 characters).');
       if (passwordInput === null) return;
@@ -1090,8 +1156,8 @@ async function initDashboard() {
     .slice(0, 2)
     .join('');
 
-  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : 'db-badge--member';
-  const badgeLabel = profile.role === 'admin' ? 'Admin' : 'Member';
+  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : 'db-badge--member';
+  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : 'Member';
 
   function payBadgeHtml(paid, label) {
     const c = paid ? '#4ade80' : '#f87171';
@@ -1125,8 +1191,17 @@ async function initDashboard() {
     if (adminTab) adminTab.hidden = false;
     const adminTools = document.getElementById('admin-tools');
     if (adminTools) adminTools.style.display = 'block';
+    // Shop Management is visible to both admin and store_admin
     const shopAdminLink = document.getElementById('open-shop-admin');
     if (shopAdminLink) shopAdminLink.style.display = '';
+    // Full-admin-only links: hide for store_admin
+    if (profile.role === 'store_admin') {
+      const adminOnlyIds = ['open-user-management', 'open-site-config', 'open-backup-restore'];
+      adminOnlyIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+    }
   }
 
   // Wire up tabs
@@ -1200,6 +1275,168 @@ async function initDashboard() {
   initProfileDetailsForm(profile);
 }
 
+// ── Season end-date UI ────────────────────────────────────────────────────
+// Mirrors the server-side resolveSeasonEndDate() logic in the browser so the
+// admin can see a live preview of the next reset date as they configure it.
+function setupSeasonEndDateUI(form) {
+  const typeEl        = document.getElementById('cfg-season-end-type');
+  const fixedFields   = document.getElementById('cfg-season-fixed-fields');
+  const relFields     = document.getElementById('cfg-season-relative-fields');
+  const fixedMonthEl  = document.getElementById('cfg-season-fixed-month');
+  const fixedDayEl    = document.getElementById('cfg-season-fixed-day');
+  const relOrdinalEl  = document.getElementById('cfg-season-rel-ordinal');
+  const relDowEl      = document.getElementById('cfg-season-rel-dow');
+  const relMonthEl    = document.getElementById('cfg-season-rel-month');
+  const hiddenEl      = document.getElementById('cfg-season-end-date-value');
+  const previewEl     = document.getElementById('cfg-season-next-reset-label');
+  const resetBtn      = document.getElementById('cfg-season-reset-btn');
+  const resetFeedback = document.getElementById('cfg-season-reset-feedback');
+
+  if (!typeEl || !hiddenEl) return;
+
+  const MONTH_NAMES = [
+    'January','February','March','April','May','June',
+    'July','August','September','October','November','December',
+  ];
+
+  function updateVisibility() {
+    const t = typeEl.value;
+    fixedFields.style.display    = t === 'fixed'    ? '' : 'none';
+    relFields.style.display      = t === 'relative' ? '' : 'none';
+  }
+
+  function buildValue() {
+    const t = typeEl.value;
+    if (t === 'fixed') {
+      const m = fixedMonthEl.value;
+      const d = fixedDayEl.value;
+      return (m && d && Number(d) >= 1 && Number(d) <= 31) ? `fixed:${m}:${d}` : '';
+    }
+    if (t === 'relative') {
+      return `relative:${relOrdinalEl.value}:${relDowEl.value}:${relMonthEl.value}`;
+    }
+    return '';
+  }
+
+  // Client-side mirror of server resolveSeasonEndDate()
+  function resolveEndDate(year, cfg) {
+    if (!cfg) return null;
+    const MS = 24 * 60 * 60 * 1000;
+    if (cfg.type === 'fixed') {
+      return new Date(Date.UTC(year, cfg.month - 1, cfg.day));
+    }
+    const { ordinal, dow, month } = cfg;
+    if (ordinal === -1) {
+      const last = new Date(Date.UTC(year, month, 0));
+      const diff = (last.getUTCDay() - dow + 7) % 7;
+      return new Date(last.getTime() - diff * MS);
+    }
+    const first = new Date(Date.UTC(year, month - 1, 1));
+    const diff  = (dow - first.getUTCDay() + 7) % 7;
+    return new Date(Date.UTC(year, month - 1, 1 + diff + (ordinal - 1) * 7));
+  }
+
+  function parseCfg(val) {
+    if (!val) return null;
+    const parts = val.split(':');
+    if (parts[0] === 'fixed' && parts.length === 3) {
+      const month = parseInt(parts[1], 10), day = parseInt(parts[2], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return { type: 'fixed', month, day };
+    }
+    if (parts[0] === 'relative' && parts.length === 4) {
+      const ordinal = parseInt(parts[1], 10), dow = parseInt(parts[2], 10), month = parseInt(parts[3], 10);
+      if ((ordinal >= 1 && ordinal <= 4 || ordinal === -1) && dow >= 0 && dow <= 6 && month >= 1 && month <= 12)
+        return { type: 'relative', ordinal, dow, month };
+    }
+    return null;
+  }
+
+  function updatePreview() {
+    if (!previewEl) return;
+    const val = buildValue();
+    const cfg = parseCfg(val);
+
+    if (!val && typeEl.value === '') {
+      previewEl.textContent = 'Season ends on Ash Wednesday (varies each year).';
+      return;
+    }
+    if (!cfg) { previewEl.textContent = ''; return; }
+
+    const now   = new Date();
+    const year  = now.getUTCFullYear();
+    const end   = resolveEndDate(year, cfg);
+    if (!end) { previewEl.textContent = ''; return; }
+
+    const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const nextEnd = todayMs >= end.getTime() ? resolveEndDate(year + 1, cfg) : end;
+    previewEl.textContent = `Next automatic reset: ${nextEnd.toLocaleDateString(undefined, {
+      year: 'numeric', month: 'long', day: 'numeric',
+    })}`;
+  }
+
+  function syncHidden() {
+    hiddenEl.value = buildValue();
+    updatePreview();
+  }
+
+  // Populate sub-fields from the hidden input value (already set by the generic config loader)
+  function loadFromHidden() {
+    const val = hiddenEl.value;
+    if (!val) { typeEl.value = ''; updateVisibility(); updatePreview(); return; }
+    const parts = val.split(':');
+    if (parts[0] === 'fixed' && parts.length === 3) {
+      typeEl.value       = 'fixed';
+      fixedMonthEl.value = parts[1];
+      fixedDayEl.value   = parts[2];
+    } else if (parts[0] === 'relative' && parts.length === 4) {
+      typeEl.value        = 'relative';
+      relOrdinalEl.value  = parts[1];
+      relDowEl.value      = parts[2];
+      relMonthEl.value    = parts[3];
+    } else {
+      typeEl.value = '';
+    }
+    updateVisibility();
+    updatePreview();
+  }
+
+  typeEl.addEventListener('change',       () => { updateVisibility(); syncHidden(); });
+  fixedMonthEl.addEventListener('change', syncHidden);
+  fixedDayEl.addEventListener('input',    syncHidden);
+  relOrdinalEl.addEventListener('change', syncHidden);
+  relDowEl.addEventListener('change',     syncHidden);
+  relMonthEl.addEventListener('change',   syncHidden);
+
+  loadFromHidden();
+
+  // Manual reset button
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('Reset all member dues and fees to unpaid now?')) return;
+      resetBtn.disabled = true;
+      if (resetFeedback) { resetFeedback.textContent = 'Resetting…'; resetFeedback.style.color = 'var(--muted)'; }
+      try {
+        const res = await fetch('/api/admin/season-reset', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + getToken() },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          resetFeedback.textContent = `All dues and fees reset (${data.reset_date || 'today'}).`;
+          resetFeedback.style.color = 'var(--muted)';
+        } else {
+          resetFeedback.textContent = data.error || 'Reset failed.';
+          resetFeedback.style.color = '#b42318';
+        }
+      } catch (_) {
+        if (resetFeedback) { resetFeedback.textContent = 'Network error.'; resetFeedback.style.color = '#b42318'; }
+      } finally {
+        resetBtn.disabled = false;
+      }
+    });
+  }
+}
+
 async function initSiteConfig() {
   const card = document.getElementById('site-config-card');
   const form = document.getElementById('site-config-form');
@@ -1229,6 +1466,8 @@ async function initSiteConfig() {
       if (el.type === 'checkbox') { el.checked = value === 'true'; } else { el.value = value; }
     }
     setFeedback('', false);
+    // Wire up the season end-date sub-fields now that the hidden input has been populated
+    setupSeasonEndDateUI(form);
   } catch (_err) {
     setFeedback('Network error loading config.', true);
     return;
@@ -1357,12 +1596,14 @@ async function initBackupRestorePage() {
   const providerRadios = document.querySelectorAll('input[name="br-provider"]');
   const localFields = document.getElementById('br-local-fields');
   const s3Fields = document.getElementById('br-s3-fields');
+  const rcloneFields = document.getElementById('br-rclone-fields');
 
   function updateProviderFields() {
     const chosen = document.querySelector('input[name="br-provider"]:checked');
     const val = chosen ? chosen.value : 'local';
-    if (localFields) localFields.style.display = val === 'local' ? '' : 'none';
-    if (s3Fields) s3Fields.style.display = val === 's3' ? '' : 'none';
+    if (localFields)   localFields.style.display  = val === 'local'  ? '' : 'none';
+    if (s3Fields)      s3Fields.style.display     = val === 's3'     ? '' : 'none';
+    if (rcloneFields)  rcloneFields.style.display = val === 'rclone' ? '' : 'none';
   }
   providerRadios.forEach((r) => r.addEventListener('change', updateProviderFields));
   updateProviderFields();
@@ -1385,6 +1626,8 @@ async function initBackupRestorePage() {
         ['br-s3-endpoint', 'BACKUP_S3_ENDPOINT'],
         ['br-s3-key-id', 'BACKUP_AWS_ACCESS_KEY_ID'],
         ['br-s3-secret', 'BACKUP_AWS_SECRET_ACCESS_KEY'],
+        ['br-rclone-remote', 'BACKUP_RCLONE_REMOTE'],
+        ['br-rclone-folder', 'BACKUP_RCLONE_FOLDER'],
       ].forEach(([elId, key]) => {
         const el = document.getElementById(elId);
         if (el) el.value = c[key] || '';
@@ -1413,6 +1656,8 @@ async function initBackupRestorePage() {
         BACKUP_S3_ENDPOINT: document.getElementById('br-s3-endpoint')?.value || '',
         BACKUP_AWS_ACCESS_KEY_ID: document.getElementById('br-s3-key-id')?.value || '',
         BACKUP_AWS_SECRET_ACCESS_KEY: document.getElementById('br-s3-secret')?.value || '',
+        BACKUP_RCLONE_REMOTE: document.getElementById('br-rclone-remote')?.value || '',
+        BACKUP_RCLONE_FOLDER: document.getElementById('br-rclone-folder')?.value || '',
       };
       try {
         const res = await fetch('/api/admin/backup-location', {
@@ -1427,6 +1672,30 @@ async function initBackupRestorePage() {
         setLocationFeedback('Network error. Please try again.', true);
       } finally {
         saveLocationBtn.disabled = false;
+      }
+    });
+  }
+
+  // ── rclone connection test ────────────────────────────────────────────────
+  const rcloneStatusLabel = document.getElementById('br-rclone-status-label');
+  const rcloneTestBtn     = document.getElementById('br-rclone-test-btn');
+
+  if (rcloneTestBtn) {
+    rcloneTestBtn.addEventListener('click', async () => {
+      rcloneTestBtn.disabled = true;
+      if (rcloneStatusLabel) { rcloneStatusLabel.textContent = 'Testing…'; rcloneStatusLabel.style.color = 'var(--muted)'; }
+      try {
+        const r = await fetch('/api/admin/backup/rclone-check', { headers: { Authorization: 'Bearer ' + token } });
+        const d = await parseJSONResponse(r);
+        if (d.ok) {
+          if (rcloneStatusLabel) { rcloneStatusLabel.textContent = '✅ Connected to remote "' + d.remote + '"'; rcloneStatusLabel.style.color = '#4ade80'; }
+        } else {
+          if (rcloneStatusLabel) { rcloneStatusLabel.textContent = '❌ ' + (d.error || 'Connection failed'); rcloneStatusLabel.style.color = '#f87171'; }
+        }
+      } catch {
+        if (rcloneStatusLabel) { rcloneStatusLabel.textContent = '❌ Network error'; rcloneStatusLabel.style.color = '#f87171'; }
+      } finally {
+        rcloneTestBtn.disabled = false;
       }
     });
   }

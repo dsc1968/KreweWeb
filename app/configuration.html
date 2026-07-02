@@ -115,6 +115,77 @@
               </div>
             </div>
 
+            <p class="db-config-section-label" style="margin-top:1rem;">Season</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When this date arrives each year all member dues and fees are automatically reset to unpaid. The server checks at midnight UTC each day.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-season-end-type">Season End Date Type</label>
+                <select id="cfg-season-end-type">
+                  <option value="">Ash Wednesday (Mardi Gras default)</option>
+                  <option value="fixed">Fixed date — same month and day every year</option>
+                  <option value="relative">Relative date — e.g. 1st Wednesday of July</option>
+                </select>
+              </div>
+            </div>
+            <!-- Fixed date fields -->
+            <div id="cfg-season-fixed-fields" class="db-form-grid" style="display:none;">
+              <div class="form-group">
+                <label for="cfg-season-fixed-month">Month</label>
+                <select id="cfg-season-fixed-month">
+                  <option value="1">January</option><option value="2">February</option>
+                  <option value="3">March</option><option value="4">April</option>
+                  <option value="5">May</option><option value="6">June</option>
+                  <option value="7">July</option><option value="8">August</option>
+                  <option value="9">September</option><option value="10">October</option>
+                  <option value="11">November</option><option value="12">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-fixed-day">Day of Month</label>
+                <input type="number" id="cfg-season-fixed-day" min="1" max="31" placeholder="15" style="max-width:6rem;" />
+              </div>
+            </div>
+            <!-- Relative date fields -->
+            <div id="cfg-season-relative-fields" class="db-form-grid" style="display:none;">
+              <div class="form-group">
+                <label for="cfg-season-rel-ordinal">Occurrence</label>
+                <select id="cfg-season-rel-ordinal">
+                  <option value="1">1st</option><option value="2">2nd</option>
+                  <option value="3">3rd</option><option value="4">4th</option>
+                  <option value="-1">Last</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-rel-dow">Day of Week</label>
+                <select id="cfg-season-rel-dow">
+                  <option value="0">Sunday</option><option value="1">Monday</option>
+                  <option value="2">Tuesday</option><option value="3">Wednesday</option>
+                  <option value="4">Thursday</option><option value="5">Friday</option>
+                  <option value="6">Saturday</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-rel-month">Month</label>
+                <select id="cfg-season-rel-month">
+                  <option value="1">January</option><option value="2">February</option>
+                  <option value="3">March</option><option value="4">April</option>
+                  <option value="5">May</option><option value="6">June</option>
+                  <option value="7">July</option><option value="8">August</option>
+                  <option value="9">September</option><option value="10">October</option>
+                  <option value="11">November</option><option value="12">December</option>
+                </select>
+              </div>
+            </div>
+            <!-- Hidden input serialized as SEASON_END_DATE — picked up by the config form submit -->
+            <input type="hidden" id="cfg-season-end-date-value" name="SEASON_END_DATE" />
+            <div style="margin-top:0.6rem;">
+              <span id="cfg-season-next-reset-label" style="font-size:0.85rem;color:var(--muted);"></span>
+            </div>
+            <div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+              <button type="button" id="cfg-season-reset-btn" class="button secondary" style="font-size:0.85rem;">Reset Dues &amp; Fees Now</button>
+              <span id="cfg-season-reset-feedback" style="font-size:0.85rem;color:var(--muted);"></span>
+            </div>
+
             <div id="site-config-feedback" class="db-feedback" aria-live="polite"></div>
             <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
               <button type="submit" class="button db-save-btn">Save Configuration</button>
