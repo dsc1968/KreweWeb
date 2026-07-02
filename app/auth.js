@@ -380,7 +380,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       <div class="uem-tabs">
         <button type="button" class="uem-tab-btn is-active" data-uem-tab="personal">Personal</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="floats">Float &amp; Riders</button>
-        <button type="button" class="uem-tab-btn" data-uem-tab="payment">Payment</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="payment">Payments</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="security">Security</button>
       </div>
 
@@ -529,12 +529,15 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   const iconSvgPaid   = '<path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
   const iconSvgUnpaid = '<path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/>';
 
-  async function savePaymentStatus() {
+  async function savePaymentStatus(changedRow) {
     const payload = {
       dues_paid:      backdrop.querySelector('#uem-dues-paid').checked,
       guest_fee_paid: backdrop.querySelector('#uem-guest-fee-paid').checked,
       costume_paid:   backdrop.querySelector('#uem-costume-paid').checked,
     };
+    // Disable all payment rows while saving
+    backdrop.querySelectorAll('[data-uem-pay-row] input').forEach(cb => cb.disabled = true);
+    setFeedback('Saving payment status…', false);
     try {
       const r = await fetch(`/api/admin/users/${user.id}/payments`, {
         method: 'PATCH',
@@ -543,20 +546,32 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       });
       const d = await parseJSONResponse(r);
       if (r.ok) {
-        setFeedback('Payment status saved.', false);
+        setFeedback('✓ Payment status saved.', false);
         onUpdate({ ...user, ...payload });
       } else {
-        setFeedback(d.error || 'Unable to save payment status.', true);
+        setFeedback('⚠ ' + (d.error || 'Unable to save payment status.'), true);
+        // Revert the visual toggle since save failed
+        const cb = changedRow.querySelector('input[type="checkbox"]');
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('_revert'));
       }
-    } catch { setFeedback('Network error saving payment status.', true); }
+    } catch {
+      setFeedback('⚠ Network error — payment NOT saved. Is the server running?', true);
+      // Revert
+      const cb = changedRow.querySelector('input[type="checkbox"]');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('_revert'));
+    } finally {
+      backdrop.querySelectorAll('[data-uem-pay-row] input').forEach(cb => cb.disabled = false);
+    }
   }
 
   backdrop.querySelectorAll('[data-uem-pay-row]').forEach((row) => {
     const cb   = row.querySelector('input[type="checkbox"]');
     const icon = row.querySelector('[data-pay-icon]');
     const pill = row.querySelector('[data-pay-pill]');
-    cb.addEventListener('change', () => {
-      const paid = cb.checked;
+
+    function applyVisual(paid) {
       const pillC  = paid ? '#4ade80' : '#f87171';
       const pillBg = paid ? 'rgba(74,222,128,0.12)'  : 'rgba(248,113,113,0.12)';
       row.style.background    = paid ? 'rgba(74,222,128,0.08)'  : 'rgba(248,113,113,0.08)';
@@ -567,8 +582,14 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       pill.style.borderColor  = pillC + '4d';
       pill.style.background   = pillBg;
       pill.textContent        = paid ? 'Paid' : 'Unpaid';
-      savePaymentStatus();
+    }
+
+    cb.addEventListener('change', (e) => {
+      if (e.type === '_revert') { applyVisual(cb.checked); return; }
+      applyVisual(cb.checked);
+      savePaymentStatus(row);
     });
+    cb.addEventListener('_revert', () => applyVisual(cb.checked));
   });
 
   // Tab switching
@@ -604,6 +625,9 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         const row = nameInp.closest('div');
         return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
       }),
+    };
+    // Read current payment state from checkboxes (managed exclusively by PATCH /payments)
+    const currentPayments = {
       dues_paid: backdrop.querySelector('#uem-dues-paid').checked,
       guest_fee_paid: backdrop.querySelector('#uem-guest-fee-paid').checked,
       costume_paid: backdrop.querySelector('#uem-costume-paid').checked,
@@ -617,7 +641,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       const d = await parseJSONResponse(r);
       if (r.ok) {
         setFeedback('Saved successfully.', false);
-        onUpdate(d.user);
+        onUpdate({ ...d.user, ...currentPayments });
       } else { setFeedback(d.error || 'Unable to save', true); }
     } catch { setFeedback('Network error.', true); }
     btn.disabled = false;
@@ -1069,17 +1093,13 @@ async function initDashboard() {
   const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : 'db-badge--member';
   const badgeLabel = profile.role === 'admin' ? 'Admin' : 'Member';
 
-  function payBadge(paid, label) {
-    const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
-    const icon = paid ? '✓' : '✗';
-    return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'}">${icon} ${label}</span>`;
+  function payBadgeHtml(paid, label) {
+    const c = paid ? '#4ade80' : '#f87171';
+    const svg = paid
+      ? `<svg viewBox="0 0 24 24" style="width:1rem;height:1rem;vertical-align:middle;flex-shrink:0;" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="${c}"/><path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`
+      : `<svg viewBox="0 0 24 24" style="width:1rem;height:1rem;vertical-align:middle;flex-shrink:0;" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="${c}"/><path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/></svg>`;
+    return `<span style="display:inline-flex;align-items:center;gap:0.3rem;color:${c};font-size:0.85rem;font-weight:600;">${svg} ${label}: ${paid ? 'Paid' : 'Unpaid'}</span>`;
   }
-
-  const paymentHtml = [
-    payBadge(profile.dues_paid,      'Dues'),
-    payBadge(profile.guest_fee_paid, 'Guest Fee'),
-    payBadge(profile.costume_paid,   'Costume'),
-  ].join('');
 
   el.innerHTML = `
     <div class="db-avatar" aria-hidden="true">${initials}</div>
@@ -1090,8 +1110,12 @@ async function initDashboard() {
         <li><strong>Email:</strong> ${profile.email}</li>
         <li><strong>Member since:</strong> ${new Date(profile.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</li>
         <li><span class="db-badge ${badgeClass}">${badgeLabel}</span></li>
+        <li id="db-payment-status-li" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+          ${payBadgeHtml(Boolean(profile.dues_paid), 'Dues')}
+          ${payBadgeHtml(Boolean(profile.guest_fee_paid), 'Guest Fee')}
+          ${payBadgeHtml(Boolean(profile.costume_paid), 'Costume')}
+        </li>
       </ul>
-      <div class="db-payment-status">${paymentHtml}</div>
     </div>
   `;
 
@@ -1116,16 +1140,7 @@ async function initDashboard() {
       const target = document.getElementById('db-panel-' + tab.dataset.tab);
       if (target) target.classList.add('is-active');
       if (tab.dataset.tab === 'orders') loadDashboardOrders();
-      if (tab.dataset.tab === 'payments') renderDashboardPayments();
     });
-  });
-
-  // Pre-populate Payments tab and keep hero badges in sync on page load
-  renderDashboardPayments();
-
-  // Re-sync when user returns to this browser tab
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') renderDashboardPayments();
   });
 
   async function loadDashboardOrders() {
@@ -1159,71 +1174,28 @@ async function initDashboard() {
     } catch { feedEl.textContent = 'Network error loading orders.'; }
   }
 
-  async function renderDashboardPayments() {
-    const seasonEl = document.getElementById('db-payments-season');
-    const listEl   = document.getElementById('db-payments-list');
-    if (!listEl) return;
-
-    listEl.innerHTML = '<p style="color:var(--muted);font-size:0.9rem;">Loading…</p>';
-
-    let data;
+  // Refresh all payment statuses when tab becomes visible or on poll
+  async function refreshPaymentStatus() {
+    const li = document.getElementById('db-payment-status-li');
+    if (!li) return;
     try {
       const res = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + getToken() } });
-      data = await parseJSONResponse(res);
-      if (!res.ok) {
-        listEl.innerHTML = '<p style="color:#f87171;">Unable to load payment status.</p>';
-        return;
-      }
-    } catch {
-      listEl.innerHTML = '<p style="color:#f87171;">Network error loading payment status.</p>';
-      return;
-    }
-
-    if (seasonEl) seasonEl.textContent = 'Payment Status';
-
-    const iconPaid = `<svg class="db-pay-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="12"/>
-      <path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-    </svg>`;
-    const iconUnpaid = `<svg class="db-pay-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="12"/>
-      <path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/>
-    </svg>`;
-
-    const items = [
-      { label: 'Dues',      paid: data.dues_paid },
-      { label: 'Guest Fee', paid: data.guest_fee_paid },
-      { label: 'Costume',   paid: data.costume_paid },
-    ];
-
-    listEl.innerHTML = items.map(({ label, paid }) => {
-      const mod  = paid ? 'paid' : 'unpaid';
-      const icon = paid ? iconPaid : iconUnpaid;
-      const text = paid ? 'Paid' : 'Unpaid';
-      return `<div class="db-pay-row db-pay-row--${mod}">
-        <div class="db-pay-icon">${icon}</div>
-        <div class="db-pay-details">
-          <div class="db-pay-name">${label}</div>
-        </div>
-        <div class="db-pay-status db-pay-status--${mod}">${text}</div>
-      </div>`;
-    }).join('');
-
-    // Refresh hero section payment badges to match fresh data
-    const heroPayEl = document.querySelector('.db-payment-status');
-    if (heroPayEl) {
-      const badge = (paid, label) => {
-        const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
-        const icon = paid ? '✓' : '✗';
-        return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'}">${icon} ${label}</span>`;
-      };
-      heroPayEl.innerHTML = [
-        badge(data.dues_paid,      'Dues'),
-        badge(data.guest_fee_paid, 'Guest Fee'),
-        badge(data.costume_paid,   'Costume'),
-      ].join('');
-    }
+      if (!res.ok) return;
+      const data = await parseJSONResponse(res);
+      li.innerHTML = [
+        [Boolean(data.dues_paid),      'Dues'],
+        [Boolean(data.guest_fee_paid), 'Guest Fee'],
+        [Boolean(data.costume_paid),   'Costume'],
+      ].map(([paid, label]) => payBadgeHtml(paid, label)).join('');
+    } catch { /* silent */ }
   }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshPaymentStatus();
+  });
+  // Poll every 5 s so payment status stays current without a page reload
+  setInterval(refreshPaymentStatus, 5000);
+  // Run once after a short delay to self-correct any load-time race
+  setTimeout(refreshPaymentStatus, 1000);
 
   initProfileDetailsForm(profile);
 }

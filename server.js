@@ -2433,11 +2433,6 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
   const spouse_float_number = typeof req.body.spouse_float_number === 'string' ? req.body.spouse_float_number.trim().slice(0, 20) : null;
   const guest_float_number = typeof req.body.guest_float_number === 'string' ? req.body.guest_float_number.trim().slice(0, 20) : null;
 
-  const dues_paid = Boolean(req.body.dues_paid);
-  const guest_fee_paid = Boolean(req.body.guest_fee_paid);
-  const beads_paid = Boolean(req.body.beads_paid);
-  const costume_paid = Boolean(req.body.costume_paid);
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -2456,9 +2451,8 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
-         dues_paid, guest_fee_paid, beads_paid, costume_paid,
          updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -2475,8 +2469,6 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          kids_float_numbers=EXCLUDED.kids_float_numbers,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          rider_float_names=EXCLUDED.rider_float_names,
-         dues_paid=EXCLUDED.dues_paid, guest_fee_paid=EXCLUDED.guest_fee_paid,
-         beads_paid=EXCLUDED.beads_paid, costume_paid=EXCLUDED.costume_paid,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -2487,14 +2479,11 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
         guest_name||null, JSON.stringify(float_riders),
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
-        dues_paid, guest_fee_paid, beads_paid, costume_paid,
       ]
     );
     await client.query('COMMIT');
     const u = userResult.rows[0];
-    res.json({
-      user: { ...u, dues_paid, guest_fee_paid, beads_paid, costume_paid },
-    });
+    res.json({ user: { ...u } });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.code === '23505') return res.status(409).json({ error: 'Email already in use by another account' });
