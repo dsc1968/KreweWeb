@@ -419,7 +419,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
       <!-- Panel: Payment -->
       <div class="uem-panel" data-uem-panel="payment">
-        <p style="font-size:0.78rem;color:#b8c4e0;margin:0 0 0.65rem;">${full.current_season_year || ''} Mardi Gras Season &mdash; toggle items paid for this season:</p>
+        <p style="font-size:0.78rem;color:#b8c4e0;margin:0 0 0.65rem;">Toggle items paid for this member:</p>
         <div style="display:flex;flex-direction:column;gap:0.55rem;padding:0.25rem 0;">
           ${[['uem-dues-paid', 'Dues', full.dues_paid], ['uem-guest-fee-paid', 'Guest Fee', full.guest_fee_paid], ['uem-costume-paid', 'Costume', full.costume_paid]].map(([id, lbl, chk]) => {
             const paid = !!chk;
@@ -1072,12 +1072,10 @@ async function initDashboard() {
   function payBadge(paid, label) {
     const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
     const icon = paid ? '✓' : '✗';
-    return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'} (${profile.current_season_year || ''} Season)">${icon} ${label}</span>`;
+    return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'}">${icon} ${label}</span>`;
   }
 
-  const seasonLabel = profile.current_season_year ? `<span style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:0.25rem;">${profile.current_season_year} Mardi Gras Season</span>` : '';
-
-  const paymentHtml = seasonLabel + [
+  const paymentHtml = [
     payBadge(profile.dues_paid,      'Dues'),
     payBadge(profile.guest_fee_paid, 'Guest Fee'),
     payBadge(profile.costume_paid,   'Costume'),
@@ -1181,9 +1179,7 @@ async function initDashboard() {
       return;
     }
 
-    if (seasonEl && data.current_season_year) {
-      seasonEl.textContent = `${data.current_season_year} Mardi Gras Season`;
-    }
+    if (seasonEl) seasonEl.textContent = 'Payment Status';
 
     const iconPaid = `<svg class="db-pay-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="12"/>
@@ -1216,15 +1212,12 @@ async function initDashboard() {
     // Refresh hero section payment badges to match fresh data
     const heroPayEl = document.querySelector('.db-payment-status');
     if (heroPayEl) {
-      const seasonLabel = data.current_season_year
-        ? `<span style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:0.25rem;">${data.current_season_year} Mardi Gras Season</span>`
-        : '';
       const badge = (paid, label) => {
         const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
         const icon = paid ? '✓' : '✗';
-        return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'} (${data.current_season_year || ''} Season)">${icon} ${label}</span>`;
+        return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'}">${icon} ${label}</span>`;
       };
-      heroPayEl.innerHTML = seasonLabel + [
+      heroPayEl.innerHTML = [
         badge(data.dues_paid,      'Dues'),
         badge(data.guest_fee_paid, 'Guest Fee'),
         badge(data.costume_paid,   'Costume'),

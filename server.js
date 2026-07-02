@@ -2296,14 +2296,13 @@ app.get('/api/current-season', authenticateToken, (req, res) => {
 
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
-  const sy = currentSeasonYear();
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              COALESCE(p.dues_paid_season      = ${sy}, false) AS dues_paid,
-              COALESCE(p.guest_fee_paid_season = ${sy}, false) AS guest_fee_paid,
-              COALESCE(p.beads_paid_season     = ${sy}, false) AS beads_paid,
-              COALESCE(p.costume_paid_season   = ${sy}, false) AS costume_paid
+              COALESCE(p.dues_paid,      false) AS dues_paid,
+              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid,     false) AS beads_paid,
+              COALESCE(p.costume_paid,   false) AS costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        ORDER BY u.joined_at DESC, u.id DESC`
@@ -2321,7 +2320,6 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
   const userId = Number.parseInt(req.params.userId, 10);
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
   try {
-    const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
               p.phone, p.address, p.city, p.state, p.zip,
@@ -2331,7 +2329,10 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
+              COALESCE(p.dues_paid, false)      AS dues_paid,
+              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid, false)     AS beads_paid,
+              COALESCE(p.costume_paid, false)   AS costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2341,11 +2342,6 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
     const row = result.rows[0];
     res.json({
       ...row,
-      current_season_year: sy,
-      dues_paid: row.dues_paid_season === sy,
-      guest_fee_paid: row.guest_fee_paid_season === sy,
-      beads_paid: row.beads_paid_season === sy,
-      costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
       kids_birthdays: row.kids_birthdays || [],
       grandchildren_names: row.grandchildren_names || [],
@@ -2361,40 +2357,28 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
   }
 });
 
-// Update payment status only (admin only) — used for instant auto-save on toggle
+// Update payment status only (admin only) — auto-save on toggle
 app.patch('/api/admin/users/:userId/payments', authenticateToken, async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
   const userId = Number.parseInt(req.params.userId, 10);
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
 
-  const sy = currentSeasonYear();
   const dues_paid      = Boolean(req.body.dues_paid);
   const guest_fee_paid = Boolean(req.body.guest_fee_paid);
   const costume_paid   = Boolean(req.body.costume_paid);
-  const dues_paid_season      = dues_paid      ? sy : null;
-  const guest_fee_paid_season = guest_fee_paid ? sy : null;
-  const costume_paid_season   = costume_paid   ? sy : null;
 
   try {
     await pool.query(
-      `INSERT INTO user_profiles (user_id, dues_paid, dues_paid_season, guest_fee_paid, guest_fee_paid_season, costume_paid, costume_paid_season, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      `INSERT INTO user_profiles (user_id, dues_paid, guest_fee_paid, costume_paid, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          dues_paid      = EXCLUDED.dues_paid,
-         dues_paid_season = EXCLUDED.dues_paid_season,
          guest_fee_paid = EXCLUDED.guest_fee_paid,
-         guest_fee_paid_season = EXCLUDED.guest_fee_paid_season,
          costume_paid   = EXCLUDED.costume_paid,
-         costume_paid_season = EXCLUDED.costume_paid_season,
          updated_at = NOW()`,
-      [userId, dues_paid, dues_paid_season, guest_fee_paid, guest_fee_paid_season, costume_paid, costume_paid_season]
+      [userId, dues_paid, guest_fee_paid, costume_paid]
     );
-    res.json({
-      dues_paid,
-      guest_fee_paid,
-      costume_paid,
-      season_year: sy,
-    });
+    res.json({ dues_paid, guest_fee_paid, costume_paid });
   } catch (error) {
     console.error('Failed to update payment status', error);
     res.status(500).json({ error: 'Unable to update payment status' });
@@ -2453,11 +2437,6 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
   const guest_fee_paid = Boolean(req.body.guest_fee_paid);
   const beads_paid = Boolean(req.body.beads_paid);
   const costume_paid = Boolean(req.body.costume_paid);
-  const sy = currentSeasonYear();
-  const dues_paid_season = dues_paid ? sy : null;
-  const guest_fee_paid_season = guest_fee_paid ? sy : null;
-  const beads_paid_season = beads_paid ? sy : null;
-  const costume_paid_season = costume_paid ? sy : null;
 
   const client = await pool.connect();
   try {
@@ -2478,9 +2457,8 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
          dues_paid, guest_fee_paid, beads_paid, costume_paid,
-         dues_paid_season, guest_fee_paid_season, beads_paid_season, costume_paid_season,
          updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -2499,10 +2477,6 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          rider_float_names=EXCLUDED.rider_float_names,
          dues_paid=EXCLUDED.dues_paid, guest_fee_paid=EXCLUDED.guest_fee_paid,
          beads_paid=EXCLUDED.beads_paid, costume_paid=EXCLUDED.costume_paid,
-         dues_paid_season=EXCLUDED.dues_paid_season,
-         guest_fee_paid_season=EXCLUDED.guest_fee_paid_season,
-         beads_paid_season=EXCLUDED.beads_paid_season,
-         costume_paid_season=EXCLUDED.costume_paid_season,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -2514,26 +2488,12 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
         dues_paid, guest_fee_paid, beads_paid, costume_paid,
-        dues_paid_season, guest_fee_paid_season, beads_paid_season, costume_paid_season,
       ]
     );
     await client.query('COMMIT');
-    // Re-read from DB so the response reflects actual stored values
-    const refreshed = await client.query(
-      `SELECT p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
-       FROM user_profiles p WHERE p.user_id = $1`,
-      [userId]
-    );
-    const pr = refreshed.rows[0] || {};
     const u = userResult.rows[0];
     res.json({
-      user: {
-        ...u,
-        dues_paid:       pr.dues_paid_season       === sy,
-        guest_fee_paid:  pr.guest_fee_paid_season  === sy,
-        beads_paid:      pr.beads_paid_season      === sy,
-        costume_paid:    pr.costume_paid_season     === sy,
-      },
+      user: { ...u, dues_paid, guest_fee_paid, beads_paid, costume_paid },
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -3066,7 +3026,6 @@ app.post('/api/auth/login', async (req, res) => {
 // Protected profile route
 app.get('/api/profile', authenticateToken, async (req, res) => {
   try {
-    const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
               p.phone, p.address, p.city, p.state, p.zip,
@@ -3076,7 +3035,10 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
+              COALESCE(p.dues_paid, false)      AS dues_paid,
+              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid, false)     AS beads_paid,
+              COALESCE(p.costume_paid, false)   AS costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -3086,11 +3048,6 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     const row = result.rows[0];
     res.json({
       ...row,
-      current_season_year: sy,
-      dues_paid: row.dues_paid_season === sy,
-      guest_fee_paid: row.guest_fee_paid_season === sy,
-      beads_paid: row.beads_paid_season === sy,
-      costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
       kids_birthdays: row.kids_birthdays || [],
       grandchildren_names: row.grandchildren_names || [],
