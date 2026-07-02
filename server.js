@@ -451,8 +451,30 @@ async function ensureContentTable() {
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_fee_paid_season INTEGER',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS beads_paid_season INTEGER',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS costume_paid_season INTEGER',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS sponsor_name TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS city TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS state TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS zip TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS birthdate DATE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS occupation TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS organizations TEXT',
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS kids_birthdays JSONB NOT NULL DEFAULT '[]'",
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_names JSONB NOT NULL DEFAULT '[]'",
+    "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_birthdays JSONB NOT NULL DEFAULT '[]'",
   ]) {
     await pool.query(col);
+  }
+
+  // One-time migration: backfill season columns from old boolean columns
+  {
+    const sy = currentSeasonYear();
+    await pool.query(`
+      UPDATE user_profiles SET
+        dues_paid_season        = CASE WHEN dues_paid        = TRUE AND dues_paid_season        IS NULL THEN $1 ELSE dues_paid_season        END,
+        guest_fee_paid_season   = CASE WHEN guest_fee_paid   = TRUE AND guest_fee_paid_season   IS NULL THEN $1 ELSE guest_fee_paid_season   END,
+        beads_paid_season       = CASE WHEN beads_paid       = TRUE AND beads_paid_season       IS NULL THEN $1 ELSE beads_paid_season       END,
+        costume_paid_season     = CASE WHEN costume_paid     = TRUE AND costume_paid_season     IS NULL THEN $1 ELSE costume_paid_season     END
+    `, [sy]);
   }
 
   // ── Shop tables ─────────────────────────────────────────────────────────
@@ -828,6 +850,7 @@ const ENV_CONFIG_ALLOWLIST = [
   'PAYPAL_CLIENT_ID',
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_MODE',
+  'PAYMENT_SIMULATE',
 ];
 
 const envFilePath = path.join(__dirname, '.env');
@@ -2261,6 +2284,11 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/shop/payment-mode', authenticateToken, (req, res) => {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  res.json({ simulate: env.PAYMENT_SIMULATE === 'true' });
+});
+
 app.get('/api/current-season', authenticateToken, (req, res) => {
   const sy = currentSeasonYear();
   res.json({ season_year: sy, ash_wednesday: ashWednesdayISO(sy) });
@@ -2272,10 +2300,10 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              (p.dues_paid_season = ${sy}) AS dues_paid,
-              (p.guest_fee_paid_season = ${sy}) AS guest_fee_paid,
-              (p.beads_paid_season = ${sy}) AS beads_paid,
-              (p.costume_paid_season = ${sy}) AS costume_paid
+              COALESCE(p.dues_paid_season      = ${sy}, false) AS dues_paid,
+              COALESCE(p.guest_fee_paid_season = ${sy}, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid_season     = ${sy}, false) AS beads_paid,
+              COALESCE(p.costume_paid_season   = ${sy}, false) AS costume_paid
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        ORDER BY u.joined_at DESC, u.id DESC`
@@ -2296,7 +2324,11 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
     const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
+              p.phone, p.address, p.city, p.state, p.zip,
+              p.birthdate, p.occupation, p.organizations, p.sponsor_name,
+              p.spouse_name, p.kids_names, p.kids_birthdays,
+              p.grandchildren_names, p.grandchildren_birthdays,
+              p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
               p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
@@ -2315,6 +2347,9 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
       beads_paid: row.beads_paid_season === sy,
       costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
+      kids_birthdays: row.kids_birthdays || [],
+      grandchildren_names: row.grandchildren_names || [],
+      grandchildren_birthdays: row.grandchildren_birthdays || [],
       float_riders: row.float_riders || [],
       kids_float_numbers: row.kids_float_numbers || [],
       rider_float_numbers: row.rider_float_numbers || [],
@@ -2323,6 +2358,46 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Failed to fetch user details', error);
     res.status(500).json({ error: 'Unable to fetch user details' });
+  }
+});
+
+// Update payment status only (admin only) — used for instant auto-save on toggle
+app.patch('/api/admin/users/:userId/payments', authenticateToken, async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const userId = Number.parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
+
+  const sy = currentSeasonYear();
+  const dues_paid      = Boolean(req.body.dues_paid);
+  const guest_fee_paid = Boolean(req.body.guest_fee_paid);
+  const costume_paid   = Boolean(req.body.costume_paid);
+  const dues_paid_season      = dues_paid      ? sy : null;
+  const guest_fee_paid_season = guest_fee_paid ? sy : null;
+  const costume_paid_season   = costume_paid   ? sy : null;
+
+  try {
+    await pool.query(
+      `INSERT INTO user_profiles (user_id, dues_paid, dues_paid_season, guest_fee_paid, guest_fee_paid_season, costume_paid, costume_paid_season, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         dues_paid      = EXCLUDED.dues_paid,
+         dues_paid_season = EXCLUDED.dues_paid_season,
+         guest_fee_paid = EXCLUDED.guest_fee_paid,
+         guest_fee_paid_season = EXCLUDED.guest_fee_paid_season,
+         costume_paid   = EXCLUDED.costume_paid,
+         costume_paid_season = EXCLUDED.costume_paid_season,
+         updated_at = NOW()`,
+      [userId, dues_paid, dues_paid_season, guest_fee_paid, guest_fee_paid_season, costume_paid, costume_paid_season]
+    );
+    res.json({
+      dues_paid,
+      guest_fee_paid,
+      costume_paid,
+      season_year: sy,
+    });
+  } catch (error) {
+    console.error('Failed to update payment status', error);
+    res.status(500).json({ error: 'Unable to update payment status' });
   }
 });
 
@@ -2342,12 +2417,26 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
+  const city    = typeof req.body.city    === 'string' ? req.body.city.trim().slice(0, 100)    : null;
+  const state   = typeof req.body.state   === 'string' ? req.body.state.trim().slice(0, 50)    : null;
+  const zip     = typeof req.body.zip     === 'string' ? req.body.zip.trim().slice(0, 20)      : null;
+  const birthdate     = typeof req.body.birthdate     === 'string' && req.body.birthdate ? req.body.birthdate : null;
+  const occupation    = typeof req.body.occupation    === 'string' ? req.body.occupation.trim().slice(0, 150)    : null;
+  const organizations = typeof req.body.organizations === 'string' ? req.body.organizations.trim().slice(0, 500) : null;
+  const sponsor_name  = typeof req.body.sponsor_name  === 'string' ? req.body.sponsor_name.trim().slice(0, 100)  : null;
   const spouse_name = typeof req.body.spouse_name === 'string' ? req.body.spouse_name.trim().slice(0, 100) : null;
   const guest_name = typeof req.body.guest_name === 'string' ? req.body.guest_name.trim().slice(0, 100) : null;
   const kidsRaw = Array.isArray(req.body.kids_names) ? req.body.kids_names : [];
   const ridersRaw = Array.isArray(req.body.float_riders) ? req.body.float_riders : [];
   const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
   const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
+
+  const kidsBdRaw = Array.isArray(req.body.kids_birthdays) ? req.body.kids_birthdays : [];
+  const kids_birthdays = kidsBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
+  const gcNamesRaw = Array.isArray(req.body.grandchildren_names) ? req.body.grandchildren_names : [];
+  const grandchildren_names = gcNamesRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+  const gcBdRaw = Array.isArray(req.body.grandchildren_birthdays) ? req.body.grandchildren_birthdays : [];
+  const grandchildren_birthdays = gcBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
 
   const kidsFloatRaw = Array.isArray(req.body.kids_float_numbers) ? req.body.kids_float_numbers : [];
   const riderFloatRaw = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
@@ -2382,17 +2471,26 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
 
     await client.query(
       `INSERT INTO user_profiles (
-         user_id, phone, address, spouse_name, kids_names, guest_name, float_riders,
+         user_id, phone, address, city, state, zip, birthdate, occupation, organizations,
+         sponsor_name, spouse_name, kids_names, kids_birthdays,
+         grandchildren_names, grandchildren_birthdays,
+         guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
          dues_paid, guest_fee_paid, beads_paid, costume_paid,
          dues_paid_season, guest_fee_paid_season, beads_paid_season, costume_paid_season,
          updated_at
-       ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
-         phone=EXCLUDED.phone, address=EXCLUDED.address, spouse_name=EXCLUDED.spouse_name,
-         kids_names=EXCLUDED.kids_names, guest_name=EXCLUDED.guest_name,
-         float_riders=EXCLUDED.float_riders,
+         phone=EXCLUDED.phone, address=EXCLUDED.address,
+         city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
+         birthdate=EXCLUDED.birthdate, occupation=EXCLUDED.occupation,
+         organizations=EXCLUDED.organizations, sponsor_name=EXCLUDED.sponsor_name,
+         spouse_name=EXCLUDED.spouse_name,
+         kids_names=EXCLUDED.kids_names, kids_birthdays=EXCLUDED.kids_birthdays,
+         grandchildren_names=EXCLUDED.grandchildren_names,
+         grandchildren_birthdays=EXCLUDED.grandchildren_birthdays,
+         guest_name=EXCLUDED.guest_name, float_riders=EXCLUDED.float_riders,
          member_float_number=EXCLUDED.member_float_number,
          spouse_float_number=EXCLUDED.spouse_float_number,
          guest_float_number=EXCLUDED.guest_float_number,
@@ -2407,8 +2505,12 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          costume_paid_season=EXCLUDED.costume_paid_season,
          updated_at=NOW()`,
       [
-        userId, phone||null, address||null, spouse_name||null,
-        JSON.stringify(kids_names), guest_name||null, JSON.stringify(float_riders),
+        userId, phone||null, address||null, city||null, state||null, zip||null,
+        birthdate||null, occupation||null, organizations||null,
+        sponsor_name||null, spouse_name||null,
+        JSON.stringify(kids_names), JSON.stringify(kids_birthdays),
+        JSON.stringify(grandchildren_names), JSON.stringify(grandchildren_birthdays),
+        guest_name||null, JSON.stringify(float_riders),
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
         dues_paid, guest_fee_paid, beads_paid, costume_paid,
@@ -2416,7 +2518,23 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
       ]
     );
     await client.query('COMMIT');
-    res.json({ user: userResult.rows[0] });
+    // Re-read from DB so the response reflects actual stored values
+    const refreshed = await client.query(
+      `SELECT p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
+       FROM user_profiles p WHERE p.user_id = $1`,
+      [userId]
+    );
+    const pr = refreshed.rows[0] || {};
+    const u = userResult.rows[0];
+    res.json({
+      user: {
+        ...u,
+        dues_paid:       pr.dues_paid_season       === sy,
+        guest_fee_paid:  pr.guest_fee_paid_season  === sy,
+        beads_paid:      pr.beads_paid_season      === sy,
+        costume_paid:    pr.costume_paid_season     === sy,
+      },
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.code === '23505') return res.status(409).json({ error: 'Email already in use by another account' });
@@ -2951,7 +3069,11 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     const sy = currentSeasonYear();
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
-              p.phone, p.address, p.spouse_name, p.kids_names, p.guest_name, p.float_riders,
+              p.phone, p.address, p.city, p.state, p.zip,
+              p.birthdate, p.occupation, p.organizations, p.sponsor_name,
+              p.spouse_name, p.kids_names, p.kids_birthdays,
+              p.grandchildren_names, p.grandchildren_birthdays,
+              p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
               p.dues_paid_season, p.guest_fee_paid_season, p.beads_paid_season, p.costume_paid_season
@@ -2970,6 +3092,9 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
       beads_paid: row.beads_paid_season === sy,
       costume_paid: row.costume_paid_season === sy,
       kids_names: row.kids_names || [],
+      kids_birthdays: row.kids_birthdays || [],
+      grandchildren_names: row.grandchildren_names || [],
+      grandchildren_birthdays: row.grandchildren_birthdays || [],
       float_riders: row.float_riders || [],
       kids_float_numbers: row.kids_float_numbers || [],
       rider_float_numbers: row.rider_float_numbers || [],
@@ -2983,39 +3108,70 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
 app.put('/api/profile/details', authenticateToken, async (req, res) => {
   const userId = req.user.userId;
-  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
-  const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
-  const spouse_name = typeof req.body.spouse_name === 'string' ? req.body.spouse_name.trim().slice(0, 100) : null;
-  const guest_name = typeof req.body.guest_name === 'string' ? req.body.guest_name.trim().slice(0, 100) : null;
+  const phone       = typeof req.body.phone       === 'string' ? req.body.phone.trim().slice(0, 30)    : null;
+  const address     = typeof req.body.address     === 'string' ? req.body.address.trim().slice(0, 200)  : null;
+  const city        = typeof req.body.city        === 'string' ? req.body.city.trim().slice(0, 100)     : null;
+  const state       = typeof req.body.state       === 'string' ? req.body.state.trim().slice(0, 50)     : null;
+  const zip         = typeof req.body.zip         === 'string' ? req.body.zip.trim().slice(0, 20)       : null;
+  const birthdate   = typeof req.body.birthdate   === 'string' && req.body.birthdate ? req.body.birthdate : null;
+  const occupation  = typeof req.body.occupation  === 'string' ? req.body.occupation.trim().slice(0, 150) : null;
+  const organizations = typeof req.body.organizations === 'string' ? req.body.organizations.trim().slice(0, 500) : null;
+  const sponsor_name  = typeof req.body.sponsor_name  === 'string' ? req.body.sponsor_name.trim().slice(0, 100)  : null;
+  const spouse_name   = typeof req.body.spouse_name   === 'string' ? req.body.spouse_name.trim().slice(0, 100)   : null;
+  const guest_name    = typeof req.body.guest_name    === 'string' ? req.body.guest_name.trim().slice(0, 100)    : null;
 
   const kidsRaw = req.body.kids_names;
   if (!Array.isArray(kidsRaw)) return res.status(400).json({ error: 'kids_names must be an array' });
   const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
 
+  const kidsBdRaw = Array.isArray(req.body.kids_birthdays) ? req.body.kids_birthdays : [];
+  const kids_birthdays = kidsBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
+
+  const gcNamesRaw = Array.isArray(req.body.grandchildren_names) ? req.body.grandchildren_names : [];
+  const grandchildren_names = gcNamesRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+
+  const gcBdRaw = Array.isArray(req.body.grandchildren_birthdays) ? req.body.grandchildren_birthdays : [];
+  const grandchildren_birthdays = gcBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
+
   const ridersRaw = req.body.float_riders;
   if (!Array.isArray(ridersRaw)) return res.status(400).json({ error: 'float_riders must be an array' });
   const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
 
-  const riderFloatNamesRaw = Array.isArray(req.body.rider_float_names) ? req.body.rider_float_names : [];
+  const riderFloatNamesRaw = Array.isArray(req.body.rider_float_names)   ? req.body.rider_float_names   : [];
   const riderFloatNumsRaw  = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
   const rider_float_names   = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
-  const rider_float_numbers = riderFloatNumsRaw.map((v) => String(v ?? '').trim().slice(0, 20));
+  const rider_float_numbers = riderFloatNumsRaw.map((v)  => String(v ?? '').trim().slice(0, 20));
 
   try {
     await pool.query(
-      `INSERT INTO user_profiles (user_id, phone, address, spouse_name, kids_names, guest_name, float_riders, rider_float_names, rider_float_numbers, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9::jsonb, NOW())
+      `INSERT INTO user_profiles (
+         user_id, phone, address, city, state, zip, birthdate, occupation, organizations,
+         sponsor_name, spouse_name, kids_names, kids_birthdays,
+         grandchildren_names, grandchildren_birthdays,
+         guest_name, float_riders, rider_float_names, rider_float_numbers, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
-         phone = EXCLUDED.phone,
-         address = EXCLUDED.address,
-         spouse_name = EXCLUDED.spouse_name,
-         kids_names = EXCLUDED.kids_names,
-         guest_name = EXCLUDED.guest_name,
-         float_riders = EXCLUDED.float_riders,
-         rider_float_names = EXCLUDED.rider_float_names,
-         rider_float_numbers = EXCLUDED.rider_float_numbers,
-         updated_at = NOW()`,
-      [userId, phone || null, address || null, spouse_name || null, JSON.stringify(kids_names), guest_name || null, JSON.stringify(float_riders), JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers)]
+         phone=EXCLUDED.phone, address=EXCLUDED.address,
+         city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
+         birthdate=EXCLUDED.birthdate, occupation=EXCLUDED.occupation,
+         organizations=EXCLUDED.organizations, sponsor_name=EXCLUDED.sponsor_name,
+         spouse_name=EXCLUDED.spouse_name,
+         kids_names=EXCLUDED.kids_names, kids_birthdays=EXCLUDED.kids_birthdays,
+         grandchildren_names=EXCLUDED.grandchildren_names,
+         grandchildren_birthdays=EXCLUDED.grandchildren_birthdays,
+         guest_name=EXCLUDED.guest_name, float_riders=EXCLUDED.float_riders,
+         rider_float_names=EXCLUDED.rider_float_names,
+         rider_float_numbers=EXCLUDED.rider_float_numbers,
+         updated_at=NOW()`,
+      [
+        userId, phone||null, address||null, city||null, state||null, zip||null,
+        birthdate||null, occupation||null, organizations||null,
+        sponsor_name||null, spouse_name||null,
+        JSON.stringify(kids_names), JSON.stringify(kids_birthdays),
+        JSON.stringify(grandchildren_names), JSON.stringify(grandchildren_birthdays),
+        guest_name||null, JSON.stringify(float_riders),
+        JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers),
+      ]
     );
     res.json({ ok: true });
   } catch (error) {

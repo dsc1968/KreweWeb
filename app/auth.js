@@ -54,6 +54,28 @@ if (registerForm) {
         const resp = await postJSON('/api/auth/register/verify-code', { email, code });
         if (resp.token) {
           localStorage.setItem('krewe_token', resp.token);
+          // Save optional profile fields collected during registration
+          const regProfile = {
+            phone:        (document.getElementById('reg-phone')?.value || '').trim(),
+            birthdate:    document.getElementById('reg-birthdate')?.value || null,
+            occupation:   (document.getElementById('reg-occupation')?.value || '').trim(),
+            sponsor_name: (document.getElementById('reg-sponsor')?.value || '').trim(),
+            address:      (document.getElementById('reg-address')?.value || '').trim(),
+            city:         (document.getElementById('reg-city')?.value || '').trim(),
+            state:        (document.getElementById('reg-state')?.value || '').trim().toUpperCase(),
+            zip:          (document.getElementById('reg-zip')?.value || '').trim(),
+            kids_names: [], kids_birthdays: [],
+            grandchildren_names: [], grandchildren_birthdays: [],
+            float_riders: [], rider_float_names: [], rider_float_numbers: [],
+          };
+          const hasData = Object.values(regProfile).some(v => v && (typeof v === 'string' ? v.length > 0 : true));
+          if (hasData) {
+            await fetch('/api/profile/details', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + resp.token },
+              body: JSON.stringify(regProfile),
+            }).catch(() => {});
+          }
           window.location.href = '/dashboard.html';
           return;
         }
@@ -397,24 +419,27 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
       <!-- Panel: Payment -->
       <div class="uem-panel" data-uem-panel="payment">
-        <p style="font-size:0.78rem;color:#b8c4e0;margin:0 0 0.65rem;">${full.current_season_year || ''} Mardi Gras Season &mdash; check items paid for this season:</p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.65rem 1rem;padding:0.25rem 0;">
-          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-            <input type="checkbox" id="uem-dues-paid" ${full.dues_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
-            Membership Dues
-          </label>
-          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-            <input type="checkbox" id="uem-guest-fee-paid" ${full.guest_fee_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
-            Guest Fee
-          </label>
-          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-            <input type="checkbox" id="uem-beads-paid" ${full.beads_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
-            Beads &amp; Throws
-          </label>
-          <label style="display:flex;align-items:center;gap:0.7rem;cursor:pointer;font-size:0.92rem;padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);">
-            <input type="checkbox" id="uem-costume-paid" ${full.costume_paid?'checked':''} style="accent-color:#ffd262;width:1.1rem;height:1.1rem;flex-shrink:0;" />
-            Costume
-          </label>
+        <p style="font-size:0.78rem;color:#b8c4e0;margin:0 0 0.65rem;">${full.current_season_year || ''} Mardi Gras Season &mdash; toggle items paid for this season:</p>
+        <div style="display:flex;flex-direction:column;gap:0.55rem;padding:0.25rem 0;">
+          ${[['uem-dues-paid', 'Dues', full.dues_paid], ['uem-guest-fee-paid', 'Guest Fee', full.guest_fee_paid], ['uem-costume-paid', 'Costume', full.costume_paid]].map(([id, lbl, chk]) => {
+            const paid = !!chk;
+            const rowBg  = paid ? 'rgba(74,222,128,0.08)'  : 'rgba(248,113,113,0.08)';
+            const rowBdr = paid ? 'rgba(74,222,128,0.3)'   : 'rgba(248,113,113,0.3)';
+            const pillBg = paid ? 'rgba(74,222,128,0.12)'  : 'rgba(248,113,113,0.12)';
+            const pillC  = paid ? '#4ade80' : '#f87171';
+            const pillTx = paid ? 'Paid' : 'Unpaid';
+            return `<label data-uem-pay-row style="display:flex;align-items:center;gap:0.9rem;cursor:pointer;font-size:0.92rem;font-weight:600;padding:0.75rem 1rem;border-radius:12px;border:1px solid ${rowBdr};background:${rowBg};transition:background 0.15s,border-color 0.15s;">
+              <input type="checkbox" id="${id}" ${chk?'checked':''} style="position:absolute;opacity:0;width:0;height:0;" />
+              <span data-pay-icon style="width:1.6rem;height:1.6rem;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${pillC};">
+                <svg viewBox="0 0 24 24" style="width:1rem;height:1rem;" aria-hidden="true">${paid
+                  ? '<path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>'
+                  : '<path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/>'
+                }</svg>
+              </span>
+              <span style="flex:1;">${lbl}</span>
+              <span data-pay-pill style="font-size:0.75rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.18rem 0.65rem;border-radius:999px;border:1px solid ${pillC}4d;background:${pillBg};color:${pillC};">${pillTx}</span>
+            </label>`;
+          }).join('')}
         </div>
       </div>
 
@@ -500,6 +525,52 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   backdrop.querySelector('#uem-close').addEventListener('click', close);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
 
+  // Payment rows — auto-save on every toggle so no "Save Changes" click is required
+  const iconSvgPaid   = '<path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
+  const iconSvgUnpaid = '<path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/>';
+
+  async function savePaymentStatus() {
+    const payload = {
+      dues_paid:      backdrop.querySelector('#uem-dues-paid').checked,
+      guest_fee_paid: backdrop.querySelector('#uem-guest-fee-paid').checked,
+      costume_paid:   backdrop.querySelector('#uem-costume-paid').checked,
+    };
+    try {
+      const r = await fetch(`/api/admin/users/${user.id}/payments`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(payload),
+      });
+      const d = await parseJSONResponse(r);
+      if (r.ok) {
+        setFeedback('Payment status saved.', false);
+        onUpdate({ ...user, ...payload });
+      } else {
+        setFeedback(d.error || 'Unable to save payment status.', true);
+      }
+    } catch { setFeedback('Network error saving payment status.', true); }
+  }
+
+  backdrop.querySelectorAll('[data-uem-pay-row]').forEach((row) => {
+    const cb   = row.querySelector('input[type="checkbox"]');
+    const icon = row.querySelector('[data-pay-icon]');
+    const pill = row.querySelector('[data-pay-pill]');
+    cb.addEventListener('change', () => {
+      const paid = cb.checked;
+      const pillC  = paid ? '#4ade80' : '#f87171';
+      const pillBg = paid ? 'rgba(74,222,128,0.12)'  : 'rgba(248,113,113,0.12)';
+      row.style.background    = paid ? 'rgba(74,222,128,0.08)'  : 'rgba(248,113,113,0.08)';
+      row.style.borderColor   = paid ? 'rgba(74,222,128,0.3)'   : 'rgba(248,113,113,0.3)';
+      icon.style.background   = pillC;
+      icon.querySelector('svg').innerHTML = paid ? iconSvgPaid : iconSvgUnpaid;
+      pill.style.color        = pillC;
+      pill.style.borderColor  = pillC + '4d';
+      pill.style.background   = pillBg;
+      pill.textContent        = paid ? 'Paid' : 'Unpaid';
+      savePaymentStatus();
+    });
+  });
+
   // Tab switching
   backdrop.querySelectorAll('.uem-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -535,7 +606,6 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       }),
       dues_paid: backdrop.querySelector('#uem-dues-paid').checked,
       guest_fee_paid: backdrop.querySelector('#uem-guest-fee-paid').checked,
-      beads_paid: backdrop.querySelector('#uem-beads-paid').checked,
       costume_paid: backdrop.querySelector('#uem-costume-paid').checked,
     };
     try {
@@ -718,7 +788,6 @@ function renderAdminUsers(users, currentUserId) {
         }
         payCell.appendChild(dot(user.dues_paid, `Dues: ${user.dues_paid ? 'Paid' : 'Unpaid'}`));
         payCell.appendChild(dot(user.guest_fee_paid, `Guest Fee: ${user.guest_fee_paid ? 'Paid' : 'Unpaid'}`));
-        payCell.appendChild(dot(user.beads_paid, `Beads & Throws: ${user.beads_paid ? 'Paid' : 'Unpaid'}`));
         payCell.appendChild(dot(user.costume_paid, `Costume: ${user.costume_paid ? 'Paid' : 'Unpaid'}`));
         const actionCell = buildCell('');
 
@@ -748,6 +817,11 @@ function renderAdminUsers(users, currentUserId) {
               nameCell.textContent = user.full_name || '';
               emailCell.textContent = user.email || '';
               roleCell.textContent = user.role || 'member';
+              // Re-render payment dots with updated values
+              payCell.innerHTML = '';
+              payCell.appendChild(dot(user.dues_paid,      `Dues: ${user.dues_paid      ? 'Paid' : 'Unpaid'}`));
+              payCell.appendChild(dot(user.guest_fee_paid, `Guest Fee: ${user.guest_fee_paid ? 'Paid' : 'Unpaid'}`));
+              payCell.appendChild(dot(user.costume_paid,   `Costume: ${user.costume_paid   ? 'Paid' : 'Unpaid'}`));
             }
             updateAdminSummary(users);
             drawRows();
@@ -837,28 +911,84 @@ function initProfileDetailsForm(profile) {
   const form = document.getElementById('profile-details-form');
   if (!section || !form) return;
 
-  // Populate fields
-  document.getElementById('pd-phone').value = profile.phone || '';
-  document.getElementById('pd-address').value = profile.address || '';
-  document.getElementById('pd-spouse').value = profile.spouse_name || '';
-  document.getElementById('pd-guest').value = profile.guest_name || '';
+  // Helper: compute age from birthdate string
+  function computeAge(bd) {
+    if (!bd) return '';
+    const birth = new Date(bd);
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const m = now.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+    return age >= 0 ? String(age) : '';
+  }
+
+  // Populate simple fields
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('pd-phone',         profile.phone);
+  set('pd-address',       profile.address);
+  set('pd-city',          profile.city);
+  set('pd-state',         profile.state);
+  set('pd-zip',           profile.zip);
+  set('pd-birthdate',     profile.birthdate ? profile.birthdate.slice(0, 10) : '');
+  set('pd-age',           computeAge(profile.birthdate));
+  set('pd-occupation',    profile.occupation);
+  set('pd-sponsor',       profile.sponsor_name);
+  set('pd-organizations', profile.organizations);
+  set('pd-spouse',        profile.spouse_name);
+  set('pd-guest',         profile.guest_name);
+
+  // Auto-update age when birthdate changes
+  const bdEl = document.getElementById('pd-birthdate');
+  const ageEl = document.getElementById('pd-age');
+  if (bdEl && ageEl) {
+    bdEl.addEventListener('change', () => { ageEl.value = computeAge(bdEl.value); });
+  }
+
+  // Helper: build a name + date row (for children / grandchildren)
+  function buildPersonRow(container, name, birthday, namePlaceholder) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;flex-wrap:wrap;';
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.value = name || '';
+    nameInp.placeholder = namePlaceholder || 'Name';
+    nameInp.className = 'person-name-input';
+    nameInp.style.cssText = 'flex:2;min-width:120px;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+    const bdInp = document.createElement('input');
+    bdInp.type = 'date';
+    bdInp.value = birthday ? birthday.slice(0, 10) : '';
+    bdInp.className = 'person-bd-input';
+    bdInp.style.cssText = 'flex:1;min-width:120px;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;flex-shrink:0;';
+    rm.addEventListener('click', () => row.remove());
+    row.appendChild(nameInp);
+    row.appendChild(bdInp);
+    row.appendChild(rm);
+    container.appendChild(row);
+  }
 
   const kidsList = document.getElementById('kids-list');
+  const gcList   = document.getElementById('grandchildren-list');
   const ridersList = document.getElementById('riders-list');
 
-  (profile.kids_names || []).forEach((name) => buildRemovableInput(kidsList, name, 'Child name'));
+  const kidsBdays = profile.kids_birthdays || [];
+  (profile.kids_names || []).forEach((name, i) => buildPersonRow(kidsList, name, kidsBdays[i] || '', 'Child name'));
+
+  const gcBdays = profile.grandchildren_birthdays || [];
+  (profile.grandchildren_names || []).forEach((name, i) => buildPersonRow(gcList, name, gcBdays[i] || '', 'Grandchild name'));
+
   const riderFloatNames = profile.rider_float_names || [];
   const riderFloatNums  = profile.rider_float_numbers || [];
   (profile.float_riders || []).forEach((name, i) =>
     buildRiderInput(ridersList, name, riderFloatNames[i] || '', riderFloatNums[i] || '')
   );
 
-  document.getElementById('add-kid-btn').addEventListener('click', () => {
-    buildRemovableInput(kidsList, '', 'Child name');
-  });
-  document.getElementById('add-rider-btn').addEventListener('click', () => {
-    buildRiderInput(ridersList, '', '', '');
-  });
+  document.getElementById('add-kid-btn').addEventListener('click', () => buildPersonRow(kidsList, '', '', 'Child name'));
+  document.getElementById('add-grandchild-btn').addEventListener('click', () => buildPersonRow(gcList, '', '', 'Grandchild name'));
+  document.getElementById('add-rider-btn').addEventListener('click', () => buildRiderInput(ridersList, '', '', ''));
 
   const feedback = document.getElementById('profile-details-feedback');
   function setFeedback(msg, isError) {
@@ -878,11 +1008,21 @@ function initProfileDetailsForm(profile) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({
-          phone: document.getElementById('pd-phone').value.trim(),
-          address: document.getElementById('pd-address').value.trim(),
-          spouse_name: document.getElementById('pd-spouse').value.trim(),
-          guest_name: document.getElementById('pd-guest').value.trim(),
-          kids_names: getListValues(kidsList),
+          phone:         document.getElementById('pd-phone').value.trim(),
+          address:       document.getElementById('pd-address').value.trim(),
+          city:          document.getElementById('pd-city').value.trim(),
+          state:         document.getElementById('pd-state').value.trim().toUpperCase(),
+          zip:           document.getElementById('pd-zip').value.trim(),
+          birthdate:     document.getElementById('pd-birthdate').value || null,
+          occupation:    document.getElementById('pd-occupation').value.trim(),
+          sponsor_name:  document.getElementById('pd-sponsor').value.trim(),
+          organizations: document.getElementById('pd-organizations').value.trim(),
+          spouse_name:   document.getElementById('pd-spouse').value.trim(),
+          guest_name:    document.getElementById('pd-guest').value.trim(),
+          kids_names:       Array.from(kidsList.querySelectorAll('.person-name-input')).map(i => i.value.trim()).filter(Boolean),
+          kids_birthdays:   Array.from(kidsList.querySelectorAll('.person-name-input')).map(i => { const r = i.closest('div'); return r ? (r.querySelector('.person-bd-input')?.value || null) : null; }),
+          grandchildren_names:       Array.from(gcList.querySelectorAll('.person-name-input')).map(i => i.value.trim()).filter(Boolean),
+          grandchildren_birthdays:   Array.from(gcList.querySelectorAll('.person-name-input')).map(i => { const r = i.closest('div'); return r ? (r.querySelector('.person-bd-input')?.value || null) : null; }),
           float_riders: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => i.value.trim()).filter(Boolean),
           rider_float_names: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => {
             const row = i.closest('div');
@@ -940,7 +1080,6 @@ async function initDashboard() {
   const paymentHtml = seasonLabel + [
     payBadge(profile.dues_paid,      'Dues'),
     payBadge(profile.guest_fee_paid, 'Guest Fee'),
-    payBadge(profile.beads_paid,     'Beads &amp; Throws'),
     payBadge(profile.costume_paid,   'Costume'),
   ].join('');
 
@@ -978,8 +1117,120 @@ async function initDashboard() {
       tab.classList.add('is-active');
       const target = document.getElementById('db-panel-' + tab.dataset.tab);
       if (target) target.classList.add('is-active');
+      if (tab.dataset.tab === 'orders') loadDashboardOrders();
+      if (tab.dataset.tab === 'payments') renderDashboardPayments();
     });
   });
+
+  // Pre-populate Payments tab and keep hero badges in sync on page load
+  renderDashboardPayments();
+
+  // Re-sync when user returns to this browser tab
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') renderDashboardPayments();
+  });
+
+  async function loadDashboardOrders() {
+    const feedEl = document.getElementById('db-orders-feedback');
+    const listEl = document.getElementById('db-orders-list');
+    if (!feedEl || !listEl) return;
+    feedEl.textContent = 'Loading orders…';
+    listEl.innerHTML = '';
+    try {
+      const res = await fetch('/api/shop/orders', { headers: { Authorization: 'Bearer ' + getToken() } });
+      const data = await parseJSONResponse(res);
+      feedEl.textContent = '';
+      if (!res.ok) { listEl.innerHTML = `<p style="color:#f87171;">${data.error || 'Unable to load orders.'}</p>`; return; }
+      if (data.orders.length === 0) { listEl.innerHTML = '<p style="color:var(--muted);">You have no orders yet. <a href="/shop.html" style="color:#ffd262;">Visit the shop</a> to place one.</p>'; return; }
+      const statusColor = { pending:'#ffd262', processing:'#60a5fa', shipped:'#a78bfa', completed:'#4ade80', cancelled:'#f87171' };
+      listEl.innerHTML = data.orders.map((o) => {
+        const itemLines = (o.items || []).map((i) =>
+          `<span style="display:block;font-size:0.82rem;color:var(--muted);">${escHtml(i.product_name)} &times; ${i.quantity} &mdash; $${(parseFloat(i.unit_price)*i.quantity).toFixed(2)}</span>`
+        ).join('');
+        const col = statusColor[o.status] || '#b8c4e0';
+        return `<div style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.07);">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;">
+            <span style="font-weight:600;">Order #${o.id}</span>
+            <span style="font-size:0.78rem;color:${col};border:1px solid ${col};border-radius:999px;padding:0.1rem 0.55rem;">${o.status}</span>
+          </div>
+          <div style="font-size:0.82rem;color:var(--muted);margin:0.15rem 0;">${new Date(o.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</div>
+          ${itemLines}
+          <div style="margin-top:0.25rem;font-size:0.9rem;">Total: <strong style="color:#ffd262;">$${parseFloat(o.total_amount).toFixed(2)}</strong></div>
+        </div>`;
+      }).join('');
+    } catch { feedEl.textContent = 'Network error loading orders.'; }
+  }
+
+  async function renderDashboardPayments() {
+    const seasonEl = document.getElementById('db-payments-season');
+    const listEl   = document.getElementById('db-payments-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<p style="color:var(--muted);font-size:0.9rem;">Loading…</p>';
+
+    let data;
+    try {
+      const res = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + getToken() } });
+      data = await parseJSONResponse(res);
+      if (!res.ok) {
+        listEl.innerHTML = '<p style="color:#f87171;">Unable to load payment status.</p>';
+        return;
+      }
+    } catch {
+      listEl.innerHTML = '<p style="color:#f87171;">Network error loading payment status.</p>';
+      return;
+    }
+
+    if (seasonEl && data.current_season_year) {
+      seasonEl.textContent = `${data.current_season_year} Mardi Gras Season`;
+    }
+
+    const iconPaid = `<svg class="db-pay-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="12"/>
+      <path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+    </svg>`;
+    const iconUnpaid = `<svg class="db-pay-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="12"/>
+      <path fill="#fff" d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.59 13.42 4.29 19.72l1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z"/>
+    </svg>`;
+
+    const items = [
+      { label: 'Dues',      paid: data.dues_paid },
+      { label: 'Guest Fee', paid: data.guest_fee_paid },
+      { label: 'Costume',   paid: data.costume_paid },
+    ];
+
+    listEl.innerHTML = items.map(({ label, paid }) => {
+      const mod  = paid ? 'paid' : 'unpaid';
+      const icon = paid ? iconPaid : iconUnpaid;
+      const text = paid ? 'Paid' : 'Unpaid';
+      return `<div class="db-pay-row db-pay-row--${mod}">
+        <div class="db-pay-icon">${icon}</div>
+        <div class="db-pay-details">
+          <div class="db-pay-name">${label}</div>
+        </div>
+        <div class="db-pay-status db-pay-status--${mod}">${text}</div>
+      </div>`;
+    }).join('');
+
+    // Refresh hero section payment badges to match fresh data
+    const heroPayEl = document.querySelector('.db-payment-status');
+    if (heroPayEl) {
+      const seasonLabel = data.current_season_year
+        ? `<span style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:0.25rem;">${data.current_season_year} Mardi Gras Season</span>`
+        : '';
+      const badge = (paid, label) => {
+        const cls = paid ? 'db-badge--paid' : 'db-badge--unpaid';
+        const icon = paid ? '✓' : '✗';
+        return `<span class="db-badge ${cls}" title="${label}: ${paid ? 'Paid' : 'Unpaid'} (${data.current_season_year || ''} Season)">${icon} ${label}</span>`;
+      };
+      heroPayEl.innerHTML = seasonLabel + [
+        badge(data.dues_paid,      'Dues'),
+        badge(data.guest_fee_paid, 'Guest Fee'),
+        badge(data.costume_paid,   'Costume'),
+      ].join('');
+    }
+  }
 
   initProfileDetailsForm(profile);
 }
@@ -1009,7 +1260,8 @@ async function initSiteConfig() {
     const config = data.config || {};
     for (const [key, value] of Object.entries(config)) {
       const el = form.querySelector(`[name="${key}"]`);
-      if (el) el.value = value;
+      if (!el) continue;
+      if (el.type === 'checkbox') { el.checked = value === 'true'; } else { el.value = value; }
     }
     setFeedback('', false);
   } catch (_err) {
@@ -1025,7 +1277,7 @@ async function initSiteConfig() {
 
     const config = {};
     form.querySelectorAll('input[name], select[name]').forEach((el) => {
-      config[el.name] = el.value;
+      config[el.name] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
     });
 
     try {
@@ -1570,9 +1822,13 @@ async function initShopPage() {
     } catch { /* ignore */ }
   }
 
-  checkoutBtn.addEventListener('click', async () => {
-    if (cartItems.length === 0) { cartFeedEl.textContent = 'Your cart is empty.'; return; }
+  let simulatePayment = false;
+
+  async function completeOrder() {
     checkoutBtn.disabled = true;
+    checkoutBtn.style.display = '';
+    cartFeedEl.innerHTML = '';
+    cartFeedEl.style.color = 'var(--muted)';
     cartFeedEl.textContent = 'Placing order…';
     try {
       const res = await fetch('/api/shop/checkout', {
@@ -1585,7 +1841,6 @@ async function initShopPage() {
         cartFeedEl.style.color = '#4ade80';
         cartFeedEl.textContent = `Order #${data.order_id} placed! Total: $${parseFloat(data.total).toFixed(2)}`;
         await loadCart();
-        // Switch to orders tab
         document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
         document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
         const ordersBtn = document.querySelector('[data-shop-tab="orders"]');
@@ -1603,6 +1858,33 @@ async function initShopPage() {
       cartFeedEl.textContent = 'Network error.';
     }
     checkoutBtn.disabled = false;
+  }
+
+  checkoutBtn.addEventListener('click', async () => {
+    if (cartItems.length === 0) { cartFeedEl.textContent = 'Your cart is empty.'; return; }
+    if (simulatePayment) {
+      checkoutBtn.style.display = 'none';
+      const total = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0).toFixed(2);
+      cartFeedEl.style.color = '';
+      cartFeedEl.innerHTML = `
+        <div style="text-align:center;padding:0.4rem 0;">
+          <p style="margin:0 0 0.35rem;font-size:0.82rem;color:#ffd262;font-weight:600;">&#x1F9EA; Simulated Payment &mdash; $${total}</p>
+          <div style="display:flex;gap:0.5rem;justify-content:center;">
+            <button id="sim-accept" class="button" style="font-size:0.82rem;padding:0.4rem 0.9rem;">Accept</button>
+            <button id="sim-decline" class="button secondary" style="font-size:0.82rem;padding:0.4rem 0.9rem;border-color:#f87171;color:#f87171;">Decline</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('sim-accept').addEventListener('click', () => completeOrder());
+      document.getElementById('sim-decline').addEventListener('click', () => {
+        cartFeedEl.innerHTML = '';
+        cartFeedEl.style.color = '#f87171';
+        cartFeedEl.textContent = 'Payment declined.';
+        checkoutBtn.style.display = '';
+      });
+      return;
+    }
+    await completeOrder();
   });
 
   // ── Products ─────────────────────────────────────────────────────────────
@@ -1729,8 +2011,15 @@ async function initShopPage() {
   await loadCart();
   await loadProducts();
 
-  // ── PayPal setup ────────────────────────────────────────────────────────
+  // Fetch simulation mode (must happen before PayPal setup so the flag is set)
   try {
+    const pmRes = await fetch('/api/shop/payment-mode', { headers: { Authorization: 'Bearer ' + token } });
+    const pmData = await pmRes.json();
+    simulatePayment = pmData.simulate === true;
+  } catch { /* default false */ }
+
+  // ── PayPal setup ────────────────────────────────────────────────────────
+  if (!simulatePayment) try {
     const ppRes = await fetch('/api/shop/paypal/config', { headers: { Authorization: 'Bearer ' + token } });
     const ppData = await ppRes.json();
     if (ppData.configured && ppData.client_id) {

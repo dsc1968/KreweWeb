@@ -31,6 +31,8 @@
       <!-- Dashboard tab nav -->
       <nav class="db-tabs" aria-label="Dashboard sections">
         <button class="db-tab is-active" data-tab="info">My Info</button>
+        <button class="db-tab" data-tab="payments" id="db-tab-payments">Payments</button>
+        <button class="db-tab" data-tab="orders" id="db-tab-orders">My Orders</button>
         <button class="db-tab" data-tab="admin" id="db-tab-admin" hidden>Admin</button>
       </nav>
 
@@ -45,6 +47,34 @@
               <h3>Contact &amp; Personal</h3>
             </div>
             <form id="profile-details-form" class="db-form" novalidate>
+
+              <!-- Personal -->
+              <p class="db-config-section-label">Personal Information</p>
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="pd-birthdate">Date of Birth</label>
+                  <input type="date" id="pd-birthdate" name="birthdate" />
+                </div>
+                <div class="form-group">
+                  <label for="pd-age">Current Age</label>
+                  <input type="text" id="pd-age" name="age" placeholder="—" disabled style="background:rgba(255,255,255,0.03);color:var(--muted);" />
+                </div>
+                <div class="form-group">
+                  <label for="pd-occupation">Occupation</label>
+                  <input type="text" id="pd-occupation" name="occupation" placeholder="e.g. Teacher, Engineer…" />
+                </div>
+                <div class="form-group">
+                  <label for="pd-sponsor">Krewe Member Sponsor</label>
+                  <input type="text" id="pd-sponsor" name="sponsor_name" placeholder="Name of sponsoring member" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="pd-organizations">Organizations &amp; Clubs</label>
+                <input type="text" id="pd-organizations" name="organizations" placeholder="e.g. Lions Club, PTA, Knights of Columbus…" />
+              </div>
+
+              <!-- Contact -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Contact</p>
               <div class="db-form-grid">
                 <div class="form-group">
                   <label for="pd-phone">Phone Number</label>
@@ -56,25 +86,52 @@
                 </div>
               </div>
               <div class="form-group">
-                <label for="pd-address">Home Address</label>
-                <input type="text" id="pd-address" name="address" placeholder="123 Main St, New Orleans, LA 70130" />
+                <label for="pd-address">Street Address</label>
+                <input type="text" id="pd-address" name="address" placeholder="123 Main St" />
               </div>
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="pd-city">City</label>
+                  <input type="text" id="pd-city" name="city" placeholder="New Orleans" />
+                </div>
+                <div class="form-group">
+                  <label for="pd-state">State</label>
+                  <input type="text" id="pd-state" name="state" placeholder="LA" maxlength="2" style="max-width:6rem;" />
+                </div>
+                <div class="form-group">
+                  <label for="pd-zip">Zip Code</label>
+                  <input type="text" id="pd-zip" name="zip" placeholder="70130" maxlength="10" style="max-width:8rem;" />
+                </div>
+              </div>
+
+              <!-- Krewe -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Krewe Guest</p>
               <div class="form-group">
                 <label for="pd-guest">Guest Name</label>
                 <input type="text" id="pd-guest" name="guest_name" placeholder="Guest riding with you" />
               </div>
 
-              <div class="db-form-grid">
-                <div class="form-group">
-                  <label>Children's Names</label>
-                  <div id="kids-list"></div>
-                  <button type="button" class="db-add-btn" id="add-kid-btn">+ Add Child</button>
-                </div>
-                <div class="form-group">
-                  <label>Float Riders</label>
-                  <div id="riders-list"></div>
-                  <button type="button" class="db-add-btn" id="add-rider-btn">+ Add Rider</button>
-                </div>
+              <!-- Children -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Children</p>
+              <div class="form-group">
+                <label style="font-size:0.82rem;color:var(--muted);margin-bottom:0.3rem;display:block;">Name &amp; Birthday</label>
+                <div id="kids-list"></div>
+                <button type="button" class="db-add-btn" id="add-kid-btn">+ Add Child</button>
+              </div>
+
+              <!-- Grandchildren -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Grandchildren</p>
+              <div class="form-group">
+                <label style="font-size:0.82rem;color:var(--muted);margin-bottom:0.3rem;display:block;">Name &amp; Birthday</label>
+                <div id="grandchildren-list"></div>
+                <button type="button" class="db-add-btn" id="add-grandchild-btn">+ Add Grandchild</button>
+              </div>
+
+              <!-- Float Riders -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Float Riders</p>
+              <div class="form-group">
+                <div id="riders-list"></div>
+                <button type="button" class="db-add-btn" id="add-rider-btn">+ Add Rider</button>
               </div>
 
               <div id="profile-details-feedback" class="db-feedback" aria-live="polite"></div>
@@ -85,9 +142,33 @@
         </div><!-- /.db-cards-grid -->
       </div><!-- /#db-panel-info -->
 
+      <!-- Tab: Payments -->
+      <div class="db-tab-panel" id="db-panel-payments">
+        <div class="db-cards-grid">
+          <div class="db-card">
+            <div class="db-card-header">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+              <h3>Payment Status</h3>
+            </div>
+            <div id="db-payments-season" style="font-size:0.8rem;color:var(--muted);margin-bottom:1rem;"></div>
+            <div id="db-payments-list"></div>
+          </div>
+        </div>
+      </div><!-- /#db-panel-payments -->
 
-
-      <!-- Tab: Admin -->
+      <!-- Tab: My Orders -->
+      <div class="db-tab-panel" id="db-panel-orders">
+        <div class="db-cards-grid">
+          <div class="db-card">
+            <div class="db-card-header">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+              <h3>My Orders</h3>
+            </div>
+            <div id="db-orders-feedback" style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem;"></div>
+            <div id="db-orders-list"></div>
+          </div>
+        </div>
+      </div><!-- /#db-panel-orders -->
       <div class="db-tab-panel" id="db-panel-admin">
         <div class="db-cards-grid">
 

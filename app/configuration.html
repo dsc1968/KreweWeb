@@ -98,6 +98,14 @@
               </div>
             </div>
             <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
+            <div class="db-form-grid" style="margin-top:0.75rem;">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+                  <input type="checkbox" id="cfg-payment-simulate" name="PAYMENT_SIMULATE" style="accent-color:#ffd262;width:1rem;height:1rem;flex-shrink:0;" />
+                  Enable Payment Simulation Mode &mdash; shows Accept / Decline prompt instead of real payment processor
+                </label>
+              </div>
+            </div>
 
             <p class="db-config-section-label" style="margin-top:1rem;">Registration</p>
             <div class="db-form-grid">

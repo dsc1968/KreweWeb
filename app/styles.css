@@ -904,6 +904,7 @@ body.admin-edit-mode .album-tools {
   background: rgba(255,255,255,0.02);
   color: var(--text);
   margin-top: 0.5rem;
+  color-scheme: dark;
 }
 
 .auth-card .button { 
@@ -1037,6 +1038,77 @@ body.admin-edit-mode .album-tools {
   margin-top: 0.75rem;
 }
 
+/* Payment tab rows */
+.db-pay-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid;
+  margin-bottom: 0.65rem;
+}
+
+.db-pay-row--paid {
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.db-pay-row--unpaid {
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.db-pay-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.db-pay-icon-svg {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+}
+
+.db-pay-row--paid   .db-pay-icon-svg { fill: #4ade80; }
+.db-pay-row--unpaid .db-pay-icon-svg { fill: #f87171; }
+
+.db-pay-details {
+  flex: 1;
+}
+
+.db-pay-name {
+  font-weight: 600;
+  font-size: 0.97rem;
+  color: var(--text);
+}
+
+.db-pay-status {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.db-pay-status--paid {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.db-pay-status--unpaid {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+}
+
 /* Tab nav */
 .db-tabs {
   display: flex;
@@ -1136,7 +1208,10 @@ body.admin-edit-mode .album-tools {
 }
 
 .db-form input[type="text"],
-.db-form input[type="tel"] {
+.db-form input[type="tel"],
+.db-form input[type="date"],
+.db-form input[type="email"],
+.db-form input[type="number"] {
   width: 100%;
   padding: 0.7rem 0.95rem;
   border-radius: 10px;
@@ -1147,6 +1222,7 @@ body.admin-edit-mode .album-tools {
   font-size: 0.92rem;
   transition: border-color 0.15s;
   box-sizing: border-box;
+  color-scheme: dark;
 }
 
 .db-form input:focus {
@@ -1220,18 +1296,6 @@ body.admin-edit-mode .album-tools {
 .db-form select:focus {
   outline: none;
   border-color: rgba(255,210,98,0.5);
-}
-
-.db-form input[type="number"] {
-  width: 100%;
-  padding: 0.7rem 0.95rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.04);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.92rem;
-  box-sizing: border-box;
 }
 
 .db-form input[type="number"]:focus {
