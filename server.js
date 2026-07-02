@@ -970,13 +970,9 @@ async function performSeasonReset() {
     UPDATE user_profiles
     SET dues_paid      = FALSE,
         guest_fee_paid = FALSE,
-        beads_paid     = FALSE,
-        costume_paid   = FALSE,
         updated_at     = NOW()
     WHERE dues_paid = TRUE
        OR guest_fee_paid = TRUE
-       OR beads_paid     = TRUE
-       OR costume_paid   = TRUE
   `);
   await pool.query(
     `INSERT INTO site_settings (key, value, updated_at) VALUES ('last_season_reset_date', $1, NOW())
