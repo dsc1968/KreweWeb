@@ -2547,47 +2547,55 @@ if (countdownElements.days) {
       }
 
       body.admin-edit-mode {
-        padding-right: min(340px, 38vw) !important;
+        padding-right: 340px !important;
       }
 
-      body.admin-edit-mode [data-admin-editable="text"],
-      body.admin-edit-mode [data-admin-editable="image"],
-      body.admin-edit-mode [data-admin-editable="background-image"],
-      body.admin-edit-mode [data-admin-editable="container"],
-      body.admin-edit-mode [data-admin-editable="generic"],
-      body.admin-edit-mode [data-admin-editable="album-root"],
-      body.admin-edit-mode [data-admin-editable="page-root"] {
-        outline: 1px dashed rgba(255, 210, 98, 0.28);
+      /* ── Type-colour hierarchy outlines ─────────────────────── */
+      /* Sections / backgrounds = purple */
+      body.admin-edit-mode [data-admin-editable="background-image"] {
+        outline: 1px dashed rgba(167, 139, 250, 0.45);
         outline-offset: 0;
         cursor: pointer;
         transition: outline-color 0.14s ease, box-shadow 0.14s ease;
       }
+      /* Containers = green */
+      body.admin-edit-mode [data-admin-editable="container"],
+      body.admin-edit-mode [data-admin-editable="generic"] {
+        outline: 1px dashed rgba(74, 222, 128, 0.35);
+        outline-offset: 0;
+        cursor: pointer;
+        transition: outline-color 0.14s ease, box-shadow 0.14s ease;
+      }
+      /* Text / image = gold */
+      body.admin-edit-mode [data-admin-editable="text"],
+      body.admin-edit-mode [data-admin-editable="image"],
+      body.admin-edit-mode [data-admin-editable="album-root"] {
+        outline: 1px dashed rgba(255, 210, 98, 0.32);
+        outline-offset: 0;
+        cursor: pointer;
+        transition: outline-color 0.14s ease, box-shadow 0.14s ease;
+      }
+      /* Page root = blue */
+      body.admin-edit-mode [data-admin-editable="page-root"] {
+        outline: 1px dashed rgba(99, 179, 237, 0.25);
+        outline-offset: 0;
+        cursor: default;
+        min-height: 40vh;
+      }
 
+      /* Hover brightens outline */
+      body.admin-edit-mode [data-admin-editable="background-image"]:hover { outline-color: rgba(167,139,250,0.8); }
+      body.admin-edit-mode [data-admin-editable="container"]:hover,
+      body.admin-edit-mode [data-admin-editable="generic"]:hover { outline-color: rgba(74,222,128,0.7); }
       body.admin-edit-mode [data-admin-editable="text"]:hover,
       body.admin-edit-mode [data-admin-editable="image"]:hover,
-      body.admin-edit-mode [data-admin-editable="background-image"]:hover,
-      body.admin-edit-mode [data-admin-editable="container"]:hover,
-      body.admin-edit-mode [data-admin-editable="generic"]:hover,
-      body.admin-edit-mode [data-admin-editable="album-root"]:hover,
-      body.admin-edit-mode [data-admin-editable="page-root"]:hover {
-        outline-color: rgba(255, 210, 98, 0.62);
-        outline-offset: 0;
-      }
+      body.admin-edit-mode [data-admin-editable="album-root"]:hover { outline-color: rgba(255,210,98,0.7); }
 
-      body.admin-edit-mode [data-admin-editable="text"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="image"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="background-image"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="container"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="generic"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="album-root"].admin-current-selection,
-      body.admin-edit-mode [data-admin-editable="page-root"].admin-current-selection {
-        outline: 2px solid rgba(255, 210, 98, 0.95);
+      /* Selected element — always gold solid */
+      body.admin-edit-mode [data-admin-editable].admin-current-selection {
+        outline: 2px solid rgba(255, 210, 98, 0.95) !important;
         outline-offset: 0;
-        box-shadow: 0 0 0 3px rgba(255, 210, 98, 0.2);
-      }
-
-      body.admin-edit-mode [data-admin-editable="page-root"] {
-        min-height: 40vh;
+        box-shadow: 0 0 0 3px rgba(255, 210, 98, 0.2) !important;
       }
 
       body.admin-edit-mode.admin-free-drag-mode [data-admin-editable="text"],
@@ -2802,147 +2810,259 @@ if (countdownElements.days) {
         opacity: 0.65;
       }
 
+      /* Floating element toolbar — suppressed; all controls are in the sidebar */
       .admin-element-toolbar {
-        position: fixed;
-        z-index: 10030;
-        display: none;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.35rem;
-        padding: 0.45rem;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        background: rgba(2, 8, 22, 0.95);
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-        max-width: min(92vw, 900px);
+        display: none !important;
       }
 
-      .admin-element-kind {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.28rem 0.55rem;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.06);
-        color: #ffd262;
-        font-size: 0.76rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        font-weight: 700;
-      }
-
-      .admin-element-toolbar button {
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.08);
-        color: #f5f7ff;
-        border-radius: 999px;
-        padding: 0.35rem 0.7rem;
-        cursor: pointer;
-        font-size: 0.8rem;
-      }
-
-      .admin-element-toolbar button:hover,
-      .admin-element-toolbar button:focus-visible {
-        border-color: rgba(255, 210, 98, 0.55);
-        background: rgba(255, 210, 98, 0.14);
-      }
-
-      .admin-element-toolbar button[disabled] {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
+      /* ── Inspector sidebar (full-height right panel) ──────────── */
       .admin-inspector-panel {
         position: fixed;
-        right: 1rem;
-        top: 6.5rem;
+        top: 0;
+        right: 0;
+        width: 340px;
+        height: 100vh;
         z-index: 10020;
-        width: min(320px, calc(100vw - 2rem));
-        max-height: calc(100vh - 7.5rem);
-        overflow: auto;
         display: none;
-        gap: 0.65rem;
-        padding: 0.8rem;
-        border-radius: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        background: rgba(2, 8, 22, 0.95);
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        flex-direction: column;
+        overflow: hidden;
+        background: #060e22;
+        border-left: 1px solid rgba(255,210,98,0.18);
+        box-shadow: -6px 0 28px rgba(0,0,0,0.45);
         user-select: none;
       }
 
-      .admin-inspector-panel.is-dragging {
-        opacity: 0.92;
-        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
-        transition: none;
-      }
-
-      .admin-inspector-drag-handle {
+      /* header */
+      .admin-panel-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        cursor: move;
-        margin-bottom: 0.2rem;
+        padding: 0.6rem 0.9rem;
+        background: #070f25;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+        flex-shrink: 0;
       }
-
-      .admin-inspector-drag-handle h3 {
+      .admin-panel-header h3 {
         margin: 0;
-        font-size: 0.92rem;
+        font-size: 0.88rem;
         color: #ffd262;
-        pointer-events: none;
+        font-weight: 700;
+        letter-spacing: 0.03em;
       }
 
-      .admin-inspector-drag-dots {
-        display: grid;
-        grid-template-columns: repeat(3, 4px);
-        gap: 3px;
-        opacity: 0.4;
-        pointer-events: none;
+      /* breadcrumb */
+      .admin-panel-breadcrumb {
+        padding: 0.4rem 0.9rem;
+        font-size: 0.72rem;
+        color: #8fa0c8;
+        background: rgba(255,255,255,0.025);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 0;
       }
+      .admin-panel-breadcrumb .admin-bc-sep { opacity: 0.4; margin: 0 0.3em; }
+      .admin-panel-breadcrumb .admin-bc-item { cursor: pointer; }
+      .admin-panel-breadcrumb .admin-bc-item:hover { color: #ffd262; }
+      .admin-panel-breadcrumb .admin-bc-item.active { color: #f5f7ff; font-weight: 600; }
 
-      .admin-inspector-drag-dots span {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: #b8c4e0;
-        display: block;
-      }
-
-      .admin-inspector-drag-handle:hover .admin-inspector-drag-dots {
-        opacity: 0.8;
-      }
-
-      .admin-inspector-meta {
-        font-size: 0.78rem;
-        color: #b8c4e0;
-        word-break: break-all;
-      }
-
-      .admin-inspector-group {
-        display: grid;
-        gap: 0.45rem;
-      }
-
-      .admin-inspector-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.45rem;
-      }
-
-      .admin-inspector-panel button {
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.08);
-        color: #f5f7ff;
+      /* type badge */
+      .admin-kind-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.18rem 0.55rem;
         border-radius: 999px;
-        padding: 0.35rem 0.7rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .admin-kind-badge.kind-section  { background:rgba(167,139,250,0.15); color:#c4b5fd; border:1px solid rgba(167,139,250,0.3); }
+      .admin-kind-badge.kind-container { background:rgba(74,222,128,0.12); color:#86efac; border:1px solid rgba(74,222,128,0.25); }
+      .admin-kind-badge.kind-text     { background:rgba(255,210,98,0.12); color:#ffd262; border:1px solid rgba(255,210,98,0.25); }
+      .admin-kind-badge.kind-image    { background:rgba(99,179,237,0.12); color:#93c5fd; border:1px solid rgba(99,179,237,0.25); }
+      .admin-kind-badge.kind-page     { background:rgba(99,179,237,0.1); color:#93c5fd; border:1px solid rgba(99,179,237,0.2); }
+      .admin-kind-badge.kind-other    { background:rgba(255,255,255,0.07); color:#b8c4e0; border:1px solid rgba(255,255,255,0.12); }
+
+      /* tabs */
+      .admin-panel-tabs {
+        display: flex;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        flex-shrink: 0;
+        background: #070f25;
+      }
+      .admin-panel-tab {
+        flex: 1;
+        padding: 0.5rem 0.2rem;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #8fa0c8;
+        font: inherit;
+        font-size: 0.76rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
         cursor: pointer;
-        font-size: 0.8rem;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .admin-panel-tab:hover { color: #d8e2fa; }
+      .admin-panel-tab.is-active { color: #ffd262; border-bottom-color: #ffd262; }
+
+      /* scrollable pane area */
+      .admin-panel-panes {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .admin-panel-pane { display: none; padding: 0.75rem 0.9rem; }
+      .admin-panel-pane.is-active { display: block; }
+
+      /* sticky footer with insert + page-bg */
+      .admin-panel-footer {
+        flex-shrink: 0;
+        border-top: 1px solid rgba(255,255,255,0.07);
+        background: #070f25;
+        padding: 0.6rem 0.9rem;
       }
 
-      .admin-inspector-panel button:hover,
-      .admin-inspector-panel button:focus-visible {
-        border-color: rgba(255, 210, 98, 0.55);
-        background: rgba(255, 210, 98, 0.14);
+      /* compact form fields inside panel */
+      .admin-panel-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        margin-bottom: 0.6rem;
       }
+      .admin-panel-field label {
+        font-size: 0.72rem;
+        color: #8fa0c8;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+      }
+      .admin-panel-field input,
+      .admin-panel-field select,
+      .admin-panel-field textarea {
+        width: 100%;
+        padding: 0.38rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.05);
+        color: #f5f7ff;
+        font: inherit;
+        font-size: 0.8rem;
+        box-sizing: border-box;
+      }
+      .admin-panel-field textarea {
+        min-height: 80px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+      .admin-panel-field input:focus,
+      .admin-panel-field select:focus,
+      .admin-panel-field textarea:focus {
+        outline: none;
+        border-color: rgba(255,210,98,0.5);
+        background: rgba(255,255,255,0.07);
+      }
+
+      /* panel buttons */
+      .admin-panel-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.7rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.07);
+        color: #f5f7ff;
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+        white-space: nowrap;
+      }
+      .admin-panel-btn:hover { border-color: rgba(255,210,98,0.5); background: rgba(255,210,98,0.12); }
+      .admin-panel-btn.primary { background: rgba(255,210,98,0.18); border-color: rgba(255,210,98,0.5); color:#ffd262; }
+      .admin-panel-btn.primary:hover { background: rgba(255,210,98,0.28); }
+      .admin-panel-btn.danger { color:#ff9b9b; border-color:rgba(255,155,155,0.3); }
+      .admin-panel-btn.danger:hover { background:rgba(255,107,107,0.15); border-color:rgba(255,155,155,0.6); }
+      .admin-panel-btn[disabled] { opacity:0.4; cursor:not-allowed; }
+      .admin-panel-btn-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+      }
+
+      /* section divider inside panel */
+      .admin-panel-section-title {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #6b7fa8;
+        margin: 0.7rem 0 0.35rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
+      .admin-panel-section-title:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+
+      /* color row */
+      .admin-color-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .admin-color-row input[type="color"] {
+        width: 2rem;
+        height: 2rem;
+        padding: 0.1rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.18);
+        background: transparent;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .admin-color-reset {
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.06);
+        color: #b8c4e0;
+        font: inherit;
+        font-size: 0.72rem;
+        cursor: pointer;
+      }
+
+      /* insert grid */
+      .admin-insert-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.35rem;
+      }
+
+      /* no-selection prompt */
+      .admin-panel-empty {
+        padding: 1rem 0;
+        text-align: center;
+        color: #6b7fa8;
+        font-size: 0.8rem;
+        line-height: 1.6;
+      }
+      .admin-panel-empty svg {
+        display: block;
+        margin: 0 auto 0.6rem;
+        width: 2rem;
+        height: 2rem;
+        opacity: 0.3;
+        fill: #b8c4e0;
+      }
+
+      /* keep old .admin-inspector-drag-handle compat (no-op now) */
+      .admin-inspector-drag-handle { display: none; }
+      .admin-inspector-meta { display: none; }
+      .admin-inspector-group { display: none; }
+      .admin-inspector-grid  { display: none; }
 
       body.admin-edit-mode main[data-admin-canvas-dropzone="true"] {
         background-image:
@@ -3895,39 +4015,145 @@ if (countdownElements.days) {
     const panel = document.createElement('aside');
     panel.className = 'admin-inspector-panel';
     panel.innerHTML = `
-      <div class="admin-inspector-drag-handle" id="admin-inspector-handle">
-        <h3>Inspector</h3>
-        <div class="admin-inspector-drag-dots">
-          ${Array(6).fill('<span></span>').join('')}
+      <div class="admin-panel-header">
+        <h3>&#9998; Page Editor</h3>
+        <div style="display:flex;gap:0.3rem;align-items:center;" title="Outline color guide">
+          <span style="width:8px;height:8px;border-radius:2px;border:1px solid rgba(167,139,250,0.7);display:inline-block;" title="Section"></span>
+          <span style="width:8px;height:8px;border-radius:2px;border:1px solid rgba(74,222,128,0.7);display:inline-block;" title="Container"></span>
+          <span style="width:8px;height:8px;border-radius:2px;border:1px solid rgba(255,210,98,0.7);display:inline-block;" title="Text/Image"></span>
         </div>
       </div>
-      <div class="admin-inspector-meta" data-role="selected-kind">No selection</div>
-      <div class="admin-inspector-meta" data-role="selected-key"></div>
-      <div class="admin-inspector-meta" style="border-top:1px solid rgba(255,255,255,0.12);padding-top:0.45rem;">
-        Dotted line = editable. Solid gold line = selected.
+      <div class="admin-panel-breadcrumb" id="admin-panel-breadcrumb">
+        <span style="color:#6b7fa8">Click any element to select it</span>
       </div>
-      <div class="admin-inspector-group">
-        <strong style="font-size:0.8rem;color:#ffd262;">Insert</strong>
-        <div class="admin-inspector-grid">
-          <button type="button" data-inspector-action="insert-section">+Section</button>
-          <button type="button" data-inspector-action="insert-text">+Text</button>
-          <button type="button" data-inspector-action="insert-image">+Image</button>
-          <button type="button" data-inspector-action="insert-container">+Container</button>
+      <div class="admin-panel-tabs">
+        <button class="admin-panel-tab is-active" data-panel-tab="props">Properties</button>
+        <button class="admin-panel-tab" data-panel-tab="style">Style</button>
+        <button class="admin-panel-tab" data-panel-tab="actions">Actions</button>
+      </div>
+      <div class="admin-panel-panes">
+        <div class="admin-panel-pane is-active" data-panel-pane="props">
+          <div class="admin-panel-empty" id="admin-panel-props-empty">
+            <svg viewBox="0 0 24 24"><path d="M13 9h-2V7h2m0 10h-2v-6h2m-1-9A10 10 0 002 12a10 10 0 0010 10 10 10 0 0010-10A10 10 0 0012 2z"/></svg>
+            Click any element on the page to edit its properties.
+          </div>
+          <div id="admin-panel-props-content" style="display:none;"></div>
+        </div>
+        <div class="admin-panel-pane" data-panel-pane="style">
+          <div class="admin-panel-empty" id="admin-panel-style-empty">Select an element to edit its style.</div>
+          <div id="admin-panel-style-content" style="display:none;">
+            <div class="admin-panel-section-title">Text</div>
+            <div class="admin-panel-field"><label>Color</label>
+              <div class="admin-color-row">
+                <input type="color" id="ap-text-color" value="#ffffff" />
+                <button type="button" class="admin-color-reset" id="ap-text-color-reset">Default</button>
+              </div>
+            </div>
+            <div class="admin-panel-field"><label>Alignment</label>
+              <select id="ap-text-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+            </div>
+            <div class="admin-panel-field"><label>Font Family</label>
+              <select id="ap-font-family">
+                <option value="">Default</option>
+                <option value="Georgia, &quot;Times New Roman&quot;, serif">Serif (Georgia)</option>
+                <option value="&quot;Trebuchet MS&quot;, &quot;Lucida Grande&quot;, sans-serif">Trebuchet</option>
+                <option value="&quot;Segoe UI&quot;, Tahoma, Geneva, Verdana, sans-serif">Segoe UI</option>
+                <option value="&quot;Courier New&quot;, Courier, monospace">Monospace</option>
+                <option value="&quot;Brush Script MT&quot;, &quot;Comic Sans MS&quot;, cursive">Script</option>
+              </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;">
+              <div class="admin-panel-field"><label>Font Size</label><input type="text" id="ap-font-size" placeholder="1rem, 18px" /></div>
+              <div class="admin-panel-field"><label>Opacity</label><input type="text" id="ap-opacity" placeholder="1, 0.85" /></div>
+            </div>
+            <div class="admin-panel-field"><label>Weight</label>
+              <select id="ap-font-weight"><option value="">Default</option><option value="400">Regular (400)</option><option value="600">Semi Bold (600)</option><option value="700">Bold (700)</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;">
+              <div class="admin-panel-field"><label>Style</label>
+                <select id="ap-font-style"><option value="">Default</option><option value="normal">Normal</option><option value="italic">Italic</option></select>
+              </div>
+              <div class="admin-panel-field"><label>Case</label>
+                <select id="ap-text-transform"><option value="">Default</option><option value="uppercase">UPPER</option><option value="capitalize">Title</option><option value="lowercase">lower</option></select>
+              </div>
+            </div>
+            <div class="admin-panel-section-title">Background</div>
+            <div class="admin-panel-field"><label>Color</label>
+              <div class="admin-color-row">
+                <input type="color" id="ap-bg-color" value="#000000" />
+                <button type="button" class="admin-color-reset" id="ap-bg-color-reset">Default</button>
+              </div>
+            </div>
+            <div class="admin-panel-field"><label>Bg Opacity</label><input type="text" id="ap-bg-opacity" placeholder="1, 0.85, 0.5" /></div>
+            <div class="admin-panel-section-title">Size</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;">
+              <div class="admin-panel-field"><label>Width</label><input type="text" id="ap-width" placeholder="auto, 50%" /></div>
+              <div class="admin-panel-field"><label>Height</label><input type="text" id="ap-height" placeholder="auto, 180px" /></div>
+            </div>
+            <div class="admin-panel-section-title">Border</div>
+            <div class="admin-panel-field"><label>Style</label>
+              <select id="ap-border-style"><option value="">Default</option><option value="none">None</option><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="double">Double</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.35rem;">
+              <div class="admin-panel-field"><label>Width</label><input type="text" id="ap-border-width" placeholder="1px" /></div>
+              <div class="admin-panel-field"><label>Radius</label><input type="text" id="ap-border-radius" placeholder="8px, 50%" /></div>
+            </div>
+            <div class="admin-panel-field"><label>Border Color</label>
+              <div class="admin-color-row">
+                <input type="color" id="ap-border-color" value="#ffffff" />
+                <button type="button" class="admin-color-reset" id="ap-border-color-reset">Default</button>
+              </div>
+            </div>
+            <div class="admin-panel-btn-row" style="margin-top:0.75rem;">
+              <button type="button" class="admin-panel-btn primary" id="ap-apply-style">Apply Style</button>
+              <button type="button" class="admin-panel-btn" id="ap-restore-defaults">Restore All</button>
+            </div>
+          </div>
+        </div>
+        <div class="admin-panel-pane" data-panel-pane="actions">
+          <div class="admin-panel-empty" id="admin-panel-actions-empty">Select an element to see available actions.</div>
+          <div id="admin-panel-actions-content" style="display:none;"></div>
         </div>
       </div>
-      <div class="admin-inspector-group">
-        <strong style="font-size:0.8rem;color:#ffd262;">Element</strong>
-        <div class="admin-inspector-grid">
-          <button type="button" data-inspector-action="edit">Edit</button>
-          <button type="button" data-inspector-action="style">Style</button>
-          <button type="button" data-inspector-action="move">Move</button>
-          <button type="button" data-inspector-action="duplicate">Duplicate</button>
-          <button type="button" data-inspector-action="restore">Restore</button>
-          <button type="button" data-inspector-action="delete" style="color:#ff9b9b;">Delete</button>
+      <div class="admin-panel-footer">
+        <div class="admin-panel-section-title">Insert</div>
+        <div class="admin-insert-grid">
+          <button type="button" class="admin-panel-btn" data-inspector-action="insert-section">+ Section</button>
+          <button type="button" class="admin-panel-btn" data-inspector-action="insert-text">+ Text</button>
+          <button type="button" class="admin-panel-btn" data-inspector-action="insert-image">+ Image</button>
+          <button type="button" class="admin-panel-btn" data-inspector-action="insert-container">+ Container</button>
         </div>
+        <div class="admin-panel-section-title">Page Background</div>
+        <div class="admin-panel-field"><label>Color</label>
+          <div class="admin-color-row">
+            <input type="color" id="admin-page-bg-color" value="#020816" />
+            <button type="button" id="admin-page-bg-color-apply" class="admin-panel-btn">Apply</button>
+            <button type="button" id="admin-page-bg-color-clear" class="admin-panel-btn">Clear</button>
+          </div>
+        </div>
+        <div class="admin-panel-field"><label>Image</label>
+          <div class="admin-panel-btn-row">
+            <button type="button" id="admin-page-bg-image-upload" class="admin-panel-btn">Upload</button>
+            <button type="button" id="admin-page-bg-image-clear" class="admin-panel-btn">Remove</button>
+          </div>
+        </div>
+        <span id="admin-page-bg-status" style="font-size:0.7rem;color:#b8c4e0;min-height:1em;display:block;"></span>
       </div>
     `;
 
+    // ── Tab switching ───────────────────────────────────────────────────────
+    panel.querySelectorAll('.admin-panel-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.panelTab;
+        panel.querySelectorAll('.admin-panel-tab').forEach((t) => t.classList.remove('is-active'));
+        panel.querySelectorAll('.admin-panel-pane').forEach((p) => p.classList.remove('is-active'));
+        tab.classList.add('is-active');
+        const pane = panel.querySelector(`[data-panel-pane="${tabName}"]`);
+        if (pane) pane.classList.add('is-active');
+      });
+    });
+
+    // ── Insert & element action buttons ────────────────────────────────────
     panel.addEventListener('click', async (event) => {
       const button = event.target.closest('button[data-inspector-action]');
       if (!button) return;
@@ -3936,26 +4162,11 @@ if (countdownElements.days) {
 
       const action = button.dataset.inspectorAction;
       const selected = getSelectedEditableElement() || document.querySelector('main[data-admin-editable="page-root"]');
+      if (!selected) return;
 
       try {
-        if (!selected) return;
-        if (action === 'insert-section') {
-          await insertIntoTarget(selected, 'section');
-          scheduleEditorSync();
-          return;
-        }
-        if (action === 'insert-text') {
-          await insertIntoTarget(selected, 'text');
-          scheduleEditorSync();
-          return;
-        }
-        if (action === 'insert-image') {
-          await insertIntoTarget(selected, 'image');
-          scheduleEditorSync();
-          return;
-        }
-        if (action === 'insert-container') {
-          await insertIntoTarget(selected, 'container');
+        if (action.startsWith('insert-')) {
+          await insertIntoTarget(selected, action.replace('insert-', ''));
           scheduleEditorSync();
           return;
         }
@@ -3965,74 +4176,434 @@ if (countdownElements.days) {
       }
     });
 
+    // ── Style pane: Apply Style ─────────────────────────────────────────────
+    panel.querySelector('#ap-apply-style')?.addEventListener('click', async () => {
+      const el = getSelectedEditableElement();
+      if (!el || !el.dataset.adminKey) return;
+      const textColorInput = panel.querySelector('#ap-text-color');
+      const bgColorInput = panel.querySelector('#ap-bg-color');
+      const borderColorInput = panel.querySelector('#ap-border-color');
+      const patch = {
+        textAlign:              panel.querySelector('#ap-text-align')?.value || '',
+        fontFamily:             panel.querySelector('#ap-font-family')?.value || '',
+        fontWeight:             panel.querySelector('#ap-font-weight')?.value || '',
+        fontStyle:              panel.querySelector('#ap-font-style')?.value || '',
+        textTransform:          panel.querySelector('#ap-text-transform')?.value || '',
+        fontSize:               panel.querySelector('#ap-font-size')?.value.trim() || '',
+        opacityValue:           panel.querySelector('#ap-opacity')?.value.trim() || '',
+        textColor:              textColorInput?.dataset.isReset === 'true' ? '' : (textColorInput?.value || ''),
+        backgroundColor:        bgColorInput?.dataset.isReset === 'true' ? '' : (bgColorInput?.value || ''),
+        backgroundOpacityValue: panel.querySelector('#ap-bg-opacity')?.value.trim() || '',
+        widthValue:             panel.querySelector('#ap-width')?.value.trim() || '',
+        heightValue:            panel.querySelector('#ap-height')?.value.trim() || '',
+        borderStyle:            panel.querySelector('#ap-border-style')?.value || '',
+        borderWidth:            panel.querySelector('#ap-border-width')?.value.trim() || '',
+        borderColor:            borderColorInput?.dataset.isReset === 'true' ? '' : (borderColorInput?.value || ''),
+        borderRadius:           panel.querySelector('#ap-border-radius')?.value.trim() || '',
+      };
+      try {
+        const item = await saveElementOverride(el.dataset.adminKey, patch);
+        applyElementStyles(el, item);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // ── Style pane: Restore All defaults ────────────────────────────────────
+    panel.querySelector('#ap-restore-defaults')?.addEventListener('click', async () => {
+      const el = getSelectedEditableElement();
+      if (!el || !el.dataset.adminKey) return;
+      if (!confirm('Restore all style defaults for this element?')) return;
+      try {
+        const item = await saveElementOverride(el.dataset.adminKey, {
+          textAlign: '', fontFamily: '', fontWeight: '', fontStyle: '', textTransform: '',
+          fontSize: '', opacityValue: '', textColor: '', backgroundColor: '', backgroundOpacityValue: '',
+          widthValue: '', heightValue: '', borderStyle: '', borderWidth: '', borderColor: '', borderRadius: '',
+        });
+        applyElementStyles(el, item);
+        updateInspectorPanel(el);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    // ── Color "Default" reset buttons ────────────────────────────────────────
+    function makeColorResetable(inputId, resetBtnId) {
+      const input = panel.querySelector(`#${inputId}`);
+      const btn = panel.querySelector(`#${resetBtnId}`);
+      if (!input || !btn) return;
+      input.dataset.isReset = 'false';
+      input.addEventListener('input', () => { input.dataset.isReset = 'false'; });
+      btn.addEventListener('click', () => {
+        input.dataset.isReset = 'true';
+        const orig = btn.textContent;
+        btn.textContent = '✓ Reset';
+        setTimeout(() => { btn.textContent = orig; }, 1200);
+      });
+    }
+    makeColorResetable('ap-text-color', 'ap-text-color-reset');
+    makeColorResetable('ap-bg-color', 'ap-bg-color-reset');
+    makeColorResetable('ap-border-color', 'ap-border-color-reset');
+
+    // ── Page background controls ────────────────────────────────────────────
+    const pageBgStatus = panel.querySelector('#admin-page-bg-status');
+
+    function setPageBgStatus(msg, isErr) {
+      if (!pageBgStatus) return;
+      pageBgStatus.textContent = msg;
+      pageBgStatus.style.color = isErr ? '#f87171' : '#b8c4e0';
+    }
+
+    function applyPageBgColor(hex) {
+      document.body.style.background = hex;
+      document.body.dataset.pageBgColor = hex;
+      savePageToFile();
+    }
+
+    function clearPageBgColor() {
+      document.body.style.background = '';
+      delete document.body.dataset.pageBgColor;
+      savePageToFile();
+    }
+
+    function applyPageBgImage(url) {
+      document.body.style.backgroundImage = `url("${url}")`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundRepeat = 'no-repeat';
+      document.body.dataset.pageBgImage = url;
+      savePageToFile();
+    }
+
+    function clearPageBgImage() {
+      document.body.style.backgroundImage = '';
+      document.body.style.backgroundSize = '';
+      document.body.style.backgroundPosition = '';
+      document.body.style.backgroundRepeat = '';
+      delete document.body.dataset.pageBgImage;
+      savePageToFile();
+    }
+
+    const colorInput = panel.querySelector('#admin-page-bg-color');
+    if (colorInput && document.body.dataset.pageBgColor) {
+      colorInput.value = document.body.dataset.pageBgColor;
+    }
+
+    panel.querySelector('#admin-page-bg-color-apply')?.addEventListener('click', () => {
+      const hex = colorInput?.value || '#020816';
+      applyPageBgColor(hex);
+      setPageBgStatus('Color applied.', false);
+    });
+
+    panel.querySelector('#admin-page-bg-color-clear')?.addEventListener('click', () => {
+      clearPageBgColor();
+      setPageBgStatus('Color cleared.', false);
+    });
+
+    panel.querySelector('#admin-page-bg-image-upload')?.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        document.body.removeChild(fileInput);
+        if (!file) return;
+        setPageBgStatus('Uploading…', false);
+        try {
+          const url = await uploadAdminImage(file, 'page-background');
+          applyPageBgImage(url);
+          setPageBgStatus('Image applied.', false);
+        } catch (err) {
+          setPageBgStatus(err.message || 'Upload failed.', true);
+        }
+      });
+      fileInput.click();
+    });
+
+    panel.querySelector('#admin-page-bg-image-clear')?.addEventListener('click', () => {
+      clearPageBgImage();
+      setPageBgStatus('Image removed.', false);
+    });
+
     document.body.appendChild(panel);
-
-    // — Drag to move —
-    const handle = panel.querySelector('#admin-inspector-handle');
-    let dragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-
-    handle.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      dragging = true;
-      handle.setPointerCapture(e.pointerId);
-      panel.classList.add('is-dragging');
-
-      // Convert right/top to left/top so we can freely position it
-      const rect = panel.getBoundingClientRect();
-      panel.style.right = 'auto';
-      panel.style.left = rect.left + 'px';
-      panel.style.top = rect.top + 'px';
-
-      dragOffsetX = e.clientX - rect.left;
-      dragOffsetY = e.clientY - rect.top;
-    });
-
-    handle.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const maxX = window.innerWidth - panel.offsetWidth;
-      const maxY = window.innerHeight - panel.offsetHeight;
-      const newLeft = Math.max(0, Math.min(maxX, e.clientX - dragOffsetX));
-      const newTop = Math.max(0, Math.min(maxY, e.clientY - dragOffsetY));
-      panel.style.left = newLeft + 'px';
-      panel.style.top = newTop + 'px';
-    });
-
-    handle.addEventListener('pointerup', () => {
-      dragging = false;
-      panel.classList.remove('is-dragging');
-    });
-
-    handle.addEventListener('pointercancel', () => {
-      dragging = false;
-      panel.classList.remove('is-dragging');
-    });
-
     state.inspectorPanel = panel;
     return panel;
   }
 
   function updateInspectorPanel(element) {
     const panel = ensureInspectorPanel();
-    const kindNode = panel.querySelector('[data-role="selected-kind"]');
-    const keyNode = panel.querySelector('[data-role="selected-key"]');
 
     if (!state.editMode) {
       panel.style.display = 'none';
       return;
     }
+    panel.style.display = 'flex';
 
-    panel.style.display = 'grid';
+    const breadcrumb = panel.querySelector('#admin-panel-breadcrumb');
+    const propsEmpty = panel.querySelector('#admin-panel-props-empty');
+    const propsContent = panel.querySelector('#admin-panel-props-content');
+    const styleEmpty = panel.querySelector('#admin-panel-style-empty');
+    const styleContent = panel.querySelector('#admin-panel-style-content');
+    const actionsEmpty = panel.querySelector('#admin-panel-actions-empty');
+    const actionsContent = panel.querySelector('#admin-panel-actions-content');
+
     if (!element) {
-      kindNode.textContent = 'No selection';
-      keyNode.textContent = 'Click an element or page canvas';
+      if (breadcrumb) breadcrumb.innerHTML = '<span style="color:#6b7fa8">Click any element to select it</span>';
+      if (propsEmpty) propsEmpty.style.display = '';
+      if (propsContent) propsContent.style.display = 'none';
+      if (styleEmpty) styleEmpty.style.display = '';
+      if (styleContent) styleContent.style.display = 'none';
+      if (actionsEmpty) actionsEmpty.style.display = '';
+      if (actionsContent) actionsContent.style.display = 'none';
       return;
     }
 
-    kindNode.textContent = `Selected: ${getElementKindLabel(element)}`;
-    keyNode.textContent = element.dataset.adminKey || '';
+    if (propsEmpty) propsEmpty.style.display = 'none';
+    if (propsContent) propsContent.style.display = '';
+    if (styleEmpty) styleEmpty.style.display = 'none';
+    if (styleContent) styleContent.style.display = '';
+    if (actionsEmpty) actionsEmpty.style.display = 'none';
+    if (actionsContent) actionsContent.style.display = '';
+
+    const editableType = element.dataset.adminEditable || 'generic';
+    const key = element.dataset.adminKey || '';
+    const override = key ? (state.elementOverrides.get(key) || {}) : {};
+    const isSectionRoot = isSectionRootEditable(element);
+    const isPageRoot = editableType === 'page-root';
+
+    // ── Breadcrumb ─────────────────────────────────────────────────────────
+    if (breadcrumb) {
+      const crumbs = ['<span class="admin-bc-item">Page</span>'];
+      const ancestors = [];
+      let cursor = element.parentElement;
+      while (cursor && cursor !== document.body) {
+        if (cursor.dataset && cursor.dataset.adminEditable) ancestors.unshift(cursor);
+        cursor = cursor.parentElement;
+      }
+      ancestors.forEach((anc) => {
+        crumbs.push(`<span class="admin-bc-sep">›</span><span class="admin-bc-item">${getElementKindLabel(anc)}</span>`);
+      });
+      crumbs.push(`<span class="admin-bc-sep">›</span><span class="admin-bc-item active">${getElementKindLabel(element)}</span>`);
+      breadcrumb.innerHTML = crumbs.join('');
+    }
+
+    // ── Properties pane ────────────────────────────────────────────────────
+    if (propsContent) {
+      const kindClass = editableType === 'background-image' ? 'kind-section' :
+                        (editableType === 'container' || editableType === 'generic') ? 'kind-container' :
+                        editableType === 'text' ? 'kind-text' :
+                        editableType === 'image' ? 'kind-image' :
+                        editableType === 'page-root' ? 'kind-page' : 'kind-other';
+
+      let html = `<div class="admin-panel-btn-row" style="margin-bottom:0.55rem;align-items:center;gap:0.4rem;">
+        <span class="admin-kind-badge ${kindClass}">${getElementKindLabel(element)}</span>
+        ${key ? `<span style="font-size:0.68rem;color:#6b7fa8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${key}">${key}</span>` : ''}
+      </div>`;
+
+      if (isPageRoot) {
+        html += `<p style="font-size:0.8rem;color:#b8c4e0;margin:0.3rem 0;">Select a section or element to edit it. Use the Insert buttons below to add content.</p>`;
+      } else if (editableType === 'text') {
+        const isSectionField = Boolean(element.dataset.adminSectionField);
+        const currentText = element.dataset.adminSectionEmpty === 'true' ? '' : (element.textContent || '');
+        html += `<div class="admin-panel-field">
+          <label>${isSectionField ? 'Section Text' : 'Content'}</label>
+          <textarea id="ap-text-content" rows="4">${currentText.replace(/&/g,'&amp;').replace(/</g,'&lt;').trim()}</textarea>
+        </div>
+        <div class="admin-panel-btn-row">
+          <button type="button" class="admin-panel-btn primary" id="ap-save-text">Save Text</button>
+          <button type="button" class="admin-panel-btn" id="ap-open-editor">Full Editor &#8599;</button>
+        </div>`;
+      } else if (editableType === 'image') {
+        const imgSrc = element.src || element.dataset.src || '';
+        html += `<div class="admin-panel-field">
+          ${imgSrc ? `<img src="${imgSrc}" alt="" style="width:100%;max-height:110px;object-fit:cover;border-radius:8px;margin-bottom:0.45rem;" />` : '<p style="font-size:0.8rem;color:#8fa0c8;margin:0 0 0.45rem;">No image set.</p>'}
+          <div class="admin-panel-btn-row">
+            <button type="button" class="admin-panel-btn primary" id="ap-upload-image">&#128444; Upload</button>
+            <button type="button" class="admin-panel-btn" id="ap-open-editor">Full Editor &#8599;</button>
+          </div>
+        </div>`;
+      } else if (isSectionRoot) {
+        html += `<p style="font-size:0.8rem;color:#b8c4e0;margin:0.3rem 0;">Section element. Use the <strong>Style</strong> tab to change appearance, or <strong>Actions</strong> tab to add, move, or delete.</p>`;
+      } else {
+        html += `<p style="font-size:0.8rem;color:#b8c4e0;margin:0.3rem 0;">Container element. Use the <strong>Style</strong> tab to change appearance.</p>`;
+      }
+
+      propsContent.innerHTML = html;
+
+      // Wire: inline text save
+      propsContent.querySelector('#ap-save-text')?.addEventListener('click', async () => {
+        const textarea = propsContent.querySelector('#ap-text-content');
+        if (!textarea) return;
+        const nextValue = textarea.value;
+        try {
+          if (element.dataset.adminSectionField) {
+            const sectionId = Number.parseInt(element.dataset.adminSectionId, 10);
+            const field = element.dataset.adminSectionField;
+            const item = await updatePageSection(sectionId, field, nextValue);
+            upsertPageSection(item);
+            renderPageSections();
+            registerSectionEditing();
+          } else {
+            element.textContent = nextValue;
+            element.classList.remove('admin-empty-section-field');
+            delete element.dataset.adminSectionEmpty;
+            await saveElementOverride(key, {});
+          }
+        } catch (err) {
+          alert(err.message || 'Save failed.');
+        }
+      });
+
+      // Wire: image upload
+      propsContent.querySelector('#ap-upload-image')?.addEventListener('click', () => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        fileInput.addEventListener('change', async () => {
+          const file = fileInput.files && fileInput.files[0];
+          document.body.removeChild(fileInput);
+          if (!file) return;
+          try {
+            const url = await uploadAdminImage(file, 'content');
+            element.src = url;
+            element.removeAttribute('srcset');
+            await saveElementOverride(key, { imageSrc: url });
+            updateInspectorPanel(element);
+          } catch (err) {
+            alert(err.message || 'Upload failed.');
+          }
+        });
+        fileInput.click();
+      });
+
+      // Wire: open full editor modal
+      propsContent.querySelector('#ap-open-editor')?.addEventListener('click', () => {
+        openEditorForSelectedElement(element, 'edit');
+      });
+    }
+
+    // ── Style pane — pre-fill from override ──────────────────────────────
+    if (styleContent) {
+      const setVal = (id, v) => { const el2 = styleContent.querySelector(`#${id}`); if (el2) el2.value = v || ''; };
+      setVal('ap-text-align', override.textAlign);
+      setVal('ap-font-family', override.fontFamily);
+      setVal('ap-font-weight', override.fontWeight);
+      setVal('ap-font-style', override.fontStyle);
+      setVal('ap-text-transform', override.textTransform);
+      setVal('ap-font-size', override.fontSize);
+      setVal('ap-opacity', override.opacityValue);
+      setVal('ap-bg-opacity', override.backgroundOpacityValue);
+      setVal('ap-width', override.widthValue);
+      setVal('ap-height', override.heightValue);
+      setVal('ap-border-style', override.borderStyle);
+      setVal('ap-border-width', override.borderWidth);
+      setVal('ap-border-radius', override.borderRadius);
+
+      const textColorEl = styleContent.querySelector('#ap-text-color');
+      if (textColorEl) {
+        textColorEl.dataset.isReset = override.textColor ? 'false' : 'true';
+        if (override.textColor) textColorEl.value = override.textColor;
+      }
+      const bgColorEl = styleContent.querySelector('#ap-bg-color');
+      if (bgColorEl) {
+        bgColorEl.dataset.isReset = override.backgroundColor ? 'false' : 'true';
+        if (override.backgroundColor) bgColorEl.value = override.backgroundColor;
+      }
+      const borderColorEl = styleContent.querySelector('#ap-border-color');
+      if (borderColorEl) {
+        borderColorEl.dataset.isReset = override.borderColor ? 'false' : 'true';
+        if (override.borderColor) borderColorEl.value = override.borderColor;
+      }
+    }
+
+    // ── Actions pane ───────────────────────────────────────────────────────
+    if (actionsContent) {
+      const isHidden = Boolean(override.hidden && !override.deleted);
+      const isDeleted = Boolean(override.deleted);
+      const duplicateAllowed = !element.dataset.adminSectionField && (editableType === 'text' || editableType === 'image');
+      const deleteAllowed = editableType !== 'album-root' && editableType !== 'page-root';
+      const parentAllowed = Boolean(getParentEditableElement(element));
+      const isFreePos = override.position_mode === 'absolute';
+
+      const allSections = Array.from(document.querySelectorAll('[data-admin-editable="background-image"],[data-admin-editable="page-root"]'));
+      const sectionOptions = allSections.map((s, i) => {
+        const heading = s.querySelector('h1,h2,h3,h4,h5,h6');
+        const label = heading ? heading.textContent.trim().slice(0, 40) : `Section ${i + 1}`;
+        return `<option value="${i}">${label}</option>`;
+      }).join('');
+
+      let html = '';
+
+      if (!isPageRoot) {
+        html += `<div class="admin-panel-section-title">Edit</div>
+        <div class="admin-panel-btn-row">
+          <button type="button" class="admin-panel-btn" data-inspector-action="edit">&#9998; Edit Content</button>
+          <button type="button" class="admin-panel-btn" data-inspector-action="style">&#9635; Full Style</button>
+        </div>`;
+      }
+
+      if (!isPageRoot && !isSectionRoot) {
+        html += `<div class="admin-panel-section-title">Move to Section</div>
+        <div class="admin-panel-field">
+          <select id="ap-move-to-section">${sectionOptions || '<option>No sections found</option>'}</select>
+        </div>
+        <div class="admin-panel-btn-row">
+          <button type="button" class="admin-panel-btn" id="ap-do-move">Move Here</button>
+          ${parentAllowed ? '<button type="button" class="admin-panel-btn" data-inspector-action="parent">&#8679; Parent</button>' : ''}
+        </div>`;
+      }
+
+      if (isSectionRoot || isPageRoot) {
+        html += `<div class="admin-panel-section-title">Section</div>
+        <div class="admin-panel-btn-row">
+          ${isPageRoot ? '<button type="button" class="admin-panel-btn" data-inspector-action="add-before">+ Add Section</button>' : ''}
+          ${isSectionRoot ? '<button type="button" class="admin-panel-btn" data-inspector-action="add-before">+ Before</button>' : ''}
+          ${isSectionRoot ? '<button type="button" class="admin-panel-btn" data-inspector-action="add-after">+ After</button>' : ''}
+          ${isSectionRoot ? '<button type="button" class="admin-panel-btn danger" data-inspector-action="remove-section">&#10006; Remove Section</button>' : ''}
+        </div>`;
+      }
+
+      if (!isPageRoot) {
+        html += `<div class="admin-panel-section-title">Visibility &amp; Position</div>
+        <div class="admin-panel-btn-row">
+          <button type="button" class="admin-panel-btn${isFreePos ? ' primary' : ''}" data-inspector-action="move">${isFreePos ? '&#9650; Fixed' : '&#8660; Free Position'}</button>
+          ${isFreePos ? '<button type="button" class="admin-panel-btn" data-inspector-action="position-reset">Reset</button>' : ''}
+        </div>
+        <div class="admin-panel-btn-row">
+          ${isDeleted
+            ? '<button type="button" class="admin-panel-btn" data-inspector-action="restore">&#9099; Restore</button>'
+            : isHidden
+              ? '<button type="button" class="admin-panel-btn" data-inspector-action="restore">&#9679; Show</button>'
+              : '<button type="button" class="admin-panel-btn" data-inspector-action="hide">&#9675; Hide</button>'}
+        </div>`;
+      }
+
+      if (deleteAllowed || duplicateAllowed) {
+        html += `<div class="admin-panel-section-title">Element</div>
+        <div class="admin-panel-btn-row">
+          ${duplicateAllowed ? '<button type="button" class="admin-panel-btn" data-inspector-action="duplicate">&#10064; Duplicate</button>' : ''}
+          ${deleteAllowed ? '<button type="button" class="admin-panel-btn danger" data-inspector-action="delete">&#10006; Delete</button>' : ''}
+        </div>`;
+      }
+
+      actionsContent.innerHTML = html;
+
+      // Wire: move-to-section
+      actionsContent.querySelector('#ap-do-move')?.addEventListener('click', () => {
+        const select = actionsContent.querySelector('#ap-move-to-section');
+        if (!select) return;
+        const targetSection = allSections[Number(select.value)];
+        if (!targetSection) return;
+        // moveDraggedTextToSection relies on state.draggedTextElement
+        state.draggedTextElement = element;
+        moveDraggedTextToSection(targetSection);
+        scheduleEditorSync();
+      });
+    }
   }
 
   function scheduleEditorSync() {
@@ -4231,6 +4802,26 @@ if (countdownElements.days) {
       applyElementStyles(element, item);
       scheduleEditorSync();
       hideElementToolbar();
+      return;
+    }
+
+    if (action === 'hide') {
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      const currentOvr = state.elementOverrides.get(key) || {};
+      const isHidden = Boolean(currentOvr.hidden && !currentOvr.deleted);
+      await saveElementOverride(key, { hidden: !isHidden, deleted: false });
+      setAdminHiddenState(element, !isHidden, false);
+      updateInspectorPanel(element);
+      return;
+    }
+
+    if (action === 'position-reset') {
+      const key = element.dataset.adminKey;
+      if (!key) return;
+      const item = await saveElementOverride(key, { positionMode: 'flow', posX: null, posY: null });
+      applyElementStyles(element, item);
+      updateInspectorPanel(element);
       return;
     }
 
@@ -6439,6 +7030,17 @@ if (countdownElements.days) {
   async function initEditableContent() {
     initContactForm();
     bindAlbumUiEvents();
+
+    // Restore any saved page background color/image from data attributes set by the admin
+    if (document.body.dataset.pageBgColor) {
+      document.body.style.background = document.body.dataset.pageBgColor;
+    }
+    if (document.body.dataset.pageBgImage) {
+      document.body.style.backgroundImage = `url("${document.body.dataset.pageBgImage}")`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundRepeat = 'no-repeat';
+    }
 
     if (!isPageEditable()) {
       initHeaderState();
