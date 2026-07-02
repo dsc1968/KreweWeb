@@ -2647,7 +2647,7 @@ if (countdownElements.days) {
       .admin-editor-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 10000;
+        z-index: 10050;
         display: none;
         align-items: center;
         justify-content: center;
@@ -4694,14 +4694,13 @@ if (countdownElements.days) {
     if (!element) return;
 
     if (action === 'edit' || action === 'style') {
-      hideElementToolbar();
       openEditorForSelectedElement(element, action);
       return;
     }
 
     if (action === 'move') {
       await enableMoveForElement(element);
-      hideElementToolbar();
+      updateInspectorPanel(element);
       return;
     }
 
@@ -4780,17 +4779,16 @@ if (countdownElements.days) {
     if (action === 'parent') {
       const parent = getParentEditableElement(element);
       if (!parent) return;
-      const rect = parent.getBoundingClientRect();
-      const centerX = rect.left + (rect.width / 2);
-      const topY = rect.top;
-      showElementToolbarFor(parent, centerX, topY);
+      document.querySelectorAll('.admin-current-selection').forEach((n) => n.classList.remove('admin-current-selection'));
+      parent.classList.add('admin-current-selection');
+      state.selectedEditableElement = parent;
+      updateInspectorPanel(parent);
       return;
     }
 
     if (action === 'duplicate') {
       await duplicateSelectedElement(element);
       scheduleEditorSync();
-      hideElementToolbar();
       return;
     }
 
@@ -4801,7 +4799,7 @@ if (countdownElements.days) {
       setAdminHiddenState(element, false, false);
       applyElementStyles(element, item);
       scheduleEditorSync();
-      hideElementToolbar();
+      updateInspectorPanel(element);
       return;
     }
 
