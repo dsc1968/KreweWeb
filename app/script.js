@@ -116,6 +116,7 @@ if (countdownElements.days) {
     albumUiBound: false,
     savePendingCount: 0,
     saveStatusNode: null,
+    selectionHandlesOverlay: null,
   };
   const albumRootElementKey = 'media-albums-root|container';
   const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
@@ -907,7 +908,7 @@ if (countdownElements.days) {
   }
 
   function isInsideAdminUi(element) {
-    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel'));
+    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay'));
   }
 
   function hasNestedEditableText(element) {
@@ -923,10 +924,9 @@ if (countdownElements.days) {
 
   function isInsideSiteMenu(element) {
     if (!element || !(element instanceof Element)) return false;
-    const menuHost = element.closest('.site-nav');
-    if (!menuHost) return false;
-    if (state.editMode) return false;
-    return !isInsideAdminUi(element);
+    // Always exclude header/nav from being registered as editable content —
+    // even in edit mode.  Nav reordering uses its own drag system (bindNavReorderEvents).
+    return Boolean(element.closest('.site-header, .site-nav, .nav-toggle'));
   }
 
   function getNthOfType(element) {
@@ -1195,8 +1195,14 @@ if (countdownElements.days) {
       if (element.dataset.adminEditable === 'album-root') {
         ensureAlbumRootPlaceholder(element);
       }
-      if (element.parentElement && window.getComputedStyle(element.parentElement).position === 'static') {
-        element.parentElement.style.position = 'relative';
+      // Always position relative to main so coordinates are page-wide and
+      // consistent with what ensureAbsoluteForFreeDrag stores on drag-end.
+      const main = document.querySelector('main') || document.body;
+      if (window.getComputedStyle(main).position === 'static') {
+        main.style.position = 'relative';
+      }
+      if (element.parentElement !== main) {
+        main.appendChild(element);
       }
       element.style.position = 'absolute';
       element.style.left = `${Number.isFinite(override.pos_x) ? override.pos_x : 0}px`;
@@ -2832,6 +2838,43 @@ if (countdownElements.days) {
         user-select: none;
       }
 
+      /* Allow text selection and normal interaction in form controls */
+      .admin-inspector-panel input,
+      .admin-inspector-panel textarea,
+      .admin-inspector-panel select {
+        user-select: text;
+      }
+
+      /* ── Selection resize handles overlay ──────────────────────── */
+      .admin-selection-handles-overlay {
+        position: fixed;
+        pointer-events: none;
+        z-index: 10015;
+        box-sizing: border-box;
+        outline: 1.5px solid rgba(255, 210, 98, 0.65);
+        outline-offset: 0;
+      }
+      .admin-resize-handle {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.95);
+        border: 1.5px solid rgba(255, 210, 98, 0.9);
+        border-radius: 2px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        pointer-events: auto;
+        box-sizing: border-box;
+      }
+      /* Corner handles */
+      .admin-resize-handle[data-handle="nw"] { top:-5px; left:-5px; cursor:nw-resize; }
+      .admin-resize-handle[data-handle="n"]  { top:-5px; left:calc(50% - 5px); cursor:n-resize; }
+      .admin-resize-handle[data-handle="ne"] { top:-5px; right:-5px; cursor:ne-resize; }
+      .admin-resize-handle[data-handle="e"]  { top:calc(50% - 5px); right:-5px; cursor:e-resize; }
+      .admin-resize-handle[data-handle="se"] { bottom:-5px; right:-5px; cursor:se-resize; }
+      .admin-resize-handle[data-handle="s"]  { bottom:-5px; left:calc(50% - 5px); cursor:s-resize; }
+      .admin-resize-handle[data-handle="sw"] { bottom:-5px; left:-5px; cursor:sw-resize; }
+      .admin-resize-handle[data-handle="w"]  { top:calc(50% - 5px); left:-5px; cursor:w-resize; }
+
       /* header */
       .admin-panel-header {
         display: flex;
@@ -2905,6 +2948,7 @@ if (countdownElements.days) {
         letter-spacing: 0.04em;
         cursor: pointer;
         transition: color 0.15s, border-color 0.15s;
+        touch-action: manipulation;
       }
       .admin-panel-tab:hover { color: #d8e2fa; }
       .admin-panel-tab.is-active { color: #ffd262; border-bottom-color: #ffd262; }
@@ -2912,6 +2956,7 @@ if (countdownElements.days) {
       /* scrollable pane area */
       .admin-panel-panes {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
       }
@@ -2980,6 +3025,8 @@ if (countdownElements.days) {
         cursor: pointer;
         transition: border-color 0.15s, background 0.15s;
         white-space: nowrap;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(255,210,98,0.18);
       }
       .admin-panel-btn:hover { border-color: rgba(255,210,98,0.5); background: rgba(255,210,98,0.12); }
       .admin-panel-btn.primary { background: rgba(255,210,98,0.18); border-color: rgba(255,210,98,0.5); color:#ffd262; }
@@ -3065,10 +3112,8 @@ if (countdownElements.days) {
       .admin-inspector-grid  { display: none; }
 
       body.admin-edit-mode main[data-admin-canvas-dropzone="true"] {
-        background-image:
-          linear-gradient(rgba(255, 210, 98, 0.16) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 210, 98, 0.16) 1px, transparent 1px);
-        background-size: ${gridSnapSize}px ${gridSnapSize}px;
+        outline: 2px dashed rgba(255, 210, 98, 0.3);
+        outline-offset: -2px;
       }
 
       body.admin-edit-mode .admin-empty-section-field {
@@ -3494,6 +3539,20 @@ if (countdownElements.days) {
       if (body.style.paddingRight) body.style.paddingRight = '';
       if (body.classList.length === 0) body.removeAttribute('class');
     }
+
+    // Strip any editor-injected inline styles from header/nav elements
+    clone.querySelectorAll('.site-header, .site-header *, .site-nav, .site-nav *, .nav-toggle').forEach((el) => {
+      // Remove only editor-added cursor/position styles; leave intentional display:none on shop link
+      if (el.tagName === 'A' || el.tagName === 'NAV' || el.tagName === 'HEADER' || el.tagName === 'DIV') {
+        ['position', 'left', 'top', 'width', 'height', 'margin', 'zIndex', 'cursor', 'z-index'].forEach((prop) => {
+          el.style.removeProperty(prop);
+        });
+        if (el.style.length === 0) el.removeAttribute('style');
+      }
+    });
+
+    // Remove any browser-extension injected elements (1Password etc.) from clone
+    clone.querySelectorAll('[id^="1p-"]').forEach((el) => el.remove());
 
     return '<!DOCTYPE html>\n' + clone.outerHTML;
   }
@@ -3928,8 +3987,58 @@ if (countdownElements.days) {
     return null;
   }
 
+  function removeSelectionHandleOverlay() {
+    if (state.selectionHandlesOverlay) {
+      state.selectionHandlesOverlay.remove();
+      state.selectionHandlesOverlay = null;
+    }
+    document.querySelectorAll('.admin-selection-handles-overlay').forEach((el) => el.remove());
+  }
+
+  function showSelectionHandleOverlay(element) {
+    removeSelectionHandleOverlay();
+    if (!element || !state.editMode) return;
+    // Only show handles for elements that have a key (can be saved)
+    if (!element.dataset.adminKey) return;
+    // Don't show handles for the page root
+    if (element.dataset.adminEditable === 'page-root') return;
+
+    const rect = element.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'admin-selection-handles-overlay';
+
+    overlay.style.left = `${rect.left}px`;
+    overlay.style.top = `${rect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+
+    const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+    for (const pos of HANDLES) {
+      const span = document.createElement('span');
+      span.className = 'admin-resize-handle';
+      span.dataset.handle = pos;
+
+      // Initiate a resize drag from a specific handle widget
+      span.addEventListener('pointerdown', (e) => {
+        if (!state.editMode) return;
+        if (e.button !== 0) return;
+        e.preventDefault();  // OK here — handle click has no meaningful default
+        e.stopPropagation();
+        beginFreeDrag(element, e, pos);
+      });
+
+      overlay.appendChild(span);
+    }
+
+    document.body.appendChild(overlay);
+    state.selectionHandlesOverlay = overlay;
+  }
+
   function hideElementToolbar() {
     if (!state.elementToolbar) return;
+    removeSelectionHandleOverlay();
     document.querySelectorAll('.admin-current-selection').forEach((node) => node.classList.remove('admin-current-selection'));
     state.elementToolbar.style.display = 'none';
     state.selectedEditableElement = null;
@@ -4424,6 +4533,16 @@ if (countdownElements.days) {
             <button type="button" class="admin-panel-btn" id="ap-open-editor">Full Editor &#8599;</button>
           </div>
         </div>`;
+      } else if (editableType === 'background-image') {
+        // Show current background info and quick edit button
+        const bgPath = element.dataset.adminImagePath || element.style.getPropertyValue('--dynamic-section-bg') || '';
+        const hasBg = Boolean(bgPath && bgPath !== 'url("")');
+        html += `<div class="admin-panel-field">
+          ${hasBg ? `<p style="font-size:0.78rem;color:#b8c4e0;margin:0 0 0.4rem;">Background image is set.</p>` : `<p style="font-size:0.78rem;color:#8fa0c8;margin:0 0 0.4rem;">No background image set.</p>`}
+          <div class="admin-panel-btn-row">
+            <button type="button" class="admin-panel-btn primary" id="ap-edit-section-bg">&#128444; Edit Background</button>
+          </div>
+        </div>`;
       } else if (isSectionRoot) {
         html += `<p style="font-size:0.8rem;color:#b8c4e0;margin:0.3rem 0;">Section element. Use the <strong>Style</strong> tab to change appearance, or <strong>Actions</strong> tab to add, move, or delete.</p>`;
       } else {
@@ -4478,6 +4597,11 @@ if (countdownElements.days) {
           }
         });
         fileInput.click();
+      });
+
+      // Wire: edit section background
+      propsContent.querySelector('#ap-edit-section-bg')?.addEventListener('click', () => {
+        openEditorForSelectedElement(element, 'edit');
       });
 
       // Wire: open full editor modal
@@ -4592,6 +4716,16 @@ if (countdownElements.days) {
 
       actionsContent.innerHTML = html;
 
+      // Wire: Edit Content and Full Style buttons directly (element from closure)
+      actionsContent.querySelector('[data-inspector-action="edit"]')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openEditorForSelectedElement(element, 'edit');
+      });
+      actionsContent.querySelector('[data-inspector-action="style"]')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openEditorForSelectedElement(element, 'style');
+      });
+
       // Wire: move-to-section
       actionsContent.querySelector('#ap-do-move')?.addEventListener('click', () => {
         const select = actionsContent.querySelector('#ap-move-to-section');
@@ -4638,15 +4772,14 @@ if (countdownElements.days) {
 
     const observer = new MutationObserver((mutations) => {
       if (!state.editMode || state.isSyncingEditorState) return;
-      const hasRealDomChange = mutations.some((mutation) => {
-        if (mutation.type === 'childList') {
-          return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
-        }
-        if (mutation.type === 'attributes') {
-          return ['class', 'style', 'data-admin-editable', 'data-admin-key', 'data-admin-dynamic-section'].includes(mutation.attributeName || '');
-        }
-        return false;
-      });
+      // Only react to structural DOM changes (elements added/removed).
+      // Attribute changes — including class (admin-current-selection), style (cursor),
+      // and data-admin-* (set by registerEditableElements) — must NOT trigger a sync
+      // because they fire mid-tap and destroy direct event listeners on panel buttons
+      // before the click event arrives, making inspector buttons unresponsive.
+      const hasRealDomChange = mutations.some((m) =>
+        m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)
+      );
       if (!hasRealDomChange) return;
       scheduleEditorSync();
     });
@@ -4654,8 +4787,6 @@ if (countdownElements.days) {
     observer.observe(root, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'data-admin-editable', 'data-admin-key', 'data-admin-dynamic-section'],
     });
     state.domObserver = observer;
     return observer;
@@ -4933,12 +5064,15 @@ if (countdownElements.days) {
     const key = element.dataset.adminKey;
     if (!key) return;
     const override = state.elementOverrides.get(key) || {};
+    const main = document.querySelector('main[data-admin-editable="page-root"]') || document.querySelector('main') || document.body;
+    const mainRect = main.getBoundingClientRect();
+    const elemRect = element.getBoundingClientRect();
     const item = await saveElementOverride(key, {
       hidden: false,
       deleted: false,
       positionMode: 'absolute',
-      posX: Number.isFinite(override.pos_x) ? override.pos_x : element.offsetLeft,
-      posY: Number.isFinite(override.pos_y) ? override.pos_y : element.offsetTop,
+      posX: Number.isFinite(override.pos_x) ? override.pos_x : Math.round(elemRect.left - mainRect.left),
+      posY: Number.isFinite(override.pos_y) ? override.pos_y : Math.round(elemRect.top - mainRect.top),
     });
     applyElementStyles(element, item);
   }
@@ -5128,6 +5262,7 @@ if (countdownElements.days) {
     document.querySelectorAll('.admin-current-selection').forEach((node) => node.classList.remove('admin-current-selection'));
     element.classList.add('admin-current-selection');
     state.selectedEditableElement = element;
+    showSelectionHandleOverlay(element);
     updateInspectorPanel(element);
 
     const type = element.dataset.adminEditable || '';
@@ -6406,69 +6541,90 @@ if (countdownElements.days) {
 
   function ensureAbsoluteForFreeDrag(target, override) {
     if (!target) return;
-
-    if (target.offsetParent && window.getComputedStyle(target.offsetParent).position === 'static') {
-      target.offsetParent.style.position = 'relative';
-    }
+    const main = document.querySelector('main') || document.body;
 
     if (override.position_mode !== 'absolute') {
       if (target.dataset.adminEditable === 'album-root') {
         ensureAlbumRootPlaceholder(target);
       }
+      // Capture viewport position BEFORE reparenting so we can convert to
+      // main-relative page coords — this lets the element move freely anywhere
+      // on the page, not just within its original section/container.
+      const rect = target.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      const posX = Math.round(rect.left - mainRect.left);
+      const posY = Math.round(rect.top  - mainRect.top);
+      if (window.getComputedStyle(main).position === 'static') {
+        main.style.position = 'relative';
+      }
+      main.appendChild(target);
       target.style.position = 'absolute';
-      target.style.left = `${target.offsetLeft}px`;
-      target.style.top = `${target.offsetTop}px`;
+      target.style.left = `${posX}px`;
+      target.style.top  = `${posY}px`;
       target.style.zIndex = target.dataset.adminEditable === 'text' ? '12' : '8';
       target.classList.add('admin-free-positioned');
     }
   }
 
-  function beginFreeDrag(target, event) {
+  // forcedResizeEdges: pass edge string (e.g. 'se') when called from a handle widget
+  function beginFreeDrag(target, event, forcedResizeEdges = null) {
     const key = target.dataset.adminKey;
     if (!key) return;
 
     const override = state.elementOverrides.get(key) || {};
-    ensureAbsoluteForFreeDrag(target, override);
-
-    const resizeEdges = getResizeEdges(target, event);
+    const resizeEdges = forcedResizeEdges || getResizeEdges(target, event);
     const isResizeAction = Boolean(resizeEdges);
     const activeCursor = isResizeAction ? getCursorForEdges(resizeEdges) : 'move';
 
-    const startLeft = Number.parseFloat(target.style.left || `${target.offsetLeft}`) || 0;
-    const startTop = Number.parseFloat(target.style.top || `${target.offsetTop}`) || 0;
-    const startWidth = Math.max(minResizableWidth, target.offsetWidth);
-    const startHeight = Math.max(minResizableHeight, target.offsetHeight);
+    let startLeft = 0;
+    let startTop = 0;
+    let startWidth = 0;
+    let startHeight = 0;
     let didMove = false;
+    let dragInitialized = false;
 
     state.draggingElement = target;
     state.dragStartX = event.clientX;
     state.dragStartY = event.clientY;
-    state.dragOriginX = startLeft;
-    state.dragOriginY = startTop;
-    target.classList.add('admin-is-dragging');
+    // Prevent text selection while the pointer is held down
+    document.body.style.userSelect = 'none';
     document.body.style.cursor = activeCursor;
     const canvas = document.querySelector('main');
-    if (canvas) {
-      canvas.dataset.adminCanvasDropzone = 'true';
-    }
 
     const onMove = (moveEvent) => {
       if (!state.draggingElement) return;
+      const rawDx = moveEvent.clientX - state.dragStartX;
+      const rawDy = moveEvent.clientY - state.dragStartY;
+
+      // Defer making the element absolute until the pointer has actually moved
+      if (!dragInitialized && (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3)) {
+        dragInitialized = true;
+        ensureAbsoluteForFreeDrag(target, override);
+        startLeft = Number.parseFloat(target.style.left || `${target.offsetLeft}`) || 0;
+        startTop = Number.parseFloat(target.style.top || `${target.offsetTop}`) || 0;
+        startWidth = Math.max(minResizableWidth, target.offsetWidth);
+        startHeight = Math.max(minResizableHeight, target.offsetHeight);
+        state.dragOriginX = startLeft;
+        state.dragOriginY = startTop;
+        target.classList.add('admin-is-dragging');
+        removeSelectionHandleOverlay();
+        if (canvas) canvas.dataset.adminCanvasDropzone = 'true';
+      }
+      if (!dragInitialized) return;
+
       const dx = moveEvent.clientX - state.dragStartX;
       const dy = moveEvent.clientY - state.dragStartY;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        didMove = true;
-      }
+      didMove = true;
+
       let nextX = state.dragOriginX;
       let nextY = state.dragOriginY;
       let nextWidth = startWidth;
       let nextHeight = startHeight;
 
       if (!isResizeAction) {
-        const rawX = state.dragOriginX + dx;
-        const rawY = state.dragOriginY + dy;
-        nextX = Math.max(0, rawX);
-        nextY = Math.max(0, rawY);
+        // No floor — element can move freely above/left of its origin (page-wide movement)
+        nextX = state.dragOriginX + dx;
+        nextY = state.dragOriginY + dy;
       } else {
         if (resizeEdges.includes('e')) nextWidth = startWidth + dx;
         if (resizeEdges.includes('s')) nextHeight = startHeight + dy;
@@ -6503,15 +6659,6 @@ if (countdownElements.days) {
         }
       }
 
-      if (!moveEvent.altKey) {
-        nextX = Math.max(0, Math.round(nextX / gridSnapSize) * gridSnapSize);
-        nextY = Math.max(0, Math.round(nextY / gridSnapSize) * gridSnapSize);
-        if (isResizeAction) {
-          nextWidth = Math.max(minResizableWidth, Math.round(nextWidth / gridSnapSize) * gridSnapSize);
-          nextHeight = Math.max(minResizableHeight, Math.round(nextHeight / gridSnapSize) * gridSnapSize);
-        }
-      }
-
       state.draggingElement.style.left = `${Math.round(nextX)}px`;
       state.draggingElement.style.top = `${Math.round(nextY)}px`;
       if (isResizeAction) {
@@ -6524,16 +6671,23 @@ if (countdownElements.days) {
       window.removeEventListener('pointermove', onMove);
       const dragged = state.draggingElement;
       state.draggingElement = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
       if (!dragged) return;
-      if (canvas) {
-        delete canvas.dataset.adminCanvasDropzone;
+      if (canvas) delete canvas.dataset.adminCanvasDropzone;
+      dragged.classList.remove('admin-is-dragging');
+
+      if (!dragInitialized) {
+        // Pointer released without meaningful movement — treat as a plain click,
+        // let the click event (which we did not preventDefault) handle selection.
+        return;
       }
 
-      dragged.classList.remove('admin-is-dragging');
-      document.body.style.cursor = '';
-      if (didMove || isResizeAction) {
-        state.suppressEditClickUntil = Date.now() + 250;
+      if (didMove) {
+        // Suppress the synthetic click that fires after pointerup
+        state.suppressEditClickUntil = Date.now() + 300;
       }
+
       const posX = Number.parseInt(dragged.style.left || '0', 10) || 0;
       const posY = Number.parseInt(dragged.style.top || '0', 10) || 0;
 
@@ -6560,23 +6714,33 @@ if (countdownElements.days) {
     window.addEventListener('pointerup', onUp, { once: true });
   }
 
-  function bindFreeDragHandlers() {
+  function bindFreeDragHandlers() { /* BFD_FOUND */
     if (state.freeDragHandlersBound) return;
     state.freeDragHandlersBound = true;
 
+    let _lastHoverTarget = null;
+    let _lastHoverCursor = null;
     document.addEventListener('pointermove', (event) => {
       if (!state.editMode || state.draggingElement) return;
 
       const target = findFreeDragTarget(event.target);
       if (!target) {
-        document.body.style.cursor = '';
+        if (_lastHoverTarget) { _lastHoverTarget.style.cursor = ''; _lastHoverTarget = null; }
+        if (_lastHoverCursor !== '') { document.body.style.cursor = ''; _lastHoverCursor = ''; }
         return;
       }
 
       const edges = getResizeEdges(target, event);
-      const cursor = getCursorForEdges(edges || '');
-      target.style.cursor = cursor;
-      document.body.style.cursor = cursor;
+      // Show resize cursor near edges; show move cursor when Alt is held; else let CSS pointer show
+      const cursor = edges ? getCursorForEdges(edges) : (event.altKey ? 'move' : '');
+      // Only write style when value actually changes to avoid spurious MutationObserver firings
+      if (target !== _lastHoverTarget || cursor !== _lastHoverCursor) {
+        if (_lastHoverTarget && _lastHoverTarget !== target) _lastHoverTarget.style.cursor = '';
+        target.style.cursor = cursor;
+        document.body.style.cursor = cursor;
+        _lastHoverTarget = target;
+        _lastHoverCursor = cursor;
+      }
     }, true);
 
     document.addEventListener('pointerdown', (event) => {
@@ -6592,7 +6756,9 @@ if (countdownElements.days) {
         return;
       }
 
-      event.preventDefault();
+      // Do NOT call event.preventDefault() here — that would swallow the click event
+      // and prevent element selection when the user taps near an edge without dragging.
+      // Text-selection is blocked via body.style.userSelect inside beginFreeDrag instead.
       event.stopPropagation();
       beginFreeDrag(target, event);
     }, true);
@@ -6986,7 +7152,7 @@ if (countdownElements.days) {
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
-      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel')) return;
+      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
       if (calendarCell) {

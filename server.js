@@ -461,6 +461,7 @@ async function ensureContentTable() {
     "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS kids_birthdays JSONB NOT NULL DEFAULT '[]'",
     "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_names JSONB NOT NULL DEFAULT '[]'",
     "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_birthdays JSONB NOT NULL DEFAULT '[]'",
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_captain BOOLEAN NOT NULL DEFAULT FALSE',
   ]) {
     await pool.query(col);
   }
@@ -2576,7 +2577,8 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
               COALESCE(p.dues_paid,      false) AS dues_paid,
               COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
               COALESCE(p.beads_paid,     false) AS beads_paid,
-              COALESCE(p.costume_paid,   false) AS costume_paid
+              COALESCE(p.costume_paid,   false) AS costume_paid,
+              COALESCE(p.float_captain,  false) AS float_captain
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        ORDER BY u.joined_at DESC, u.id DESC`
@@ -2603,10 +2605,11 @@ app.get('/api/admin/users/:userId', authenticateToken, async (req, res) => {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              COALESCE(p.dues_paid, false)      AS dues_paid,
-              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
-              COALESCE(p.beads_paid, false)     AS beads_paid,
-              COALESCE(p.costume_paid, false)   AS costume_paid
+              COALESCE(p.dues_paid, false)        AS dues_paid,
+              COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
+              COALESCE(p.beads_paid, false)       AS beads_paid,
+              COALESCE(p.costume_paid, false)     AS costume_paid,
+              COALESCE(p.float_captain, false)    AS float_captain
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -2706,6 +2709,7 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
   const member_float_number = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim().slice(0, 20) : null;
   const spouse_float_number = typeof req.body.spouse_float_number === 'string' ? req.body.spouse_float_number.trim().slice(0, 20) : null;
   const guest_float_number = typeof req.body.guest_float_number === 'string' ? req.body.guest_float_number.trim().slice(0, 20) : null;
+  const float_captain = Boolean(req.body.float_captain);
 
   const client = await pool.connect();
   try {
@@ -2725,8 +2729,8 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
-         updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,NOW())
+         float_captain, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -2743,6 +2747,7 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
          kids_float_numbers=EXCLUDED.kids_float_numbers,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          rider_float_names=EXCLUDED.rider_float_names,
+         float_captain=EXCLUDED.float_captain,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -2753,6 +2758,7 @@ app.put('/api/admin/users/:userId/details', authenticateToken, async (req, res) 
         guest_name||null, JSON.stringify(float_riders),
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
+        float_captain,
       ]
     );
     await client.query('COMMIT');
@@ -3303,10 +3309,11 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
-              COALESCE(p.dues_paid, false)      AS dues_paid,
-              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
-              COALESCE(p.beads_paid, false)     AS beads_paid,
-              COALESCE(p.costume_paid, false)   AS costume_paid
+              COALESCE(p.dues_paid, false)        AS dues_paid,
+              COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
+              COALESCE(p.beads_paid, false)       AS beads_paid,
+              COALESCE(p.costume_paid, false)     AS costume_paid,
+              COALESCE(p.float_captain, false)    AS float_captain
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -3366,6 +3373,7 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
   const riderFloatNumsRaw  = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
   const rider_float_names   = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
   const rider_float_numbers = riderFloatNumsRaw.map((v)  => String(v ?? '').trim().slice(0, 20));
+  const float_captain = Boolean(req.body.float_captain);
 
   try {
     await pool.query(
@@ -3373,8 +3381,8 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
          user_id, phone, address, city, state, zip, birthdate, occupation, organizations,
          sponsor_name, spouse_name, kids_names, kids_birthdays,
          grandchildren_names, grandchildren_birthdays,
-         guest_name, float_riders, rider_float_names, rider_float_numbers, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,NOW())
+         guest_name, float_riders, rider_float_names, rider_float_numbers, float_captain, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,$20,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -3387,6 +3395,7 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
          guest_name=EXCLUDED.guest_name, float_riders=EXCLUDED.float_riders,
          rider_float_names=EXCLUDED.rider_float_names,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
+         float_captain=EXCLUDED.float_captain,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -3395,7 +3404,7 @@ app.put('/api/profile/details', authenticateToken, async (req, res) => {
         JSON.stringify(kids_names), JSON.stringify(kids_birthdays),
         JSON.stringify(grandchildren_names), JSON.stringify(grandchildren_birthdays),
         guest_name||null, JSON.stringify(float_riders),
-        JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers),
+        JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers), float_captain,
       ]
     );
     res.json({ ok: true });

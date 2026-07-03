@@ -416,6 +416,12 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
       <!-- Panel: Float & Riders -->
       <div class="uem-panel" data-uem-panel="floats">
+        <div class="form-group" style="margin-bottom:0.75rem;">
+          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;font-weight:600;padding:0.7rem 1rem;border-radius:10px;border:1px solid rgba(255,210,98,0.2);background:rgba(255,210,98,0.06);">
+            <input type="checkbox" id="uem-float-captain" ${full.float_captain ? 'checked' : ''} style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#ffd262;" />
+            Float Captain
+          </label>
+        </div>
         <div class="form-group">
           <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name, Float Name &amp; #)</span></label>
           <div id="uem-riders"></div>
@@ -689,6 +695,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         const row = nameInp.closest('div');
         return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
       }),
+      float_captain: backdrop.querySelector('#uem-float-captain')?.checked ?? false,
     };
     // Read current payment state from checkboxes (managed exclusively by PATCH /payments)
     const currentPayments = {
@@ -879,6 +886,13 @@ function renderAdminUsers(users, currentUserId) {
         payCell.appendChild(dot(user.dues_paid, `Dues: ${user.dues_paid ? 'Paid' : 'Unpaid'}`));
         payCell.appendChild(dot(user.guest_fee_paid, `Guest Fee: ${user.guest_fee_paid ? 'Paid' : 'Unpaid'}`));
         payCell.appendChild(dot(user.costume_paid, `Costume: ${user.costume_paid ? 'Paid' : 'Unpaid'}`));
+        if (user.float_captain) {
+          const cap = document.createElement('span');
+          cap.textContent = '⚓';
+          cap.title = 'Float Captain';
+          cap.style.cssText = 'font-size:0.75rem;margin-left:4px;';
+          payCell.appendChild(cap);
+        }
         const actionCell = buildCell('');
 
         row.appendChild(nameCell);
@@ -912,6 +926,13 @@ function renderAdminUsers(users, currentUserId) {
               payCell.appendChild(dot(user.dues_paid,      `Dues: ${user.dues_paid      ? 'Paid' : 'Unpaid'}`));
               payCell.appendChild(dot(user.guest_fee_paid, `Guest Fee: ${user.guest_fee_paid ? 'Paid' : 'Unpaid'}`));
               payCell.appendChild(dot(user.costume_paid,   `Costume: ${user.costume_paid   ? 'Paid' : 'Unpaid'}`));
+              if (user.float_captain) {
+                const cap = document.createElement('span');
+                cap.textContent = '⚓';
+                cap.title = 'Float Captain';
+                cap.style.cssText = 'font-size:0.75rem;margin-left:4px;';
+                payCell.appendChild(cap);
+              }
             }
             updateAdminSummary(users);
             drawRows();
@@ -1027,6 +1048,10 @@ function initProfileDetailsForm(profile) {
   set('pd-spouse',        profile.spouse_name);
   set('pd-guest',         profile.guest_name);
 
+  // Float Captain checkbox
+  const floatCaptainEl = document.getElementById('pd-float-captain');
+  if (floatCaptainEl) floatCaptainEl.checked = Boolean(profile.float_captain);
+
   // Auto-update age when birthdate changes
   const bdEl = document.getElementById('pd-birthdate');
   const ageEl = document.getElementById('pd-age');
@@ -1122,6 +1147,7 @@ function initProfileDetailsForm(profile) {
             const row = i.closest('div');
             return row ? (row.querySelector('.rider-float-num-input')?.value.trim() || '') : '';
           }),
+          float_captain: document.getElementById('pd-float-captain')?.checked ?? false,
         }),
       });
       const data = await parseJSONResponse(res);
