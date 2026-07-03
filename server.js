@@ -1406,11 +1406,12 @@ app.post('/api/admin/backups', authenticateToken, async (req, res) => {
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const id = `backup_${ts}`;
+  const rawLabel = typeof req.body.label === 'string' ? req.body.label.trim().slice(0, 120) : '';
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'krewe-bk-'));
   const tmpZip = path.join(os.tmpdir(), `${id}.zip`);
 
   try {
-    const manifest = { id, type, created_at: new Date().toISOString(), created_by: req.user.email || String(req.user.userId), contains: [] };
+    const manifest = { id, type, label: rawLabel, created_at: new Date().toISOString(), created_by: req.user.email || String(req.user.userId), contains: [] };
 
     if (type === 'files' || type === 'full') {
       const appFiles = collectBackupAppFiles(appDir);

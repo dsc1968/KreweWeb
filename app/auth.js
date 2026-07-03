@@ -1813,7 +1813,7 @@ async function initBackupRestorePage() {
   async function loadBackupList(page) {
     const tbody = document.getElementById('br-table-body');
     const pager = document.getElementById('br-pagination');
-    tbody.innerHTML = '<tr><td colspan="5" class="br-empty">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="br-empty">Loading…</td></tr>';
     pager.innerHTML = '';
     setListFeedback('', false);
 
@@ -1822,13 +1822,13 @@ async function initBackupRestorePage() {
         headers: { Authorization: 'Bearer ' + token },
       });
       const data = await parseJSONResponse(res);
-      if (!res.ok) { setListFeedback(data.error || 'Unable to load backups.', true); tbody.innerHTML = '<tr><td colspan="5" class="br-empty">—</td></tr>'; return; }
+      if (!res.ok) { setListFeedback(data.error || 'Unable to load backups.', true); tbody.innerHTML = '<tr><td colspan="6" class="br-empty">—</td></tr>'; return; }
 
       const { items, total, totalPages } = data;
       currentPage = data.page;
 
       if (!items || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="br-empty">No backups yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="br-empty">No backups yet.</td></tr>';
         return;
       }
 
@@ -1842,6 +1842,7 @@ async function initBackupRestorePage() {
           <tr>
             <td style="white-space:nowrap;">${formatDate(b.created_at)}</td>
             <td>${typeLabel(b.type)}</td>
+            <td style="font-size:0.82rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escHtml(b.label || '')}">${b.label ? escHtml(b.label) : '<span style="color:var(--muted)">—</span>'}</td>
             <td style="color:var(--muted); font-size:0.82rem;">${b.created_by || '—'}</td>
             <td>${badges || '—'}</td>
             <td style="white-space:nowrap;">
@@ -1912,7 +1913,7 @@ async function initBackupRestorePage() {
       }
     } catch {
       setListFeedback('Network error loading backups.', true);
-      tbody.innerHTML = '<tr><td colspan="5" class="br-empty">—</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="br-empty">—</td></tr>';
     }
   }
 
@@ -1921,6 +1922,8 @@ async function initBackupRestorePage() {
   createBtn.addEventListener('click', async () => {
     const checked = document.querySelector('input[name="br-create-type"]:checked');
     const type = checked ? checked.value : 'full';
+    const labelInput = document.getElementById('br-create-label');
+    const label = labelInput ? labelInput.value.trim().slice(0, 120) : '';
     createBtn.disabled = true;
     setCreateFeedback('Creating backup… this may take a moment.', false);
 
@@ -1928,13 +1931,14 @@ async function initBackupRestorePage() {
       const res = await fetch('/api/admin/backups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, label }),
       });
       const data = await parseJSONResponse(res);
       if (!res.ok) {
         setCreateFeedback(data.error || 'Unable to create backup.', true);
       } else {
         setCreateFeedback(`Backup created: ${formatDate(data.backup.created_at)}`, false);
+        if (labelInput) labelInput.value = '';
         loadBackupList(1);
       }
     } catch {

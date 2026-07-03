@@ -275,6 +275,10 @@
               <span><strong>Database only</strong> &mdash; all table data</span>
             </label>
           </div>
+          <div style="margin-top:0.9rem;">
+            <label for="br-create-label" style="font-size:0.9rem; color:var(--muted); display:block; margin-bottom:0.35rem;">Label <span style="font-weight:400;">(optional)</span></label>
+            <input type="text" id="br-create-label" placeholder="e.g. Before major update" maxlength="120" class="db-input" style="width:100%; box-sizing:border-box;" />
+          </div>
           <div id="br-create-feedback" class="db-feedback" style="margin-top:0.9rem;" aria-live="polite"></div>
           <button id="br-create-btn" class="button db-save-btn">Create Backup</button>
         </div>
@@ -292,13 +296,14 @@
                 <tr>
                   <th>Date / Time</th>
                   <th>Type</th>
+                  <th>Label</th>
                   <th>Created By</th>
                   <th>Contains</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="br-table-body">
-                <tr><td colspan="5" class="br-empty">Loading…</td></tr>
+                <tr><td colspan="6" class="br-empty">Loading…</td></tr>
               </tbody>
             </table>
           </div>
