@@ -130,7 +130,7 @@ if (countdownElements.days) {
   }
 
   function getStoredToken() {
-    return localStorage.getItem('krewe_token');
+    return sessionStorage.getItem('krewe_token');
   }
 
   function normalizePagePath(pathname) {
@@ -846,7 +846,7 @@ if (countdownElements.days) {
       logoutLink.textContent = 'Log Off';
       logoutLink.addEventListener('click', (event) => {
         event.preventDefault();
-        localStorage.removeItem('krewe_token');
+        sessionStorage.removeItem('krewe_token');
         window.location.href = '/';
       });
 
@@ -879,7 +879,7 @@ if (countdownElements.days) {
       logoutLink.textContent = 'Log Off';
       logoutLink.addEventListener('click', (event) => {
         event.preventDefault();
-        localStorage.removeItem('krewe_token');
+        sessionStorage.removeItem('krewe_token');
         window.location.href = '/';
       });
 
@@ -1715,6 +1715,15 @@ if (countdownElements.days) {
       main.appendChild(host);
     }
 
+    // Remove any dynamic sections that were orphaned outside the host
+    // (e.g. previously free-dragged out of #dynamic-page-sections). renderPageSections
+    // rebuilds the host from state, so anything not inside the host is stale.
+    if (main) {
+      main.querySelectorAll('[data-admin-dynamic-section="true"]').forEach((node) => {
+        if (!host.contains(node)) node.remove();
+      });
+    }
+
     host.innerHTML = '';
 
     state.pageSections.forEach((section) => {
@@ -2391,11 +2400,12 @@ if (countdownElements.days) {
   function loadPageSectionsFromDom() {
     state.pageSections = [];
     const host = document.getElementById('dynamic-page-sections');
-    if (!host) return;
+    const seen = new Set();
     let position = 1;
-    host.querySelectorAll('[data-admin-dynamic-section="true"]').forEach((section) => {
+    const collect = (section) => {
       const id = Number.parseInt(section.dataset.adminSectionId || '', 10);
-      if (!Number.isFinite(id)) return;
+      if (!Number.isFinite(id) || seen.has(id)) return;
+      seen.add(id);
       const titleEl = section.querySelector('[data-admin-section-field="title"]');
       const bodyEl = section.querySelector('[data-admin-section-field="body"]');
       const imageEl = section.querySelector('[data-admin-section-field="image_path"]');
@@ -2408,6 +2418,14 @@ if (countdownElements.days) {
         background_path: section.dataset.adminImagePath || '',
         updated_at: new Date().toISOString(),
       });
+    };
+    if (host) {
+      host.querySelectorAll('[data-admin-dynamic-section="true"]').forEach(collect);
+    }
+    // Also pick up sections that were orphaned outside the host (e.g. free-dragged out
+    // of #dynamic-page-sections). Without this they are not tracked and can't be deleted.
+    document.querySelectorAll('main [data-admin-dynamic-section="true"]').forEach((section) => {
+      if (!host || !host.contains(section)) collect(section);
     });
   }
 
@@ -5814,12 +5832,20 @@ if (countdownElements.days) {
     }
   }
 
+  function removeDynamicSectionFromDom(sectionId) {
+    document.querySelectorAll(`[data-admin-dynamic-section="true"][data-admin-section-id="${sectionId}"]`)
+      .forEach((node) => node.remove());
+  }
+
   async function removeSection(sectionId) {
     const confirmed = window.confirm('Remove this section from the page?');
     if (!confirmed) return;
 
     await deletePageSection(sectionId);
     state.pageSections = state.pageSections.filter((section) => section.id !== sectionId);
+    // Remove the DOM node directly so orphaned sections (those reparented outside the
+    // host) are deleted too, not just the ones tracked in state.
+    removeDynamicSectionFromDom(sectionId);
     renderPageSections();
     registerSectionEditing();
   }
@@ -6494,10 +6520,19 @@ if (countdownElements.days) {
   function findFreeDragTarget(source) {
     if (!source || !state.editMode) return null;
     if (isInsideAdminUi(source)) return null;
+    // Never begin a free-drag from an interactive control (button, input, link, …).
+    // Otherwise clicking a control inside an editable element — e.g. a section's
+    // "Remove Section" button — would start a drag and swallow the click, making
+    // buttons feel sluggish/unresponsive.
+    if (source.closest('button, input, select, textarea, a, label, [data-admin-remove-section]')) return null;
     const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="generic"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
     if (isInsideAdminUi(candidate)) return null;
+    // Section roots are managed by the section-reorder system, not free-drag.
+    // Free-dragging a section root reparents it out of its container and orphans it,
+    // after which it can no longer be deleted or reordered normally.
+    if (candidate.dataset.adminDynamicSection === 'true' || candidate.dataset.adminSectionType === 'static') return null;
     return candidate;
   }
 
