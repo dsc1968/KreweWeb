@@ -79,6 +79,7 @@ if (countdownElements.days) {
     pagePath: normalizePagePath(window.location.pathname),
     profilePromise: null,
     editMode: false,
+    inspectorShownFor: null,
     registry: new Map(),
     modal: null,
     sectionModal: null,
@@ -4464,9 +4465,11 @@ if (countdownElements.days) {
 
     if (!state.editMode) {
       panel.style.display = 'none';
+      state.inspectorShownFor = null;
       return;
     }
     panel.style.display = 'flex';
+    state.inspectorShownFor = element || null;
 
     const breadcrumb = panel.querySelector('#admin-panel-breadcrumb');
     const propsEmpty = panel.querySelector('#admin-panel-props-empty');
@@ -4771,11 +4774,13 @@ if (countdownElements.days) {
         registerSectionEditing();
 
         const current = getSelectedEditableElement();
-        if (current) {
-          updateInspectorPanel(current);
-        } else {
-          const root = document.querySelector('main[data-admin-editable="page-root"]');
-          updateInspectorPanel(root || null);
+        const target = current || document.querySelector('main[data-admin-editable="page-root"]') || null;
+        // Skip re-rendering the inspector panel when the selection hasn't changed.
+        // Re-rendering recreates the panel buttons under the cursor and drops the
+        // in-flight click, which is what made the editor feel sluggish / require
+        // multiple clicks to register.
+        if (target !== state.inspectorShownFor) {
+          updateInspectorPanel(target);
         }
       } finally {
         state.isSyncingEditorState = false;
@@ -4795,9 +4800,17 @@ if (countdownElements.days) {
       // and data-admin-* (set by registerEditableElements) — must NOT trigger a sync
       // because they fire mid-tap and destroy direct event listeners on panel buttons
       // before the click event arrives, making inspector buttons unresponsive.
-      const hasRealDomChange = mutations.some((m) =>
-        m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)
-      );
+      // Ignore mutations that originate from the editor's OWN UI (the inspector
+      // panel, element toolbar, selection overlay, modals). Re-rendering the panel in
+      // response to its own DOM changes creates a feedback loop that re-creates the
+      // very buttons being clicked, so the first click is lost and the editor feels
+      // sluggish / requires several clicks to register.
+      const hasRealDomChange = mutations.some((m) => {
+        if (m.type !== 'childList') return false;
+        if (m.addedNodes.length === 0 && m.removedNodes.length === 0) return false;
+        if (isInsideAdminUi(m.target)) return false;
+        return true;
+      });
       if (!hasRealDomChange) return;
       scheduleEditorSync();
     });

@@ -2505,7 +2505,14 @@ app.delete('/api/admin/albums/:albumId(\\d+)/images/:imageId(\\d+)', authenticat
 
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+  if (!token && req.headers.cookie) {
+    const cookieMatch = req.headers.cookie
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith('krewe_token='));
+    if (cookieMatch) token = cookieMatch.slice('krewe_token='.length);
+  }
   if (!token) return res.status(401).json({ error: 'Missing token' });
 
   let payload;
@@ -3256,6 +3263,7 @@ app.post('/api/auth/register/verify-code', async (req, res) => {
 
     const user = insertResult.rows[0];
     const token = generateToken(user);
+    res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.status(201).json({
       user: {
         id: user.id,
@@ -3291,6 +3299,7 @@ app.post('/api/auth/login', async (req, res) => {
     const ok = bcrypt.compareSync(password, user.password_hash || '');
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const token = generateToken(user);
+    res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role }, token });
   } catch (error) {
     console.error('Login failed', error);

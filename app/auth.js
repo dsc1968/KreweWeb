@@ -2210,4 +2210,413 @@ async function initShopPage() {
       const outOfStock = p.stock_qty != null && p.stock_qty <= 0;
       const card = document.createElement('div');
       card.className = 'shop-product-card';
- 
+      const imgHtml = p.image_path
+        ? `<img class="shop-product-img" src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" loading="lazy" />`
+        : `<div class="shop-product-img-placeholder">🛍</div>`;
+      card.innerHTML = `
+        ${imgHtml}
+        <div class="shop-product-body">
+          ${p.category ? `<span class="shop-product-category">${escHtml(p.category)}</span>` : ''}
+          <h3 class="shop-product-name">${escHtml(p.name)}</h3>
+          ${p.description ? `<p class="shop-product-desc">${escHtml(p.description)}</p>` : '<p class="shop-product-desc"></p>'}
+          <div class="shop-product-footer">
+            <span class="shop-product-price">${fmtPrice(p.price)}</span>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem;">
+              ${p.stock_qty != null ? `<span class="shop-product-stock">${p.stock_qty} left</span>` : ''}
+              <button class="shop-add-btn" data-product-id="${p.id}" ${outOfStock ? 'disabled' : ''}>
+                ${outOfStock ? 'Out of Stock' : 'Add to Cart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      card.querySelector('.shop-add-btn:not(:disabled)')?.addEventListener('click', () => addToCart(p.id));
+      grid.appendChild(card);
+    });
+  }
+
+  // ── Orders ───────────────────────────────────────────────────────────────
+  async function loadOrders() {
+    const feedEl = document.getElementById('shop-orders-feedback');
+    const listEl = document.getElementById('shop-orders-list');
+    feedEl.textContent = 'Loading orders…';
+    try {
+      const res = await fetch('/api/shop/orders', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await parseJSONResponse(res);
+      feedEl.textContent = '';
+      if (!res.ok) { listEl.innerHTML = `<p style="color:#f87171;">${data.error || 'Unable to load orders.'}</p>`; return; }
+      if (data.orders.length === 0) { listEl.innerHTML = '<p style="color:var(--muted);">No orders yet.</p>'; return; }
+      listEl.innerHTML = '';
+      data.orders.forEach((o) => {
+        const div = document.createElement('div');
+        div.className = 'shop-order-card';
+        const itemLines = (o.items || []).map((i) =>
+          `${escHtml(i.product_name)} × ${i.quantity} — ${fmtPrice(parseFloat(i.unit_price) * i.quantity)}`
+        ).join('<br>');
+        div.innerHTML = `
+          <div class="shop-order-head">
+            <span class="shop-order-id">Order #${o.id}</span>
+            <span class="shop-order-date">${new Date(o.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</span>
+            <span class="shop-order-total">${fmtPrice(o.total_amount)}</span>
+            <span class="shop-order-status ${o.status}">${o.status}</span>
+          </div>
+          <div class="shop-order-items">${itemLines || '—'}</div>
+        `;
+        listEl.appendChild(div);
+      });
+    } catch { feedEl.textContent = 'Network error loading orders.'; }
+  }
+
+  // Tab wiring
+  document.querySelectorAll('.shop-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      const panel = document.querySelector(`[data-shop-panel="${btn.dataset.shopTab}"]`);
+      if (panel) panel.classList.add('is-active');
+      if (btn.dataset.shopTab === 'orders') loadOrders();
+    });
+  });
+
+  await loadCart();
+  await loadProducts();
+
+  // Fetch simulation mode (must happen before PayPal setup so the flag is set)
+  try {
+    const pmRes = await fetch('/api/shop/payment-mode', { headers: { Authorization: 'Bearer ' + token } });
+    const pmData = await pmRes.json();
+    simulatePayment = pmData.simulate === true;
+  } catch { /* default false */ }
+
+  // ── PayPal setup ────────────────────────────────────────────────────────
+  if (!simulatePayment) try {
+    const ppRes = await fetch('/api/shop/paypal/config', { headers: { Authorization: 'Bearer ' + token } });
+    const ppData = await ppRes.json();
+    if (ppData.configured && ppData.client_id) {
+      await new Promise((resolve, reject) => {
+        const existing = document.getElementById('paypal-sdk-script');
+        if (existing) { resolve(); return; }
+        const script = document.createElement('script');
+        script.id = 'paypal-sdk-script';
+        script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(ppData.client_id)}&currency=USD`;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+      // Hide the plain checkout button, show PayPal buttons instead
+      if (checkoutBtn) checkoutBtn.style.display = 'none';
+      const ppContainer = document.getElementById('paypal-button-container');
+      if (ppContainer && window.paypal) {
+        window.paypal.Buttons({
+          style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' },
+          createOrder: async () => {
+            cartFeedEl.textContent = '';
+            cartFeedEl.style.color = 'var(--muted)';
+            const r = await fetch('/api/shop/paypal/create-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({}),
+            });
+            const d = await r.json();
+            if (!r.ok) {
+              cartFeedEl.style.color = '#f87171';
+              cartFeedEl.textContent = d.error || 'Unable to start payment';
+              throw new Error(d.error);
+            }
+            return d.paypal_order_id;
+          },
+          onApprove: async (ppData) => {
+            cartFeedEl.style.color = 'var(--muted)';
+            cartFeedEl.textContent = 'Processing payment…';
+            const r = await fetch('/api/shop/paypal/capture-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ paypal_order_id: ppData.orderID }),
+            });
+            const result = await r.json();
+            if (r.ok) {
+              cartFeedEl.style.color = '#4ade80';
+              cartFeedEl.textContent = `Order #${result.order_id} placed! Total: $${parseFloat(result.total).toFixed(2)}`;
+              await loadCart();
+              document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
+              document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
+              const ordersBtn = document.querySelector('[data-shop-tab="orders"]');
+              const ordersPanel = document.querySelector('[data-shop-panel="orders"]');
+              if (ordersBtn) ordersBtn.classList.add('is-active');
+              if (ordersPanel) ordersPanel.classList.add('is-active');
+              closeCart();
+              loadOrders();
+            } else {
+              cartFeedEl.style.color = '#f87171';
+              cartFeedEl.textContent = result.error || 'Payment capture failed.';
+            }
+          },
+          onCancel: () => {
+            cartFeedEl.textContent = 'Payment cancelled.';
+            cartFeedEl.style.color = 'var(--muted)';
+          },
+          onError: (err) => {
+            console.error('PayPal error', err);
+            cartFeedEl.style.color = '#f87171';
+            cartFeedEl.textContent = 'Payment error. Please try again.';
+          },
+        }).render('#paypal-button-container');
+      }
+    }
+  } catch (err) {
+    // PayPal not configured or failed to load — plain checkout button remains
+    console.warn('PayPal setup skipped:', err.message);
+  }
+}
+
+// ── Shop: Admin management page ───────────────────────────────────────────
+async function initShopAdminPage() {
+  const page = document.getElementById('shop-admin-page');
+  if (!page) return;
+
+  const token = getToken();
+  if (!token) { window.location.href = '/login.html'; return; }
+
+  const profile = await fetchProfile();
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'store_admin')) {
+    window.location.href = '/dashboard.html';
+    return;
+  }
+  page.style.display = '';
+
+  const prodFeed = document.getElementById('sa-products-feedback');
+  const ordFeed  = document.getElementById('sa-orders-feedback');
+  let editingId = null;
+
+  // Tab wiring (reuse shop-tab-btn / shop-panel classes)
+  document.querySelectorAll('[data-shop-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-shop-tab]').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('[data-shop-panel]').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      const panel = document.querySelector(`[data-shop-panel="${btn.dataset.shopTab}"]`);
+      if (panel) panel.classList.add('is-active');
+      if (btn.dataset.shopTab === 'orders') loadAdminOrders(1);
+    });
+  });
+
+  // Product modal helpers
+  const modal    = document.getElementById('sa-product-modal');
+  const form     = document.getElementById('sa-product-form');
+  const formFeed = document.getElementById('sa-form-feedback');
+
+  function openModal(product) {
+    editingId = product ? product.id : null;
+    document.getElementById('sa-modal-title').textContent = product ? 'Edit Product' : 'Add Product';
+    document.getElementById('sa-product-id').value = product ? product.id : '';
+    document.getElementById('sa-name').value = product ? product.name : '';
+    document.getElementById('sa-price').value = product ? product.price : '';
+    document.getElementById('sa-category').value = product ? (product.category || '') : '';
+    document.getElementById('sa-stock').value = product && product.stock_qty != null ? product.stock_qty : '';
+    document.getElementById('sa-active').value = product ? String(product.active) : 'true';
+    document.getElementById('sa-image').value = product ? (product.image_path || '') : '';
+    document.getElementById('sa-desc').value = product ? (product.description || '') : '';
+    formFeed.textContent = '';
+    modal.style.display = 'flex';
+  }
+  function closeModal() { modal.style.display = 'none'; }
+
+  document.getElementById('sa-add-product-btn').addEventListener('click', () => openModal(null));
+  document.getElementById('sa-modal-close').addEventListener('click', closeModal);
+  document.getElementById('sa-form-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    formFeed.textContent = 'Saving…';
+    formFeed.style.color = 'var(--muted)';
+
+    const payload = {
+      name:        document.getElementById('sa-name').value.trim(),
+      price:       document.getElementById('sa-price').value,
+      category:    document.getElementById('sa-category').value.trim(),
+      stock_qty:   document.getElementById('sa-stock').value,
+      active:      document.getElementById('sa-active').value === 'true',
+      image_path:  document.getElementById('sa-image').value.trim(),
+      description: document.getElementById('sa-desc').value.trim(),
+    };
+
+    const url    = editingId ? `/api/admin/shop/products/${editingId}` : '/api/admin/shop/products';
+    const method = editingId ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(payload),
+      });
+      const data = await parseJSONResponse(res);
+      if (res.ok) {
+        formFeed.style.color = '#4ade80';
+        formFeed.textContent = 'Saved.';
+        closeModal();
+        loadAdminProducts();
+      } else {
+        formFeed.style.color = '#f87171';
+        formFeed.textContent = data.error || 'Unable to save.';
+      }
+    } catch {
+      formFeed.style.color = '#f87171';
+      formFeed.textContent = 'Network error.';
+    }
+    submitBtn.disabled = false;
+  });
+
+  // ── Products table ───────────────────────────────────────────────────────
+  async function loadAdminProducts() {
+    prodFeed.textContent = 'Loading…';
+    const tbody = document.getElementById('sa-products-tbody');
+    try {
+      const res = await fetch('/api/admin/shop/products', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await parseJSONResponse(res);
+      prodFeed.textContent = '';
+      if (!res.ok) { prodFeed.textContent = data.error || 'Unable to load products.'; return; }
+      if (data.products.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:1.5rem;text-align:center;">No products yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      data.products.forEach((p) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escHtml(p.name)}</td>
+          <td>${escHtml(p.category || '—')}</td>
+          <td>$${parseFloat(p.price).toFixed(2)}</td>
+          <td>${p.stock_qty != null ? p.stock_qty : '∞'}</td>
+          <td><span class="sa-badge ${p.active ? 'active' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</span></td>
+          <td>
+            <button class="sa-action-btn sa-edit" data-id="${p.id}">Edit</button>
+            <button class="sa-action-btn danger sa-delete" data-id="${p.id}">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('.sa-edit').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const prod = data.products.find((p) => p.id === parseInt(btn.dataset.id, 10));
+          if (prod) openModal(prod);
+        });
+      });
+      tbody.querySelectorAll('.sa-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this product?')) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/admin/shop/products/${btn.dataset.id}`, {
+              method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + token },
+            });
+            if (res.ok) loadAdminProducts();
+            else { const d = await parseJSONResponse(res); alert(d.error || 'Delete failed'); btn.disabled = false; }
+          } catch { alert('Network error.'); btn.disabled = false; }
+        });
+      });
+    } catch { prodFeed.textContent = 'Network error loading products.'; }
+  }
+
+  // ── Orders table ──────────────────────────────────────────────────────────
+  async function loadAdminOrders(page) {
+    ordFeed.textContent = 'Loading…';
+    const tbody   = document.getElementById('sa-orders-tbody');
+    const pagEl   = document.getElementById('sa-orders-pagination');
+    try {
+      const res = await fetch(`/api/admin/shop/orders?page=${page}`, { headers: { Authorization: 'Bearer ' + token } });
+      const data = await parseJSONResponse(res);
+      ordFeed.textContent = '';
+      if (!res.ok) { ordFeed.textContent = data.error || 'Unable to load orders.'; return; }
+      if (data.orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:1.5rem;text-align:center;">No orders yet.</td></tr>';
+        pagEl.innerHTML = '';
+        return;
+      }
+      tbody.innerHTML = '';
+      const statusOptions = ['pending','processing','shipped','completed','cancelled'];
+      data.orders.forEach((o) => {
+        const itemSummary = (o.items || []).map((i) => `${escHtml(i.product_name)} ×${i.quantity}`).join(', ');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>#${o.id}</td>
+          <td>${escHtml(o.buyer_name)}<br><small style="color:var(--muted);">${escHtml(o.buyer_email)}</small></td>
+          <td>${new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+          <td>$${parseFloat(o.total_amount).toFixed(2)}</td>
+          <td style="font-size:0.82rem;color:var(--muted);">${itemSummary}</td>
+          <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+            <select class="sa-status-select" data-order-id="${o.id}">
+              ${statusOptions.map((s) => `<option value="${s}" ${s===o.status?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+            </select>
+            <button class="sa-action-btn danger sa-order-delete" data-order-id="${o.id}" title="Remove order">Remove</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('.sa-status-select').forEach((sel) => {
+        sel.addEventListener('change', async () => {
+          const ordId = sel.dataset.orderId;
+          try {
+            const res = await fetch(`/api/admin/shop/orders/${ordId}/status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ status: sel.value }),
+            });
+            if (!res.ok) { const d = await parseJSONResponse(res); alert(d.error || 'Update failed'); }
+          } catch { alert('Network error.'); }
+        });
+      });
+      tbody.querySelectorAll('.sa-order-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`Remove order #${btn.dataset.orderId}? This cannot be undone.`)) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/admin/shop/orders/${btn.dataset.orderId}`, {
+              method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + token },
+            });
+            if (res.ok) {
+              btn.closest('tr').remove();
+            } else {
+              const d = await parseJSONResponse(res);
+              alert(d.error || 'Delete failed');
+              btn.disabled = false;
+            }
+          } catch { alert('Network error.'); btn.disabled = false; }
+        });
+      });
+      // Pagination
+      pagEl.innerHTML = '';
+      for (let i = 1; i <= data.pages; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'br-page-btn' + (i === data.page ? ' active' : '');
+        btn.textContent = i;
+        btn.addEventListener('click', () => loadAdminOrders(i));
+        pagEl.appendChild(btn);
+      }
+    } catch { ordFeed.textContent = 'Network error loading orders.'; }
+  }
+
+  loadAdminProducts();
+}
+
+function initAuthPages() {
+  initDashboard();
+  initUserManagementPage();
+  initConfigurationPage();
+  initBackupRestorePage();
+  initShopPage();
+  initShopAdminPage();
+  // Show shop nav link for any logged-in user
+  if (getToken()) {
+    const shopNavLink = document.getElementById('nav-shop-link');
+    if (shopNavLink) shopNavLink.style.display = '';
+  }
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAuthPages);
+else initAuthPages();
