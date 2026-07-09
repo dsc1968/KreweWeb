@@ -1725,10 +1725,47 @@ if (countdownElements.days) {
       });
     }
 
-    host.innerHTML = '';
+    // Reconcile existing wrappers with state instead of wiping the host, which would
+    // destroy editor-added content living inside each section's content host (text/image
+    // elements added through the editor). Build a lookup of the current wrappers first.
+    const existingById = new Map();
+    Array.from(host.children).forEach((child) => {
+      if (child.dataset && child.dataset.adminDynamicSection === 'true' && child.dataset.adminSectionId) {
+        existingById.set(child.dataset.adminSectionId, child);
+      }
+    });
 
+    const desiredIds = new Set();
     state.pageSections.forEach((section) => {
-      const wrapper = document.createElement('section');
+      const idStr = String(section.id);
+      desiredIds.add(idStr);
+
+      // Reuse the existing wrapper when present so its content host (and any
+      // text/image elements added through the editor) is preserved.
+      let wrapper = existingById.get(idStr);
+      if (wrapper) {
+        wrapper.dataset.adminImagePath = section.background_path || '';
+        if (section.background_path) {
+          wrapper.style.setProperty('--dynamic-section-bg', `url("${withCacheBust(section.background_path, section.updated_at)}")`);
+        } else {
+          wrapper.style.removeProperty('--dynamic-section-bg');
+        }
+        const contentHost = wrapper.querySelector(':scope > .container > .dynamic-page-section-content-host')
+          || wrapper.querySelector(':scope > .container')
+          || wrapper;
+        const existingCard = contentHost.querySelector(':scope > .dynamic-page-section-card');
+        const newCard = buildDynamicSectionCard(section);
+        if (existingCard && newCard) {
+          contentHost.replaceChild(newCard, existingCard);
+        } else if (newCard && !existingCard) {
+          contentHost.appendChild(newCard);
+        } else if (!newCard && existingCard) {
+          existingCard.remove();
+        }
+        return;
+      }
+
+      wrapper = document.createElement('section');
       wrapper.className = 'section dynamic-page-section';
       wrapper.dataset.adminDynamicSection = 'true';
       wrapper.dataset.adminSectionId = String(section.id);
@@ -1817,7 +1854,88 @@ if (countdownElements.days) {
       host.appendChild(wrapper);
     });
 
+    // Remove wrappers that are no longer part of state.
+    existingById.forEach((wrapper, idStr) => {
+      if (!desiredIds.has(idStr)) wrapper.remove();
+    });
+
+    // Reorder the wrappers in the DOM to match the order in state.pageSections.
+    state.pageSections.forEach((section) => {
+      const wrapper = existingById.get(String(section.id))
+        || host.querySelector(`:scope > [data-admin-dynamic-section="true"][data-admin-section-id="${section.id}"]`);
+      if (wrapper && wrapper.parentNode === host) host.appendChild(wrapper);
+    });
+
     applySectionSizeOverrides();
+  }
+
+  // Builds the "core content" card (title / body / image / remove button) for a
+  // dynamic section. Returns null when the section has no core content, so callers
+  // can decide whether to render anything at all. Kept as a separate helper so the
+  // same card markup can be produced both for brand-new wrappers and for in-place
+  // updates of existing ones.
+  function buildDynamicSectionCard(section) {
+    const hasCoreContent = Boolean(section.title || section.body || section.image_path);
+    if (!hasCoreContent) return null;
+
+    const card = document.createElement('div');
+    card.className = `dynamic-page-section-card${section.image_path ? ' grid-two' : ''}`;
+
+    const copy = document.createElement('div');
+    copy.className = 'dynamic-page-section-copy';
+
+    const tag = document.createElement('span');
+    tag.className = 'section-tag';
+    tag.textContent = 'Custom Section';
+    copy.appendChild(tag);
+
+    if (section.title) {
+      const title = document.createElement('h2');
+      title.dataset.adminSectionId = String(section.id);
+      title.dataset.adminSectionField = 'title';
+      title.dataset.adminEditable = 'text';
+      title.dataset.adminSectionEmpty = 'false';
+      title.textContent = section.title;
+      copy.appendChild(title);
+    }
+
+    if (section.body) {
+      const body = document.createElement('p');
+      body.className = 'section-copy';
+      body.dataset.adminSectionId = String(section.id);
+      body.dataset.adminSectionField = 'body';
+      body.dataset.adminEditable = 'text';
+      body.dataset.adminSectionEmpty = 'false';
+      body.textContent = section.body;
+      copy.appendChild(body);
+    }
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'button secondary admin-remove-section';
+    removeButton.dataset.adminRemoveSection = String(section.id);
+    removeButton.textContent = 'Remove Section';
+    copy.appendChild(removeButton);
+
+    card.appendChild(copy);
+
+    if (section.image_path) {
+      const media = document.createElement('div');
+      media.className = 'dynamic-page-section-media';
+
+      const image = document.createElement('img');
+      image.src = withCacheBust(section.image_path, section.updated_at);
+      image.alt = section.title || 'Custom section image';
+      image.dataset.adminSectionId = String(section.id);
+      image.dataset.adminSectionField = 'image_path';
+      image.dataset.adminEditable = 'image';
+      image.dataset.adminImagePath = section.image_path;
+      media.appendChild(image);
+
+      card.appendChild(media);
+    }
+
+    return card;
   }
 
   function placeDynamicSectionsHostRelative(staticSectionKey, insertPosition) {
@@ -5839,6 +5957,8 @@ if (countdownElements.days) {
       }
 
       renderPageSections();
+      registerEditableElements();
+      applyElementOverrides();
       registerSectionEditing();
     } catch (error) {
       alert(error.message);
@@ -6779,8 +6899,9 @@ if (countdownElements.days) {
       }
 
       const edges = getResizeEdges(target, event);
-      // Show resize cursor near edges; show move cursor when Alt is held; else let CSS pointer show
-      const cursor = edges ? getCursorForEdges(edges) : (event.altKey ? 'move' : '');
+      // Show resize cursor near edges; show the move cursor over the rest of the
+      // element so it is clear the element can be dragged by click-and-hold.
+      const cursor = edges ? getCursorForEdges(edges) : 'move';
       // Only write style when value actually changes to avoid spurious MutationObserver firings
       if (target !== _lastHoverTarget || cursor !== _lastHoverCursor) {
         if (_lastHoverTarget && _lastHoverTarget !== target) _lastHoverTarget.style.cursor = '';
@@ -6798,17 +6919,18 @@ if (countdownElements.days) {
       const target = findFreeDragTarget(event.target);
       if (!target) return;
 
+      // Click-and-hold anywhere on an editable element starts a free move/resize.
+      // Resizing is initiated when the pointer is near an edge; otherwise it is a move.
       const resizeEdges = getResizeEdges(target, event);
-      const shouldStartDrag = Boolean(resizeEdges) || event.altKey;
-      if (!shouldStartDrag) {
-        return;
-      }
+      const isResizeAction = Boolean(resizeEdges);
 
       // Do NOT call event.preventDefault() here — that would swallow the click event
-      // and prevent element selection when the user taps near an edge without dragging.
+      // and prevent element selection when the user taps without dragging. A plain
+      // click (no movement) is treated as a normal selection by beginFreeDrag's
+      // pointerup handler, which returns early without making the element absolute.
       // Text-selection is blocked via body.style.userSelect inside beginFreeDrag instead.
       event.stopPropagation();
-      beginFreeDrag(target, event);
+      beginFreeDrag(target, event, isResizeAction ? resizeEdges : null);
     }, true);
   }
 
