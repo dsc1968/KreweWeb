@@ -45,17 +45,4 @@ async function authenticateToken(req, res, next) {
 }
 
 
-app.get('/api/users', authenticateToken, async (req, res) => {
-  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
-
-  try {
-    const result = await pool.query('SELECT id, email, full_name, role FROM users ORDER BY id ASC');
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Failed to fetch users', error);
-    res.status(500).json({ error: 'Unable to fetch users' });
-  }
-});
-
-
 module.exports = { authenticateToken };

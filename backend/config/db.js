@@ -21,6 +21,11 @@ const CONTACT_RECIPIENT = (typeof process.env.CONTACT_RECIPIENT === 'string'
   ? process.env.CONTACT_RECIPIENT.trim().toLowerCase()
   : 'dougscobb@hotmail.com');
 
+// currentSeasonYear is defined in utils/season.js (it depends on resolveSeasonEndDate,
+// which also lives there). Import it here for use by ensureContentTable() without
+// creating a load-time circular dependency with config/db.
+const { currentSeasonYear } = require('../utils/season');
+
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const LENGTH_VALUE_PATTERN = /^(?:-?\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw)|0)$/;
 const BORDER_STYLE_VALUES = new Set(['none', 'solid', 'dashed', 'dotted', 'double']);
@@ -439,29 +444,6 @@ async function ensureContentTable() {
   `);
 }
 
-function isAdmin(req) {
-  return Boolean(req.user && req.user.role === 'admin');
-}
-
-function isShopManager(req) {
-  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'store_admin'));
-}
-
-function currentSeasonYear() {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const end = resolveSeasonEndDate(year);
-  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return todayMs >= end.getTime() ? year + 1 : year;
-}
-function seasonEndISO(year) {
-  return resolveSeasonEndDate(year).toISOString().slice(0, 10);
-}
-function ashWednesdayISO(year) {
-  return ashWednesdayDate(year).toISOString().slice(0, 10);
-}
-
-
 module.exports = {
   pool,
   JWT_SECRET,
@@ -474,4 +456,5 @@ module.exports = {
   SMTP_FROM,
   SMTP_REPLY_TO,
   CONTACT_RECIPIENT,
+  ensureContentTable,
 };

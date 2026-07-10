@@ -2,9 +2,9 @@
   "name": "krewe-mystique-site",
   "version": "1.0.0",
   "private": true,
-  "main": "server.js",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node backend/server.js",
     "seed": "node seed.js",
     "init-db": "bash scripts/init_db.sh"
   },
