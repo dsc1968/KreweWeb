@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Register - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="auth-page">
+      <div class="auth-card container">
+        <h1>Create an account</h1>
+        <form id="register-form">
+          <label for="full_name">Full name</label>
+          <input id="full_name" name="full_name" required />
+
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required />
+
+          <label for="reg-phone">Phone Number</label>
+          <input id="reg-phone" name="phone" type="tel" placeholder="e.g. 555-867-5309" />
+
+          <label for="reg-birthdate">Date of Birth</label>
+          <input id="reg-birthdate" name="birthdate" type="date" />
+
+          <label for="reg-occupation">Occupation</label>
+          <input id="reg-occupation" name="occupation" type="text" placeholder="e.g. Teacher, Engineer…" />
+
+          <label for="reg-sponsor">Krewe Member Sponsor</label>
+          <input id="reg-sponsor" name="sponsor_name" type="text" placeholder="Name of member sponsoring you" />
+
+          <label for="reg-address">Street Address</label>
+          <input id="reg-address" name="address" type="text" placeholder="123 Main St" />
+
+          <div style="display:grid;grid-template-columns:1fr 4rem 7rem;gap:0.5rem;">
+            <div>
+              <label for="reg-city">City</label>
+              <input id="reg-city" name="city" type="text" placeholder="New Orleans" style="width:100%;" />
+            </div>
+            <div>
+              <label for="reg-state">State</label>
+              <input id="reg-state" name="state" type="text" placeholder="LA" maxlength="2" style="width:100%;text-transform:uppercase;" />
+            </div>
+            <div>
+              <label for="reg-zip">Zip</label>
+              <input id="reg-zip" name="zip" type="text" placeholder="70130" maxlength="10" style="width:100%;" />
+            </div>
+          </div>
+
+          <div id="verification-code-group" hidden>
+            <label for="verification_code">Verification code</label>
+            <input id="verification_code" name="verification_code" inputmode="numeric" autocomplete="one-time-code" />
+            <button type="button" id="resend-code-button" hidden style="margin-top:0.5rem; background:none; border:none; color:inherit; text-decoration:underline; cursor:pointer; padding:0; font:inherit;">Resend code</button>
+          </div>
+
+          <p id="register-feedback" aria-live="polite"></p>
+
+          <button class="button primary" type="submit" id="register-submit-button">Send verification code</button>
+        </form>
+        <p>
+          Already have an account? <a href="/login.html">Log in</a>
+        </p>
+      </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>

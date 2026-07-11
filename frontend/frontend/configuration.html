@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Site Configuration - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="admin-configuration-page" class="section" style="display:none;">
+        <h2>Site Configuration</h2>
+        <p>Manage email/SMTP settings and other site configuration options. Changes take effect after a server restart.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-top:1rem; margin-bottom:1.5rem;">
+          <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+        </div>
+
+        <div id="site-config-card" class="db-card" style="display:none;">
+          <div class="db-card-header">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a6.97 6.97 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.48.48 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            <h3>Site Configuration</h3>
+          </div>
+          <form id="site-config-form" class="db-form" novalidate>
+
+            <p class="db-config-section-label">Email / SMTP</p>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-smtp-host">SMTP Host</label>
+                <input type="text" id="cfg-smtp-host" name="SMTP_HOST" placeholder="smtp.gmail.com" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-smtp-port">SMTP Port</label>
+                <input type="text" id="cfg-smtp-port" name="SMTP_PORT" placeholder="587" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-smtp-user">SMTP Username</label>
+                <input type="text" id="cfg-smtp-user" name="SMTP_USER" placeholder="you@gmail.com" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-smtp-pass">SMTP Password / App Key</label>
+                <input type="password" id="cfg-smtp-pass" name="SMTP_PASS" placeholder="••••••••" autocomplete="new-password" />
+              </div>
+            </div>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-smtp-from">From Address</label>
+                <input type="text" id="cfg-smtp-from" name="SMTP_FROM" placeholder='Krewe Mystique &lt;no-reply@example.com&gt;' />
+              </div>
+              <div class="form-group">
+                <label for="cfg-smtp-reply-to">Reply-To Address</label>
+                <input type="text" id="cfg-smtp-reply-to" name="SMTP_REPLY_TO" placeholder="you@example.com" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-smtp-secure">Use TLS (SMTP_SECURE)</label>
+                <select id="cfg-smtp-secure" name="SMTP_SECURE">
+                  <option value="false">false (STARTTLS / port 587)</option>
+                  <option value="true">true (SSL / port 465)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-contact-recipient">Contact Form Recipient</label>
+                <input type="text" id="cfg-contact-recipient" name="CONTACT_RECIPIENT" placeholder="you@example.com" />
+              </div>
+            </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">PayPal Payments</p>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-paypal-mode">Mode</label>
+                <select id="cfg-paypal-mode" name="PAYPAL_MODE">
+                  <option value="sandbox">Sandbox (testing)</option>
+                  <option value="live">Live (production)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-paypal-client-id">Client ID</label>
+                <input type="text" id="cfg-paypal-client-id" name="PAYPAL_CLIENT_ID" placeholder="AaBb…" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-paypal-secret">Client Secret</label>
+                <input type="password" id="cfg-paypal-secret" name="PAYPAL_CLIENT_SECRET" placeholder="••••••••" autocomplete="new-password" />
+              </div>
+            </div>
+            <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
+            <div class="db-form-grid" style="margin-top:0.75rem;">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+                  <input type="checkbox" id="cfg-payment-simulate" name="PAYMENT_SIMULATE" style="accent-color:#ffd262;width:1rem;height:1rem;flex-shrink:0;" />
+                  Enable Payment Simulation Mode &mdash; shows Accept / Decline prompt instead of real payment processor
+                </label>
+              </div>
+            </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">Registration</p>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-code-ttl">Verification Code TTL (minutes)</label>
+                <input type="number" id="cfg-code-ttl" name="REGISTRATION_CODE_TTL_MINUTES" min="1" max="60" placeholder="10" />
+              </div>
+            </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">Season</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When this date arrives each year all member dues and fees are automatically reset to unpaid. The server checks at midnight UTC each day.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-season-end-type">Season End Date Type</label>
+                <select id="cfg-season-end-type">
+                  <option value="">Ash Wednesday (Mardi Gras default)</option>
+                  <option value="fixed">Fixed date — same month and day every year</option>
+                  <option value="relative">Relative date — e.g. 1st Wednesday of July</option>
+                </select>
+              </div>
+            </div>
+            <!-- Fixed date fields -->
+            <div id="cfg-season-fixed-fields" class="db-form-grid" style="display:none;">
+              <div class="form-group">
+                <label for="cfg-season-fixed-month">Month</label>
+                <select id="cfg-season-fixed-month">
+                  <option value="1">January</option><option value="2">February</option>
+                  <option value="3">March</option><option value="4">April</option>
+                  <option value="5">May</option><option value="6">June</option>
+                  <option value="7">July</option><option value="8">August</option>
+                  <option value="9">September</option><option value="10">October</option>
+                  <option value="11">November</option><option value="12">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-fixed-day">Day of Month</label>
+                <input type="number" id="cfg-season-fixed-day" min="1" max="31" placeholder="15" style="max-width:6rem;" />
+              </div>
+            </div>
+            <!-- Relative date fields -->
+            <div id="cfg-season-relative-fields" class="db-form-grid" style="display:none;">
+              <div class="form-group">
+                <label for="cfg-season-rel-ordinal">Occurrence</label>
+                <select id="cfg-season-rel-ordinal">
+                  <option value="1">1st</option><option value="2">2nd</option>
+                  <option value="3">3rd</option><option value="4">4th</option>
+                  <option value="-1">Last</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-rel-dow">Day of Week</label>
+                <select id="cfg-season-rel-dow">
+                  <option value="0">Sunday</option><option value="1">Monday</option>
+                  <option value="2">Tuesday</option><option value="3">Wednesday</option>
+                  <option value="4">Thursday</option><option value="5">Friday</option>
+                  <option value="6">Saturday</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="cfg-season-rel-month">Month</label>
+                <select id="cfg-season-rel-month">
+                  <option value="1">January</option><option value="2">February</option>
+                  <option value="3">March</option><option value="4">April</option>
+                  <option value="5">May</option><option value="6">June</option>
+                  <option value="7">July</option><option value="8">August</option>
+                  <option value="9">September</option><option value="10">October</option>
+                  <option value="11">November</option><option value="12">December</option>
+                </select>
+              </div>
+            </div>
+            <!-- Hidden input serialized as SEASON_END_DATE — picked up by the config form submit -->
+            <input type="hidden" id="cfg-season-end-date-value" name="SEASON_END_DATE" />
+            <div style="margin-top:0.6rem;">
+              <span id="cfg-season-next-reset-label" style="font-size:0.85rem;color:var(--muted);"></span>
+            </div>
+            <div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+              <button type="button" id="cfg-season-reset-btn" class="button secondary" style="font-size:0.85rem;">Reset Dues &amp; Fees Now</button>
+              <span id="cfg-season-reset-feedback" style="font-size:0.85rem;color:var(--muted);"></span>
+            </div>
+
+            <div id="site-config-feedback" class="db-feedback" aria-live="polite"></div>
+            <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+              <button type="submit" class="button db-save-btn">Save Configuration</button>
+              <span style="font-size:0.8rem; color:var(--muted);">Changes take effect after a server restart.</span>
+            </div>
+          </form>
+        </div>
+
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+    <script src="auth.js"></script>
+  </body>
+</html>
