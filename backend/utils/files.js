@@ -1,26 +1,28 @@
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const appDir = path.join(__dirname, '..', 'frontend');
+// This module lives in backend/utils/, so reaching the real (served) frontend
+// at the project ROOT requires going up TWO levels. app.js serves the root
+// `frontend/`, so uploads and saved pages must land there -- otherwise images
+// 404 (the <img> falls back to its alt text) and page saves are written to an
+// unserved directory.
+const appDir = path.join(__dirname, '..', '..', 'frontend');
 const fileBackupsDir = path.join(__dirname, '..', '_file_backups');
-const imagesDir = path.join(__dirname, '..', 'frontend', 'assets', 'images');
+const imagesDir = path.join(__dirname, '..', '..', 'frontend', 'assets', 'images');
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, imagesDir);
   },
   filename: function (req, file, cb) {
-    // sanitize filename
+    // Sanitize the original name and keep its extension so the file is served
+    // as a real image. Previously the `target` field (e.g. "user-added" or
+    // "content") was mistakenly used AS the filename and the extension was
+    // dropped, which produced a nameless/extensionless file and broke image
+    // rendering. `target` is no longer used for naming.
     const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
-    // if target provided, use it
-    const target = req.body.target;
-    if (target) {
-      const t = path.basename(target).replace(/[^a-zA-Z0-9._-]/g, '_');
-      cb(null, t);
-    } else {
-      const name = Date.now() + '_' + safeName;
-      cb(null, name);
-    }
+    const name = Date.now() + '_' + safeName;
+    cb(null, name);
   }
 });
 const upload = multer({ storage });

@@ -2800,6 +2800,8 @@ if (countdownElements.days) {
 
       .admin-editor-modal {
         width: min(680px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
         background: #08102a;
         color: #f5f7ff;
         border: 1px solid rgba(255, 210, 98, 0.24);
@@ -2816,6 +2818,7 @@ if (countdownElements.days) {
       .admin-editor-modal textarea {
         width: 100%;
         min-height: 220px;
+        max-height: 50vh;
         margin: 1rem 0;
         padding: 1rem;
         border-radius: 14px;
@@ -2832,6 +2835,7 @@ if (countdownElements.days) {
 
       .admin-editor-actions {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.75rem;
         justify-content: flex-end;
       }
@@ -2869,7 +2873,10 @@ if (countdownElements.days) {
       }
 
       .dynamic-page-section {
-        background-image: linear-gradient(180deg, rgba(2, 8, 22, 0.78), rgba(2, 8, 22, 0.92)), var(--dynamic-section-bg, none);
+        /* Lighter scrim so the chosen background image stays visible (text
+           remains readable). The previous 0.78-0.92 overlay hid it almost
+           completely. */
+        background-image: linear-gradient(180deg, rgba(2, 8, 22, 0.35), rgba(2, 8, 22, 0.55)), var(--dynamic-section-bg, none);
         background-size: cover;
         background-position: center;
       }
@@ -7310,7 +7317,15 @@ if (countdownElements.days) {
     window.addEventListener('resize', () => {
       hideElementToolbar();
     });
-    window.addEventListener('scroll', () => {
+    window.addEventListener('scroll', (event) => {
+      // Only dismiss the floating toolbar when the MAIN PAGE scrolls. Scrolling
+      // inside the editor's own UI (the inspector panel's scrollbar, the code
+      // editor, or the element editor modal) must not blank the panel or drop
+      // the selected element.
+      const t = event.target;
+      const isPageScroll = !t || t === document || t === document.documentElement
+        || t === document.body || t === document.scrollingElement;
+      if (!isPageScroll) return;
       hideElementToolbar();
     }, true);
     document.addEventListener('keydown', (event) => {
@@ -7319,9 +7334,31 @@ if (countdownElements.days) {
       }
     });
 
+    // Track whether a pointer interaction started inside the inspector panel so
+    // any resulting click (e.g. releasing a scrollbar drag outside the panel
+    // bounds) is treated as a panel interaction and never deselects the element.
+    let pointerDownInPanel = false;
+    document.addEventListener('pointerdown', (event) => {
+      const p = state.inspectorPanel;
+      if (!state.editMode || !p || p.style.display === 'none') { pointerDownInPanel = false; return; }
+      const r = p.getBoundingClientRect();
+      pointerDownInPanel = event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+    }, true);
+
     document.addEventListener('click', (event) => {
       if (!state.editMode) return;
       if (Date.now() < state.suppressEditClickUntil) return;
+      if (pointerDownInPanel) return;
+      // A click that lands inside the inspector panel (including its scrollbar)
+      // must never be treated as clicking away. Some browsers report event.target
+      // as the document/body for scrollbar clicks, so also test the coordinates.
+      const panelEl = state.inspectorPanel;
+      if (panelEl && panelEl.style.display !== 'none') {
+        const r = panelEl.getBoundingClientRect();
+        if (event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom) {
+          return;
+        }
+      }
       if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
