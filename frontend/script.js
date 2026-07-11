@@ -1745,6 +1745,7 @@ if (countdownElements.days) {
       let wrapper = existingById.get(idStr);
       if (wrapper) {
         wrapper.dataset.adminImagePath = section.background_path || '';
+        wrapper.classList.toggle('has-background', Boolean(section.background_path));
         if (section.background_path) {
           wrapper.style.setProperty('--dynamic-section-bg', `url("${withCacheBust(section.background_path, section.updated_at)}")`);
         } else {
@@ -1773,6 +1774,8 @@ if (countdownElements.days) {
       wrapper.dataset.adminSectionField = 'background_path';
       wrapper.dataset.adminEditable = 'background-image';
       wrapper.dataset.adminImagePath = section.background_path || '';
+      wrapper.style.backgroundColor = getPageBackgroundColor();
+      wrapper.classList.toggle('has-background', Boolean(section.background_path));
 
       if (section.background_path) {
         wrapper.style.setProperty('--dynamic-section-bg', `url("${withCacheBust(section.background_path, section.updated_at)}")`);
@@ -2873,12 +2876,19 @@ if (countdownElements.days) {
       }
 
       .dynamic-page-section {
+        background-color: transparent;
+        background-image: var(--dynamic-section-bg, none);
+        background-size: cover;
+        background-position: center;
+      }
+
+      /* Only darken the section when an actual background image is present, so a
+         blank/new section shows the page background color through. */
+      .dynamic-page-section.has-background {
         /* Lighter scrim so the chosen background image stays visible (text
            remains readable). The previous 0.78-0.92 overlay hid it almost
            completely. */
         background-image: linear-gradient(180deg, rgba(2, 8, 22, 0.35), rgba(2, 8, 22, 0.55)), var(--dynamic-section-bg, none);
-        background-size: cover;
-        background-position: center;
       }
 
       .dynamic-page-section-card {
@@ -4189,6 +4199,15 @@ if (countdownElements.days) {
     updateInspectorPanel(null);
   }
 
+  function getPageBackgroundColor() {
+    if (document.body.dataset.pageBgColor) {
+      return document.body.dataset.pageBgColor;
+    }
+    const rootStyle = getComputedStyle(document.documentElement);
+    const fallback = rootStyle.getPropertyValue('--background');
+    return (fallback || '#020816').trim();
+  }
+
   async function createBlankDynamicSection() {
     const item = await createPageSection({ title: '', body: '' });
     upsertPageSection(item);
@@ -4210,6 +4229,7 @@ if (countdownElements.days) {
     newContainer.style.marginTop = '1rem';
     newContainer.style.border = '1px dashed rgba(255, 255, 255, 0.35)';
     newContainer.style.borderRadius = '10px';
+    newContainer.style.backgroundColor = getPageBackgroundColor();
     sectionHost.appendChild(newContainer);
 
     const key = buildContentKey(newContainer, 'container');
@@ -6284,6 +6304,7 @@ if (countdownElements.days) {
           newElement.dataset.adminEditable = 'text';
           newElement.dataset.adminKey = item.content_key;
           newElement.style.marginTop = '1rem';
+          newElement.style.backgroundColor = getPageBackgroundColor();
           const sectionHost = getSectionContentHost(section) || section;
           sectionHost.appendChild(newElement);
 
