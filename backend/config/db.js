@@ -315,6 +315,19 @@ async function ensureContentTable() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS mfa_challenges (
+      id          SERIAL PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      method      TEXT NOT NULL CHECK (method IN ('email', 'sms')),
+      target      TEXT NOT NULL,
+      code        TEXT NOT NULL,
+      attempts    INTEGER NOT NULL DEFAULT 0,
+      expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+      created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS user_profiles (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       phone TEXT,
@@ -339,6 +352,9 @@ async function ensureContentTable() {
 
   // Migrations for existing databases
   for (const col of [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_method TEXT NOT NULL DEFAULT 'none' CHECK (mfa_method IN ('none', 'email', 'sms'))",
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enrolled BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS desired_mfa_method TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS member_float_number TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS spouse_float_number TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS guest_float_number TEXT',

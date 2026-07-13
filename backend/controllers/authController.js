@@ -4,17 +4,76 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
 const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
-const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode } = require('../utils/email');
+const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
-const { appDir: _bAppDir, BACKUP_CONFIG_KEYS, backupIdSafe, collectBackupAppFiles, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, makeS3Client, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, readBackupConfig, removeDir, zipDirectory } = require('../utils/backup');
+const { appDir: _bAppDir, getSiteSetting, setSiteSetting, BACKUP_CONFIG_KEYS, backupIdSafe, collectBackupAppFiles, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, makeS3Client, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, readBackupConfig, removeDir, zipDirectory } = require('../utils/backup');
+
+// ── MFA configuration & helpers ──────────────────────────────────────────────
+const MFA_MODES = ['off', 'registration', 'registration_and_login'];
+const MFA_METHODS = ['email', 'sms'];
+const MFA_CODE_TTL_MINUTES = REGISTRATION_CODE_TTL_MINUTES; // reuse verification TTL
+const MFA_MAX_ATTEMPTS = 5;
+
+async function getMfaMode() {
+  try {
+    const v = await getSiteSetting('mfa_mode');
+    return MFA_MODES.includes(v) ? v : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+// admin or store_admin — anyone with elevated privilege over a plain member
+function isElevatedRole(role) {
+  return role === 'admin' || role === 'store_admin';
+}
+
+// Whether MFA is mandated for this user under the current system policy.
+function mfaPolicyRequires(role, mode) {
+  return isElevatedRole(role) || mode !== 'off';
+}
+
+function issueMfaToken(userId) {
+  return jwt.sign({ userId, mfaChallenge: true }, JWT_SECRET, { expiresIn: '10m' });
+}
+
+function verifyMfaToken(token) {
+  const decoded = jwt.verify(token, JWT_SECRET);
+  if (!decoded || !decoded.mfaChallenge) throw new Error('invalid mfa token');
+  return decoded.userId;
+}
+
+function maskMfaTarget(method, target) {
+  if (method === 'sms') {
+    const digits = String(target || '').replace(/\D/g, '');
+    return digits.length >= 4 ? `***-***-${digits.slice(-4)}` : 'your phone';
+  }
+  return maskVerificationTarget(target);
+}
+
+async function startMfaChallenge(userId, method, target) {
+  const code = generateVerificationCode();
+  const expiresAt = new Date(Date.now() + MFA_CODE_TTL_MINUTES * 60 * 1000);
+  await pool.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
+  await pool.query(
+    `INSERT INTO mfa_challenges (user_id, method, target, code, attempts, expires_at)
+     VALUES ($1, $2, $3, $4, 0, $5)`,
+    [userId, method, target, code, expiresAt]
+  );
+  return dispatchMfaCode(method, target, code);
+}
 
 async function post__api_auth_register_request_code(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
   const verificationMethod = 'email';
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
+  // Registration defaults new members to email MFA; they can switch to SMS later
+  // from their profile. We deliberately ignore any mfa_method sent by the client.
+  const mfaMethod = 'email';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Email, full name and password are required' });
@@ -39,9 +98,9 @@ async function post__api_auth_register_request_code(req, res) {
     await pool.query('DELETE FROM pending_registrations WHERE expires_at < NOW()', []);
     await pool.query(
       `INSERT INTO pending_registrations (
-         email, phone, full_name, password_hash, verification_method, verification_target, verification_code, attempts, expires_at, created_at
+         email, phone, full_name, password_hash, verification_method, verification_target, verification_code, desired_mfa_method, attempts, expires_at, created_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, NOW())
        ON CONFLICT (email)
        DO UPDATE SET
          phone = EXCLUDED.phone,
@@ -50,10 +109,11 @@ async function post__api_auth_register_request_code(req, res) {
          verification_method = EXCLUDED.verification_method,
          verification_target = EXCLUDED.verification_target,
          verification_code = EXCLUDED.verification_code,
+         desired_mfa_method = EXCLUDED.desired_mfa_method,
          attempts = 0,
          expires_at = EXCLUDED.expires_at,
          created_at = NOW()`,
-      [email, null, fullName, hash, verificationMethod, verificationTarget, verificationCode, expiresAt]
+      [email, phone || null, fullName, hash, verificationMethod, verificationTarget, verificationCode, mfaMethod, expiresAt]
     );
 
     let deliveryWarning = '';
@@ -98,11 +158,9 @@ async function post__api_auth_register_verify_code(req, res) {
     await client.query('BEGIN');
     await client.query('DELETE FROM pending_registrations WHERE expires_at < NOW()');
 
-    const pendingResult = await client.query(
-      `SELECT email, full_name, password_hash, verification_code, attempts
-       FROM pending_registrations
-       WHERE email = $1
-       FOR UPDATE`,
+        const pendingResult = await client.query(
+      `SELECT email, full_name, password_hash, verification_code, attempts, phone, desired_mfa_method
+       FROM pending_registrations WHERE email = $1 FOR UPDATE`,
       [email]
     );
 
@@ -124,18 +182,44 @@ async function post__api_auth_register_verify_code(req, res) {
        RETURNING id, email, full_name, role, joined_at`,
       [pending.email, pending.full_name, 'member', pending.password_hash]
     );
+    const user = insertResult.rows[0];
+
+    const mode = await getMfaMode();
+    if (mode !== 'off') {
+      // Registration always enrolls with email; SMS can be chosen later in profile.
+      let method = 'email';
+      let target = method === 'sms' ? (pending.phone || user.email) : user.email;
+      let notice = null;
+      if (method === 'sms' && !pending.phone) {
+        method = 'email';
+        target = user.email;
+        notice = 'SMS was selected but no phone number was provided, so email was used instead.';
+      }
+      await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = FALSE WHERE id = $2', [method, user.id]);
+      await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
+      await client.query('COMMIT');
+      const delivery = await startMfaChallenge(user.id, method, target);
+      return res.status(201).json({
+        mfaEnrollmentRequired: true,
+        mfaToken: issueMfaToken(user.id),
+        method,
+        maskedTarget: maskMfaTarget(method, target),
+        deliveryNotice: (delivery && delivery.notice) || notice,
+        devCode: (delivery && delivery.devCode) || undefined,
+        message: 'Verify your selected sign-in method to finish creating your account.',
+      });
+    }
 
     await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
     await client.query('COMMIT');
 
-    const user = insertResult.rows[0];
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.status(201).json({
       user: {
         id: user.id,
         email: user.email,
-        phone: null,
+        phone: pending.phone,
         full_name: user.full_name,
         role: user.role,
       },
@@ -158,12 +242,49 @@ async function post__api_auth_login(req, res) {
   const password = req.body.password;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
-    const result = await pool.query('SELECT id, email, full_name, role, password_hash FROM users WHERE email = $1', [email]);
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.role, u.password_hash, u.mfa_method, u.mfa_enrolled,
+              p.phone AS profile_phone
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.email = $1`,
+      [email]
+    );
     if (result.rowCount === 0) return res.status(401).json({ error: 'Invalid credentials' });
     const user = result.rows[0];
     if (user.role === 'disabled') return res.status(403).json({ error: 'Account is disabled' });
     const ok = bcrypt.compareSync(password, user.password_hash || '');
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const mode = await getMfaMode();
+    if (mfaPolicyRequires(user.role, mode)) {
+      if (!user.mfa_enrolled) {
+        return res.json({
+          mfaEnrollmentRequired: true,
+          mfaToken: issueMfaToken(user.id),
+          availableMethods: MFA_METHODS,
+          message: 'Multi-factor authentication is required for your account. Choose a sign-in method to continue.',
+        });
+      }
+      let method = user.mfa_method;
+      let target = method === 'sms' ? (user.profile_phone || user.email) : user.email;
+      let notice = null;
+      if (method === 'sms' && !user.profile_phone) {
+        method = 'email';
+        target = user.email;
+        notice = 'SMS was selected but no phone number is on file, so email was used instead.';
+      }
+      const delivery = await startMfaChallenge(user.id, method, target);
+      return res.json({
+        mfaRequired: true,
+        mfaToken: issueMfaToken(user.id),
+        method,
+        maskedTarget: maskMfaTarget(method, target),
+        deliveryNotice: (delivery && delivery.notice) || notice,
+        devCode: (delivery && delivery.devCode) || undefined,
+      });
+    }
+
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role }, token });
@@ -175,8 +296,9 @@ async function post__api_auth_login(req, res) {
 
 async function get__api_profile(req, res) {
   try {
+    const mode = await getMfaMode();
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
               p.phone, p.address, p.city, p.state, p.zip,
               p.birthdate, p.occupation, p.organizations, p.sponsor_name,
               p.spouse_name, p.kids_names, p.kids_birthdays,
@@ -196,16 +318,23 @@ async function get__api_profile(req, res) {
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     const row = result.rows[0];
+    // Older rows may have stored these JSON columns as an empty object `{}`
+    // rather than an array; normalise so the client can always use .forEach().
+    const asArray = (v) => (Array.isArray(v) ? v : []);
     res.json({
       ...row,
-      kids_names: row.kids_names || [],
-      kids_birthdays: row.kids_birthdays || [],
-      grandchildren_names: row.grandchildren_names || [],
-      grandchildren_birthdays: row.grandchildren_birthdays || [],
-      float_riders: row.float_riders || [],
-      kids_float_numbers: row.kids_float_numbers || [],
-      rider_float_numbers: row.rider_float_numbers || [],
-      rider_float_names: row.rider_float_names || [],
+      mfa_mode: mode,
+      mfa_available_methods: MFA_METHODS,
+      mfa_registration_required: mode !== 'off',
+      mfa_elevated_forced: true,
+      kids_names: asArray(row.kids_names),
+      kids_birthdays: asArray(row.kids_birthdays),
+      grandchildren_names: asArray(row.grandchildren_names),
+      grandchildren_birthdays: asArray(row.grandchildren_birthdays),
+      float_riders: asArray(row.float_riders),
+      kids_float_numbers: asArray(row.kids_float_numbers),
+      rider_float_numbers: asArray(row.rider_float_numbers),
+      rider_float_names: asArray(row.rider_float_names),
     });
   } catch (error) {
     console.error('Failed to fetch profile', error);
@@ -250,6 +379,12 @@ async function put__api_profile_details(req, res) {
   const rider_float_numbers = riderFloatNumsRaw.map((v)  => String(v ?? '').trim().slice(0, 20));
   const float_captain = Boolean(req.body.float_captain);
 
+  // MFA notification preference (email by default; SMS requires a phone)
+  const mfa_method = req.body.mfa_method === 'sms' ? 'sms' : 'email';
+  if (mfa_method === 'sms' && !phone) {
+    return res.status(400).json({ error: 'A phone number is required to use SMS for MFA.' });
+  }
+
   try {
     await pool.query(
       `INSERT INTO user_profiles (
@@ -282,6 +417,7 @@ async function put__api_profile_details(req, res) {
         JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers), float_captain,
       ]
     );
+    await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
     res.json({ ok: true });
   } catch (error) {
     console.error('Failed to update profile details', error);
@@ -298,7 +434,129 @@ async function get__api_members(req, res) {
     res.status(500).json({ error: 'Unable to fetch members' });
   }
 }
+async function get__api_mfa_policy(req, res) {
+  try {
+    const mode = await getMfaMode();
+    res.json({
+      mfaMode: mode,
+      registrationRequiresMfa: mode !== 'off',
+      elevatedForcedMfa: true,
+      availableMethods: MFA_METHODS,
+    });
+  } catch (error) {
+    console.error('Failed to read MFA policy', error);
+    res.status(500).json({ error: 'Unable to read MFA policy' });
+  }
+}
+
+async function post__api_auth_mfa_send(req, res) {
+  const auth = typeof req.body.mfaToken === 'string' ? req.body.mfaToken : '';
+  let userId;
+  try { userId = verifyMfaToken(auth); } catch { return res.status(401).json({ error: 'Invalid or expired session' }); }
+  const method = req.body.method;
+  if (!MFA_METHODS.includes(method)) return res.status(400).json({ error: 'Invalid MFA method' });
+  try {
+    const u = await pool.query('SELECT u.email, p.phone FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.id = $1', [userId]);
+    const user = u.rows[0];
+    let target;
+    if (method === 'sms') {
+      target = (req.body.phone && String(req.body.phone).trim()) || user.phone || null;
+      if (!target) return res.status(400).json({ error: 'A phone number is required to use SMS.' });
+    } else {
+      target = user.email;
+    }
+    const delivery = await startMfaChallenge(userId, method, target);
+    res.json({
+      mfaChallengeSent: true,
+      mfaToken: issueMfaToken(userId),
+      method,
+      maskedTarget: maskMfaTarget(method, target),
+      deliveryNotice: delivery && delivery.notice,
+      devCode: delivery && delivery.devCode,
+    });
+  } catch (error) {
+    console.error('Failed to send MFA code', error);
+    res.status(500).json({ error: 'Unable to send MFA code' });
+  }
+}
+
+async function post__api_auth_mfa_verify(req, res) {
+  const auth = typeof req.body.mfaToken === 'string' ? req.body.mfaToken : '';
+  const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+  if (!auth || !code) return res.status(400).json({ error: 'MFA token and code are required' });
+  let userId;
+  try { userId = verifyMfaToken(auth); } catch { return res.status(401).json({ error: 'Invalid or expired session' }); }
+  const client = await pool.connect();
+  try {
+    const ch = await client.query('SELECT * FROM mfa_challenges WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [userId]);
+    if (ch.rowCount === 0) return res.status(400).json({ error: 'No MFA challenge is pending. Start over.' });
+    const c = ch.rows[0];
+    if (new Date(c.expires_at) < new Date()) {
+      await client.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
+      return res.status(400).json({ error: 'That code has expired. Request a new one.' });
+    }
+    if (c.attempts >= MFA_MAX_ATTEMPTS) {
+      await client.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
+      return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
+    }
+    if (c.code !== code) {
+      await client.query('UPDATE mfa_challenges SET attempts = attempts + 1 WHERE user_id = $1', [userId]);
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+    await client.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
+    await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = TRUE WHERE id = $2', [c.method, userId]);
+    const userRes = await client.query('SELECT id, email, full_name, role FROM users WHERE id = $1', [userId]);
+    const user = userRes.rows[0];
+    const token = generateToken(user);
+    res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
+    res.json({
+      user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+      token,
+      mfaEnrolled: true,
+    });
+  } catch (error) {
+    console.error('MFA verification failed', error);
+    res.status(500).json({ error: 'Unable to verify MFA code' });
+  } finally {
+    client.release();
+  }
+}
+
+async function put__api_profile_mfa(req, res) {
+  const userId = req.user.userId;
+  const method = req.body.method;
+  if (!MFA_METHODS.includes(method)) return res.status(400).json({ error: 'Invalid MFA method' });
+  try {
+    let phone = null;
+    if (method === 'sms') {
+      phone = (req.body.phone && String(req.body.phone).trim()) || null;
+      if (!phone) return res.status(400).json({ error: 'A phone number is required to use SMS.' });
+    }
+    if (phone) {
+      await pool.query(
+        `INSERT INTO user_profiles (user_id, phone, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, updated_at = NOW()`,
+        [userId, phone]
+      );
+    }
+    const u = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+    const target = method === 'sms' ? phone : u.rows[0].email;
+    const delivery = await startMfaChallenge(userId, method, target);
+    res.json({
+      mfaChallengeSent: true,
+      mfaToken: issueMfaToken(userId),
+      method,
+      maskedTarget: maskMfaTarget(method, target),
+      deliveryNotice: delivery && delivery.notice,
+      devCode: delivery && delivery.devCode,
+    });
+  } catch (error) {
+    console.error('Failed to start MFA enrollment', error);
+    res.status(500).json({ error: 'Unable to start MFA enrollment' });
+  }
+}
+
 function generateToken(user) {
   return jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
-module.exports = { generateToken,get__api_members,get__api_profile,post__api_auth_login,post__api_auth_register_request_code,post__api_auth_register_verify_code,put__api_profile_details, };
+module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa };

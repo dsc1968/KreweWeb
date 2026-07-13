@@ -99,4 +99,35 @@ async function post__api_admin_season_reset(req, res) {
     res.status(500).json({ error: 'Season reset failed' });
   }
 }
-module.exports = { get__api_admin_config,get__api_admin_file_source,post__api_admin_season_reset,put__api_admin_config,put__api_admin_file_source, };
+async function get__api_admin_mfa_config(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { getSiteSetting } = require('../utils/backup');
+    const mode = await getSiteSetting('mfa_mode');
+    res.json({
+      mfaMode: ['off', 'registration', 'registration_and_login'].includes(mode) ? mode : 'off',
+      availableModes: ['off', 'registration', 'registration_and_login'],
+    });
+  } catch (err) {
+    console.error('Failed to read MFA config', err);
+    res.status(500).json({ error: 'Unable to read MFA config' });
+  }
+}
+
+async function put__api_admin_mfa_config(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const mode = req.body.mfaMode;
+  if (!['off', 'registration', 'registration_and_login'].includes(mode)) {
+    return res.status(400).json({ error: 'Invalid MFA mode' });
+  }
+  try {
+    const { setSiteSetting } = require('../utils/backup');
+    await setSiteSetting('mfa_mode', mode);
+    res.json({ ok: true, mfaMode: mode });
+  } catch (err) {
+    console.error('Failed to save MFA config', err);
+    res.status(500).json({ error: 'Unable to save MFA config' });
+  }
+}
+
+module.exports = { get__api_admin_config, get__api_admin_file_source, get__api_admin_mfa_config, post__api_admin_season_reset, put__api_admin_config, put__api_admin_file_source, put__api_admin_mfa_config };

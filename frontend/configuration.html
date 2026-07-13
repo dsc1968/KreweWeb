@@ -115,6 +115,28 @@
               </div>
             </div>
 
+            <p class="db-config-section-label" style="margin-top:1rem;">Multi-Factor Authentication (MFA)</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Require members to verify their identity with a one-time code (email or SMS) when they register and/or sign in. Admin and store-admin accounts always require MFA. Changes apply immediately.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-mfa-mode">MFA Requirement</label>
+                <select id="cfg-mfa-mode" name="mfa_mode">
+                  <option value="off">Disabled — no MFA for members</option>
+                  <option value="registration">Required at registration only</option>
+                  <option value="registration_and_login">Required at registration and login (recommended)</option>
+                </select>
+              </div>
+            </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">SMS Gateway (for text-message MFA)</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When set, MFA verification codes are texted by POSTing <code>{ phoneNumber, message }</code> to this URL &mdash; e.g. a Zapier Catch Hook connected to Textedly. Leave blank to disable SMS sending (email MFA still works). Requires a server restart to take effect.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-sms-webhook">SMS Gateway Webhook URL</label>
+                <input type="text" id="cfg-sms-webhook" name="SMS_WEBHOOK_URL" placeholder="https://hooks.zapier.com/hooks/catch/..." autocomplete="off" />
+              </div>
+            </div>
+
             <p class="db-config-section-label" style="margin-top:1rem;">Season</p>
             <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When this date arrives each year all member dues and fees are automatically reset to unpaid. The server checks at midnight UTC each day.</p>
             <div class="db-form-grid">

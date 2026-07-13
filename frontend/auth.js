@@ -22,6 +22,43 @@ function isEditPreviewMode() {
   return new URLSearchParams(window.location.search).get('edit') === '1';
 }
 
+// Persists the optional profile fields collected on the registration form.
+// Used by both the verification step and the MFA enrollment step so a newly
+// created account keeps its phone/address/etc. regardless of which path wins.
+async function saveRegistrationProfile(token) {
+  const regProfile = {
+    phone:        (document.getElementById('reg-phone')?.value || '').trim(),
+    birthdate:    document.getElementById('reg-birthdate')?.value || null,
+    occupation:   (document.getElementById('reg-occupation')?.value || '').trim(),
+    sponsor_name: (document.getElementById('reg-sponsor')?.value || '').trim(),
+    address:      (document.getElementById('reg-address')?.value || '').trim(),
+    city:         (document.getElementById('reg-city')?.value || '').trim(),
+    state:        (document.getElementById('reg-state')?.value || '').trim().toUpperCase(),
+    zip:          (document.getElementById('reg-zip')?.value || '').trim(),
+    kids_names: [], kids_birthdays: [],
+    grandchildren_names: [], grandchildren_birthdays: [],
+    float_riders: [], rider_float_names: [], rider_float_numbers: [],
+  };
+  const hasData = Object.values(regProfile).some(v => v && (typeof v === 'string' ? v.length > 0 : true));
+  if (!hasData) return;
+  await fetch('/api/profile/details', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(regProfile),
+  }).catch(() => {});
+}
+
+// Renders the MFA prompt copy. `info` may carry maskedTarget, notice and/or a
+// devCode (surfaced by the server only in non-production environments).
+function setMfaPrompt(promptEl, info) {
+  if (!promptEl || !info) return;
+  const parts = [];
+  if (info.maskedTarget) parts.push(`We sent a verification code to ${info.maskedTarget}.`);
+  if (info.notice) parts.push(info.notice);
+  if (info.devCode) parts.push(`Dev code: ${info.devCode}`);
+  promptEl.textContent = parts.join(' ').trim() || 'Enter the verification code.';
+}
+
 // Register form
 const registerForm = document.getElementById('register-form');
 if (registerForm) {
@@ -33,6 +70,12 @@ if (registerForm) {
   const verificationCodeGroup = document.getElementById('verification-code-group');
   const verificationCodeInput = document.getElementById('verification_code');
   const resendButton = document.getElementById('resend-code-button');
+  const mfaCodeGroup = document.getElementById('mfa-code-group');
+  const mfaCodeInput = document.getElementById('mfa_code');
+  const mfaPrompt = document.getElementById('mfa-prompt');
+  const mfaResendButton = document.getElementById('mfa-resend-button');
+  let registerMfaToken = null;
+  let registerMfaMethod = 'email';
 
   function setRegisterFeedback(message, isError) {
     if (!feedback) return;
@@ -49,34 +92,31 @@ if (registerForm) {
     submitButton.disabled = true;
     setRegisterFeedback('', false);
     try {
+      if (registerForm.dataset.phase === 'mfa') {
+        const code = mfaCodeInput.value.trim();
+        const resp = await postJSON('/api/auth/mfa/verify', { mfaToken: registerMfaToken, code });
+        if (resp.token) {
+          sessionStorage.setItem('krewe_token', resp.token);
+          await saveRegistrationProfile(resp.token);
+          window.location.href = '/dashboard.html';
+          return;
+        }
+        setRegisterFeedback(resp.error || 'Invalid code', true);
+        return;
+      }
+
       if (registerForm.dataset.phase === 'verify') {
         const code = verificationCodeInput.value.trim();
         const resp = await postJSON('/api/auth/register/verify-code', { email, code });
         if (resp.token) {
           sessionStorage.setItem('krewe_token', resp.token);
-          // Save optional profile fields collected during registration
-          const regProfile = {
-            phone:        (document.getElementById('reg-phone')?.value || '').trim(),
-            birthdate:    document.getElementById('reg-birthdate')?.value || null,
-            occupation:   (document.getElementById('reg-occupation')?.value || '').trim(),
-            sponsor_name: (document.getElementById('reg-sponsor')?.value || '').trim(),
-            address:      (document.getElementById('reg-address')?.value || '').trim(),
-            city:         (document.getElementById('reg-city')?.value || '').trim(),
-            state:        (document.getElementById('reg-state')?.value || '').trim().toUpperCase(),
-            zip:          (document.getElementById('reg-zip')?.value || '').trim(),
-            kids_names: [], kids_birthdays: [],
-            grandchildren_names: [], grandchildren_birthdays: [],
-            float_riders: [], rider_float_names: [], rider_float_numbers: [],
-          };
-          const hasData = Object.values(regProfile).some(v => v && (typeof v === 'string' ? v.length > 0 : true));
-          if (hasData) {
-            await fetch('/api/profile/details', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + resp.token },
-              body: JSON.stringify(regProfile),
-            }).catch(() => {});
-          }
+          await saveRegistrationProfile(resp.token);
           window.location.href = '/dashboard.html';
+          return;
+        }
+
+        if (resp.mfaEnrollmentRequired) {
+          showRegisterMfa(resp);
           return;
         }
 
@@ -125,6 +165,40 @@ if (registerForm) {
       }
     });
   }
+
+  function showRegisterMfa(info) {
+    registerMfaToken = info.mfaToken;
+    registerMfaMethod = info.method || 'email';
+    if (verificationCodeGroup) verificationCodeGroup.hidden = true;
+    if (mfaCodeGroup) mfaCodeGroup.hidden = false;
+    setMfaPrompt(mfaPrompt, info);
+    if (mfaCodeInput) { mfaCodeInput.required = true; mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+    if (mfaResendButton) mfaResendButton.hidden = false;
+    registerForm.dataset.phase = 'mfa';
+    submitButton.textContent = 'Verify and finish';
+    setRegisterFeedback(info.notice || 'Verify your sign-in method to finish creating your account.', false);
+  }
+
+  if (mfaResendButton) {
+    mfaResendButton.addEventListener('click', async () => {
+      mfaResendButton.disabled = true;
+      setRegisterFeedback('Sending new code…', false);
+      try {
+        const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method: registerMfaMethod });
+        if (resp.mfaChallengeSent) {
+          registerMfaToken = resp.mfaToken;
+          registerMfaMethod = resp.method || registerMfaMethod;
+          setMfaPrompt(mfaPrompt, resp);
+          if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+          setRegisterFeedback(resp.deliveryNotice || 'New code sent.', false);
+        } else {
+          setRegisterFeedback(resp.error || 'Unable to resend code', true);
+        }
+      } finally {
+        mfaResendButton.disabled = false;
+      }
+    });
+  }
 }
 
 // Login form
@@ -133,14 +207,81 @@ if (loginForm) {
   if (getToken() && !isEditPreviewMode()) {
     window.location.href = '/dashboard.html';
   }
+
+  const mfaCodeGroup = document.getElementById('mfa-code-group');
+  const mfaCodeInput = document.getElementById('mfa_code');
+  const mfaPrompt = document.getElementById('mfa-prompt');
+  const mfaResendButton = document.getElementById('mfa-resend-button');
+  const mfaMethodSwitch = document.getElementById('mfa-method-switch');
+  const loginSubmitButton = loginForm.querySelector('button[type="submit"]');
+  let loginMfaToken = null;
+  let loginMfaMethod = 'email';
+
+  function showLoginMfa(info) {
+    loginMfaToken = info.mfaToken;
+    loginMfaMethod = info.method || 'email';
+    if (mfaCodeGroup) mfaCodeGroup.hidden = false;
+    setMfaPrompt(mfaPrompt, info);
+    if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+    if (mfaResendButton) mfaResendButton.hidden = false;
+    if (mfaMethodSwitch) mfaMethodSwitch.hidden = false;
+    if (loginSubmitButton) loginSubmitButton.textContent = 'Verify code';
+    loginForm.dataset.phase = 'mfa';
+  }
+
+  async function sendLoginMfa(method) {
+    if (mfaResendButton) mfaResendButton.disabled = true;
+    if (mfaPrompt) mfaPrompt.textContent = 'Sending a new code…';
+    try {
+      const resp = await postJSON('/api/auth/mfa/send', { mfaToken: loginMfaToken, method });
+      if (resp.mfaChallengeSent) {
+        loginMfaToken = resp.mfaToken;
+        loginMfaMethod = resp.method || method;
+        setMfaPrompt(mfaPrompt, resp);
+        if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+      } else {
+        setMfaPrompt(mfaPrompt, { notice: resp.error || 'Unable to send code' });
+      }
+    } finally {
+      if (mfaResendButton) mfaResendButton.disabled = false;
+    }
+  }
+
+  if (mfaMethodSwitch) {
+    mfaMethodSwitch.querySelectorAll('button[data-mfa-method]').forEach((btn) => {
+      btn.addEventListener('click', () => sendLoginMfa(btn.dataset.mfaMethod));
+    });
+  }
+
+  if (mfaResendButton) {
+    mfaResendButton.addEventListener('click', () => sendLoginMfa(loginMfaMethod));
+  }
+
+  async function submitLoginMfa() {
+    const code = (mfaCodeInput && mfaCodeInput.value.trim()) || '';
+    const resp = await postJSON('/api/auth/mfa/verify', { mfaToken: loginMfaToken, code });
+    if (resp.token) {
+      sessionStorage.setItem('krewe_token', resp.token);
+      window.location.href = '/dashboard.html';
+      return;
+    }
+    setMfaPrompt(mfaPrompt, { notice: resp.error || 'Invalid code' });
+  }
+
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (loginForm.dataset.phase === 'mfa') {
+      await submitLoginMfa();
+      return;
+    }
     const email = document.getElementById('login_email').value.trim();
     const password = document.getElementById('login_password').value;
     const resp = await postJSON('/api/auth/login', { email, password });
     if (resp.token) {
       sessionStorage.setItem('krewe_token', resp.token);
       window.location.href = '/dashboard.html';
+    } else if (resp.mfaRequired || resp.mfaEnrollmentRequired) {
+      showLoginMfa(resp);
     } else {
       alert(resp.error || 'Login failed');
     }
@@ -1036,6 +1177,7 @@ function initProfileDetailsForm(profile) {
   // Populate simple fields
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   set('pd-phone',         profile.phone);
+  set('pd-mfa-method',    profile.mfa_method === 'sms' ? 'sms' : 'email');
   set('pd-address',       profile.address);
   set('pd-city',          profile.city);
   set('pd-state',         profile.state);
@@ -1119,6 +1261,12 @@ function initProfileDetailsForm(profile) {
 
     const token = getToken();
     try {
+      const mfaMethodSel = document.getElementById('pd-mfa-method');
+      const mfaMethod = mfaMethodSel ? mfaMethodSel.value : 'email';
+      if (mfaMethod === 'sms' && !document.getElementById('pd-phone').value.trim()) {
+        setFeedback('Please enter a phone number to use SMS for MFA.', true);
+        return;
+      }
       const res = await fetch('/api/profile/details', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -1128,6 +1276,7 @@ function initProfileDetailsForm(profile) {
           city:          document.getElementById('pd-city').value.trim(),
           state:         document.getElementById('pd-state').value.trim().toUpperCase(),
           zip:           document.getElementById('pd-zip').value.trim(),
+          mfa_method:    (document.getElementById('pd-mfa-method')?.value || 'email'),
           birthdate:     document.getElementById('pd-birthdate').value || null,
           occupation:    document.getElementById('pd-occupation').value.trim(),
           sponsor_name:  document.getElementById('pd-sponsor').value.trim(),
@@ -1491,6 +1640,13 @@ async function initSiteConfig() {
       if (!el) continue;
       if (el.type === 'checkbox') { el.checked = value === 'true'; } else { el.value = value; }
     }
+    // MFA requirement lives in a separate site setting, not the env config
+    try {
+      const mfaRes = await fetch('/api/admin/mfa-config', { headers: { Authorization: 'Bearer ' + token } });
+      const mfaData = await parseJSONResponse(mfaRes);
+      const mfaSel = form.querySelector('[name="mfa_mode"]');
+      if (mfaRes.ok && mfaSel) mfaSel.value = mfaData.mfaMode || 'off';
+    } catch (_mfaErr) { /* non-fatal */ }
     setFeedback('', false);
     // Wire up the season end-date sub-fields now that the hidden input has been populated
     setupSeasonEndDateUI(form);
@@ -1517,7 +1673,27 @@ async function initSiteConfig() {
         body: JSON.stringify({ config }),
       });
       const data = await parseJSONResponse(res);
-      setFeedback(res.ok ? 'Configuration saved. Restart the server to apply changes.' : (data.error || 'Unable to save config'), !res.ok);
+      if (!res.ok) {
+        setFeedback(data.error || 'Unable to save config', true);
+        return;
+      }
+      // Persist the MFA requirement (separate site setting from env config)
+      let extra = '';
+      const mfaSel = form.querySelector('[name="mfa_mode"]');
+      if (mfaSel) {
+        try {
+          const mfaRes = await fetch('/api/admin/mfa-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ mfaMode: mfaSel.value }),
+          });
+          const mfaData = await parseJSONResponse(mfaRes);
+          if (!mfaRes.ok) extra = ' (MFA setting not saved: ' + (mfaData.error || 'error') + ')';
+        } catch (_mfaErr) {
+          extra = ' (MFA setting not saved: network error)';
+        }
+      }
+      setFeedback('Configuration saved. Restart the server to apply environment changes.' + extra, Boolean(extra));
     } catch (_err) {
       setFeedback('Network error. Please try again.', true);
     } finally {

@@ -39,6 +39,8 @@
           <label for="reg-phone">Phone Number</label>
           <input id="reg-phone" name="phone" type="tel" placeholder="e.g. 555-867-5309" />
 
+          <p class="field-hint" style="margin:0.25rem 0 0.5rem;">Two-factor sign-in (email) will be set up for your account. You can switch to text-message (SMS) later from your profile.</p>
+
           <label for="reg-birthdate">Date of Birth</label>
           <input id="reg-birthdate" name="birthdate" type="date" />
 
@@ -70,6 +72,13 @@
             <label for="verification_code">Verification code</label>
             <input id="verification_code" name="verification_code" inputmode="numeric" autocomplete="one-time-code" />
             <button type="button" id="resend-code-button" hidden style="margin-top:0.5rem; background:none; border:none; color:inherit; text-decoration:underline; cursor:pointer; padding:0; font:inherit;">Resend code</button>
+          </div>
+
+          <div id="mfa-code-group" hidden>
+            <p id="mfa-prompt" class="field-hint"></p>
+            <label for="mfa_code">Verification code</label>
+            <input id="mfa_code" name="mfa_code" inputmode="numeric" autocomplete="one-time-code" />
+            <button type="button" id="mfa-resend-button" hidden style="margin-top:0.5rem; background:none; border:none; color:inherit; text-decoration:underline; cursor:pointer; padding:0; font:inherit;">Resend code</button>
           </div>
 
           <p id="register-feedback" aria-live="polite"></p>

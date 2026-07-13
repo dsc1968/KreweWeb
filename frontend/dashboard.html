@@ -80,6 +80,14 @@
                   <input type="tel" id="pd-phone" name="phone" placeholder="e.g. 555-867-5309" />
                 </div>
                 <div class="form-group">
+                  <label for="pd-mfa-method">MFA Notification Method</label>
+                  <select id="pd-mfa-method" name="mfa_method">
+                    <option value="email">Email</option>
+                    <option value="sms">Text message (SMS)</option>
+                  </select>
+                  <p class="field-hint" style="margin:0.35rem 0 0;font-size:0.78rem;">Used to send your sign-in verification code. SMS requires the phone number above.</p>
+                </div>
+                <div class="form-group">
                   <label for="pd-spouse">Spouse / Partner</label>
                   <input type="text" id="pd-spouse" name="spouse_name" placeholder="Full name" />
                 </div>

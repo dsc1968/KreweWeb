@@ -89,6 +89,109 @@ async function dispatchVerificationCode(target, code) {
 }
 
 
+// Normalise a phone number to E.164 so carrier/SMS gateways (Textedly, Twilio,
+// etc.) can route it. Strips formatting, keeps an existing '+', and assumes
+// US/Canada (+1) when a 10-digit local number is supplied.
+function normalizePhoneToE164(raw) {
+  if (!raw) return raw;
+  const withPlus = String(raw).trim();
+  if (withPlus.startsWith('+')) {
+    return '+' + withPlus.replace(/\D/g, '');
+  }
+  const digits = withPlus.replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+  return '+' + digits;
+}
+
+// Sends an MFA sign-in code. Email is fully implemented; SMS is dispatched by
+// POSTing { phoneNumber, message } to a configurable webhook (e.g. a Zapier
+// Catch Hook wired to Textedly, or any provider). Falls back to a development
+// log of the code when no webhook is configured.
+async function dispatchMfaCode(method, target, code) {
+  if (method === 'sms') {
+    const phoneNumber = normalizePhoneToE164(target);
+    const webhookUrl = process.env.SMS_WEBHOOK_URL || process.env.TEXTEDLY_WEBHOOK_URL;
+    const message = `Your Krewe Mystique verification code is ${code}. It expires in ${REGISTRATION_CODE_TTL_MINUTES} minutes.`;
+
+    if (webhookUrl) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumber, message }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!resp.ok) {
+          const detail = await resp.text().catch(() => '');
+          throw new Error(`gateway responded ${resp.status}: ${detail.slice(0, 200)}`);
+        }
+        return { delivered: true, method: 'sms' };
+      } catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+          const error = new Error('SMS delivery failed: ' + err.message);
+          error.statusCode = 502;
+          throw error;
+        }
+        console.warn(`[mfa] SMS gateway error (${err.message}); dev fallback for ${String(phoneNumber || '').replace(/\D/g, '').slice(-4).padStart(4, '*')}: ${code}`);
+        return { delivered: false, method: 'sms', notice: 'SMS gateway unavailable; using development fallback code.', devCode: code };
+      }
+    }
+
+    // No webhook configured
+    if (process.env.NODE_ENV === 'production') {
+      const error = new Error('SMS delivery is not configured. Set SMS_WEBHOOK_URL in admin settings (MFA → SMS Gateway).');
+      error.statusCode = 503;
+      throw error;
+    }
+    const digits = String(phoneNumber || '').replace(/\D/g, '');
+    const masked = digits.length >= 4 ? `***-***-${digits.slice(-4)}` : 'your phone';
+    console.warn(`[mfa] SMS not configured; dev fallback code for ${masked}: ${code}`);
+    return {
+      delivered: false,
+      method: 'sms',
+      notice: 'SMS delivery is not yet configured. The code is shown in the server log (development mode).',
+      devCode: code,
+    };
+  }
+
+  const emailSubject = 'Your Krewe Mystique login code';
+  const emailText = [
+    'Your login verification code is below.',
+    '',
+    `Code: ${code}`,
+    '',
+    `This code expires in ${REGISTRATION_CODE_TTL_MINUTES} minutes.`,
+    'If you did not request this code, you can ignore this message.',
+  ].join('\n');
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+      <h2 style="margin-bottom: 0.5rem;">Krewe Mystique verification</h2>
+      <p>Your login verification code is:</p>
+      <p style="font-size: 2rem; font-weight: 700; letter-spacing: 0.2rem; margin: 1rem 0;">${code}</p>
+      <p>This code expires in ${REGISTRATION_CODE_TTL_MINUTES} minutes.</p>
+      <p>If you did not request this code, you can ignore this message.</p>
+    </div>
+  `;
+
+  if (smtpTransport) {
+    await sendVerificationMail({ to: target, subject: emailSubject, text: emailText, html: emailHtml });
+    return { delivered: true, method: 'email' };
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[mfa] email code for ${target}: ${code}`);
+    return { delivered: false, method: 'email', devCode: code };
+  }
+
+  const error = new Error('Email delivery is not configured. Set SMTP_HOST, SMTP_PORT, and SMTP_FROM.');
+  error.statusCode = 503;
+  throw error;
+}
+
 module.exports = {
   smtpTransport,
   normalizeEmailAddress,
@@ -97,4 +200,5 @@ module.exports = {
   maskVerificationTarget,
   sendVerificationMail,
   dispatchVerificationCode,
+  dispatchMfaCode,
 };
