@@ -1629,3 +1629,53 @@ body.admin-edit-mode .album-tools {
   .section { padding: 3rem 0; }
   .db-layout { padding-top: 1.25rem; }
 }
+
+/* ── Profile MFA verification prompt ─────────────────────
+   Explicit dark theme so the code entry is clearly visible. The bare
+   #pd-mfa-code input has no type attribute (so it is not matched by the
+   .db-form input[type="text"] rule) and would otherwise fall back to the
+   browser default, which is unreadable on this dark UI. */
+#pd-mfa-verify {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-alt);
+  box-shadow: var(--shadow);
+}
+
+#pd-mfa-verify .field-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0 0 0.35rem;
+}
+
+#pd-mfa-verify label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#pd-mfa-code {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font: inherit;
+  letter-spacing: 0.15em;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+#pd-mfa-code::placeholder {
+  color: rgba(226, 232, 240, 0.52);
+}
+
+#pd-mfa-code:focus {
+  outline: none;
+  border-color: rgba(239, 191, 88, 0.75);
+  box-shadow: 0 0 0 4px rgba(239, 191, 88, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+}

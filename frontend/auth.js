@@ -1302,6 +1302,11 @@ function initProfileDetailsForm(profile) {
       const data = await parseJSONResponse(res);
       if (res.ok) {
         setFeedback('Information saved.', false);
+        if (data.mfaChallenge && data.mfaChallenge.mfaChallengeSent) {
+          showProfileMfaVerify(data.mfaChallenge);
+        } else if (data.mfaChallenge && data.mfaChallenge.error) {
+          setFeedback(data.mfaChallenge.error, true);
+        }
       } else {
         setFeedback(data.error || 'Unable to save.', true);
       }
@@ -1313,6 +1318,58 @@ function initProfileDetailsForm(profile) {
   });
 
   section.style.display = 'block';
+}
+
+function showProfileMfaVerify(challenge) {
+  const block = document.getElementById('pd-mfa-verify');
+  const promptEl = document.getElementById('pd-mfa-verify-prompt');
+  const codeInput = document.getElementById('pd-mfa-code');
+  const verifyBtn = document.getElementById('pd-mfa-verify-btn');
+  const resendBtn = document.getElementById('pd-mfa-resend-btn');
+  const feedback = document.getElementById('profile-details-feedback');
+  if (!block) return;
+  block.hidden = false;
+  let msg = 'Enter the code we sent to ' + (challenge.maskedTarget || 'your device') + '.';
+  if (challenge.deliveryNotice) msg += ' ' + challenge.deliveryNotice;
+  if (challenge.devCode) msg += ' (dev code: ' + challenge.devCode + ')';
+  if (promptEl) promptEl.textContent = msg;
+  if (codeInput) { codeInput.value = ''; codeInput.focus(); }
+
+  const onVerify = async () => {
+    const code = (codeInput && codeInput.value.trim()) || '';
+    try {
+      const v = await postJSON('/api/auth/mfa/verify', { mfaToken: challenge.mfaToken, code });
+      if (v.token || v.mfaEnrolled) {
+        block.hidden = true;
+        if (feedback) { feedback.textContent = 'Two-factor authentication enabled via SMS.'; feedback.style.color = 'var(--muted)'; }
+      } else {
+        if (promptEl) promptEl.textContent = v.error || 'Invalid code. Try again.';
+      }
+    } catch (_e) {
+      if (promptEl) promptEl.textContent = 'Unable to verify. Please try again.';
+    }
+  };
+  const onResend = async () => {
+    try {
+      const phone = (document.getElementById('pd-phone') || {}).value;
+      const r = await fetch('/api/profile/mfa', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+        body: JSON.stringify({ method: 'sms', phone: phone ? phone.trim() : '' }),
+      });
+      const j = await parseJSONResponse(r);
+      if (j.mfaChallengeSent) {
+        challenge.mfaToken = j.mfaToken;
+        if (promptEl) promptEl.textContent = 'A new code was sent to ' + (j.maskedTarget || 'your device') + '.' + (j.devCode ? ' (dev code: ' + j.devCode + ')' : '');
+      } else {
+        if (promptEl) promptEl.textContent = j.error || 'Unable to resend code.';
+      }
+    } catch (_e) {
+      if (promptEl) promptEl.textContent = 'Unable to resend. Please try again.';
+    }
+  };
+  if (verifyBtn) verifyBtn.onclick = onVerify;
+  if (resendBtn) resendBtn.onclick = onResend;
 }
 
 async function initDashboard() {

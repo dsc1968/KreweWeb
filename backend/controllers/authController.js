@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
 const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
-const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode } = require('../utils/email');
+const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
@@ -54,16 +54,29 @@ function maskMfaTarget(method, target) {
 }
 
 async function startMfaChallenge(userId, method, target) {
-  const code = generateVerificationCode();
   const expiresAt = new Date(Date.now() + MFA_CODE_TTL_MINUTES * 60 * 1000);
   await pool.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
+  let code = null;
+  let requestUuid = null;
+  let delivery;
+  if (method === 'email') {
+    code = generateVerificationCode();
+    delivery = await dispatchMfaCode('email', target, code);
+  } else {
+    // SMS uses the Plivo Verify API; Plivo generates/holds the code and we
+    // store the request_uuid (a dev fallback code is stored when unconfigured).
+    delivery = await dispatchMfaCode('sms', target, null);
+    if (delivery && delivery.requestUuid) requestUuid = delivery.requestUuid;
+    else if (delivery && delivery.devCode) code = delivery.devCode;
+  }
   await pool.query(
-    `INSERT INTO mfa_challenges (user_id, method, target, code, attempts, expires_at)
-     VALUES ($1, $2, $3, $4, 0, $5)`,
-    [userId, method, target, code, expiresAt]
+    `INSERT INTO mfa_challenges (user_id, method, target, code, request_uuid, attempts, expires_at)
+     VALUES ($1, $2, $3, $4, $5, 0, $6)`,
+    [userId, method, target, code, requestUuid, expiresAt]
   );
-  return dispatchMfaCode(method, target, code);
+  return delivery;
 }
+
 
 async function post__api_auth_register_request_code(req, res) {
   const email = normalizeEmailAddress(req.body.email);
@@ -418,7 +431,28 @@ async function put__api_profile_details(req, res) {
       ]
     );
     await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
-    res.json({ ok: true });
+
+    // When a member chooses SMS, start an MFA challenge so the choice actually
+    // enrolls (they must verify the code). This is what makes the profile
+    // "Text message (SMS)" option take effect (completed in the dashboard UI).
+    let mfaChallenge = null;
+    if (mfa_method === 'sms' && phone) {
+      try {
+        const delivery = await startMfaChallenge(userId, 'sms', phone);
+        mfaChallenge = {
+          mfaChallengeSent: true,
+          mfaToken: issueMfaToken(userId),
+          method: 'sms',
+          maskedTarget: maskMfaTarget('sms', phone),
+          deliveryNotice: (delivery && delivery.notice) || null,
+          devCode: (delivery && delivery.devCode) || undefined,
+        };
+      } catch (smsErr) {
+        mfaChallenge = { mfaChallengeSent: false, error: 'SMS could not be sent: ' + (smsErr.message || smsErr) };
+      }
+    }
+
+    res.json({ ok: true, mfaChallenge });
   } catch (error) {
     console.error('Failed to update profile details', error);
     res.status(500).json({ error: 'Unable to update profile details' });
@@ -499,7 +533,24 @@ async function post__api_auth_mfa_verify(req, res) {
       await client.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
       return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
     }
-    if (c.code !== code) {
+    let verified = false;
+    if (c.request_uuid) {
+      // SMS delivered via the Plivo Verify API: let Plivo validate the OTP.
+      try {
+        verified = await verifyPlivoOtp(
+          process.env.PLIVO_AUTH_ID,
+          process.env.PLIVO_AUTH_TOKEN,
+          process.env.PLIVO_VERIFY_APP_ID,
+          c.request_uuid,
+          code
+        );
+      } catch (_e) {
+        verified = false;
+      }
+    } else {
+      verified = c.code === code;
+    }
+    if (!verified) {
       await client.query('UPDATE mfa_challenges SET attempts = attempts + 1 WHERE user_id = $1', [userId]);
       return res.status(400).json({ error: 'Invalid code' });
     }

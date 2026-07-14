@@ -320,12 +320,16 @@ async function ensureContentTable() {
       user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       method      TEXT NOT NULL CHECK (method IN ('email', 'sms')),
       target      TEXT NOT NULL,
-      code        TEXT NOT NULL,
+      code        TEXT,
+      request_uuid TEXT,
       attempts    INTEGER NOT NULL DEFAULT 0,
       expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
       created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`ALTER TABLE mfa_challenges ADD COLUMN IF NOT EXISTS request_uuid TEXT;`);
+  await pool.query(`ALTER TABLE mfa_challenges ALTER COLUMN code DROP NOT NULL;`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_profiles (

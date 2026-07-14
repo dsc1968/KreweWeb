@@ -1,5 +1,6 @@
 // Email/SMTP transport + verification mail helpers (copied verbatim from server.js).
 const nodemailer = require('nodemailer');
+const plivo = require('plivo');
 const {
   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO,
   REGISTRATION_CODE_TTL_MINUTES,
@@ -104,59 +105,62 @@ function normalizePhoneToE164(raw) {
   return '+' + digits;
 }
 
-// Sends an MFA sign-in code. Email is fully implemented; SMS is dispatched by
-// POSTing { phoneNumber, message } to a configurable webhook (e.g. a Zapier
-// Catch Hook wired to Textedly, or any provider). Falls back to a development
-// log of the code when no webhook is configured.
+// Sends an MFA sign-in code. Email is fully implemented; SMS is sent through
+// Plivo when PLIVO_AUTH_ID / PLIVO_AUTH_TOKEN / PLIVO_SOURCE_NUMBER are set
+// (configured in Admin → Site Configuration → SMS Gateway / Plivo). Falls back to a
+// development log of the code when Plivo is not configured.
 async function dispatchMfaCode(method, target, code) {
   if (method === 'sms') {
     const phoneNumber = normalizePhoneToE164(target);
-    const webhookUrl = process.env.SMS_WEBHOOK_URL || process.env.TEXTEDLY_WEBHOOK_URL;
-    const message = `Your Krewe Mystique verification code is ${code}. It expires in ${REGISTRATION_CODE_TTL_MINUTES} minutes.`;
+    const plivoAuthId = process.env.PLIVO_AUTH_ID;
+    const plivoAuthToken = process.env.PLIVO_AUTH_TOKEN;
+    const plivoAppId = process.env.PLIVO_VERIFY_APP_ID;
+    const masked = String(phoneNumber || '').replace(/\D/g, '').slice(-4).padStart(4, '*');
 
-    if (webhookUrl) {
+    // Use the Plivo Verify API (app-based OTP) instead of the Messaging API.
+    // Plivo generates and validates the code; we only store the request_uuid.
+    if (plivoAuthId && plivoAuthToken && plivoAppId) {
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch(webhookUrl, {
+        const basic = Buffer.from(`${plivoAuthId}:${plivoAuthToken}`).toString('base64');
+        const resp = await fetch(`https://api.plivo.com/v1/Account/${plivoAuthId}/Verify/Session/`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phoneNumber, message }),
-          signal: controller.signal,
+          headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: phoneNumber, app_uuid: plivoAppId, channel: 'sms', brand_name: 'Krewe Mystique' }),
         });
-        clearTimeout(timer);
-        if (!resp.ok) {
-          const detail = await resp.text().catch(() => '');
-          throw new Error(`gateway responded ${resp.status}: ${detail.slice(0, 200)}`);
+        const data = await resp.json().catch(() => ({}));
+        const requestUuid = data && data.session_uuid;
+        if (!resp.ok || !requestUuid) {
+          throw new Error((data && (data.error || data.message)) || `Verify API HTTP ${resp.status}`);
         }
-        return { delivered: true, method: 'sms' };
+        console.log(`[mfa] Plivo Verify SMS sent -> ${masked} (session ${requestUuid})`);
+        return { delivered: true, method: 'sms', requestUuid };
       } catch (err) {
+        const detail = (err && (err.message || err.toString())) || 'unknown error';
         if (process.env.NODE_ENV === 'production') {
-          const error = new Error('SMS delivery failed: ' + err.message);
+          const error = new Error('SMS delivery failed: ' + detail);
           error.statusCode = 502;
           throw error;
         }
-        console.warn(`[mfa] SMS gateway error (${err.message}); dev fallback for ${String(phoneNumber || '').replace(/\D/g, '').slice(-4).padStart(4, '*')}: ${code}`);
-        return { delivered: false, method: 'sms', notice: 'SMS gateway unavailable; using development fallback code.', devCode: code };
+        console.warn(`[mfa] Plivo Verify error (${detail}); using development fallback for ${masked}`);
       }
     }
 
-    // No webhook configured
+    // Verify API not configured -> development fallback (we generate the code locally).
     if (process.env.NODE_ENV === 'production') {
-      const error = new Error('SMS delivery is not configured. Set SMS_WEBHOOK_URL in admin settings (MFA → SMS Gateway).');
+      const error = new Error('SMS delivery is not configured. Set PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_VERIFY_APP_ID in Admin → Site Configuration → SMS Gateway (Plivo), then restart the server.');
       error.statusCode = 503;
       throw error;
     }
-    const digits = String(phoneNumber || '').replace(/\D/g, '');
-    const masked = digits.length >= 4 ? `***-***-${digits.slice(-4)}` : 'your phone';
-    console.warn(`[mfa] SMS not configured; dev fallback code for ${masked}: ${code}`);
+    const fallbackCode = typeof code === 'string' && code ? code : generateVerificationCode();
+    console.warn(`[mfa] SMS not configured; dev fallback code for ${masked}: ${fallbackCode}`);
     return {
       delivered: false,
       method: 'sms',
       notice: 'SMS delivery is not yet configured. The code is shown in the server log (development mode).',
-      devCode: code,
+      devCode: fallbackCode,
     };
   }
+
 
   const emailSubject = 'Your Krewe Mystique login code';
   const emailText = [
@@ -192,6 +196,28 @@ async function dispatchMfaCode(method, target, code) {
   throw error;
 }
 
+// Validates an OTP via the Plivo Verify API using the stored request_uuid.
+// Returns true only when Plivo reports the OTP as valid.
+async function verifyPlivoOtp(authId, authToken, appId, requestUuid, otp) {
+  if (!authId || !authToken || !appId || !requestUuid) return false;
+  try {
+    const basic = Buffer.from(`${authId}:${authToken}`).toString('base64');
+    const resp = await fetch(`https://api.plivo.com/v1/Account/${authId}/Verify/Session/${requestUuid}/`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp: String(otp) }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    // A 2xx response with no error payload means Plivo accepted the OTP
+    // ("session validated successfully.").
+    if (resp.ok && !(data && data.error)) return true;
+    return false;
+  } catch (_e) {
+    return false;
+  }
+}
+
+
 module.exports = {
   smtpTransport,
   normalizeEmailAddress,
@@ -200,5 +226,6 @@ module.exports = {
   maskVerificationTarget,
   sendVerificationMail,
   dispatchVerificationCode,
-  dispatchMfaCode,
+  dispatchMfaCode, verifyPlivoOtp,
 };
+

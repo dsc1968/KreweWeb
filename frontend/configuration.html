@@ -128,12 +128,23 @@
               </div>
             </div>
 
-            <p class="db-config-section-label" style="margin-top:1rem;">SMS Gateway (for text-message MFA)</p>
-            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When set, MFA verification codes are texted by POSTing <code>{ phoneNumber, message }</code> to this URL &mdash; e.g. a Zapier Catch Hook connected to Textedly. Leave blank to disable SMS sending (email MFA still works). Requires a server restart to take effect.</p>
+            <p class="db-config-section-label" style="margin-top:1rem;">SMS Gateway &mdash; Plivo (for text-message MFA)</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Enter your Plivo credentials to send MFA codes by SMS via the Plivo Verify API. Leave these blank to disable SMS sending (email MFA still works). Get credentials from the <a href="https://console.plivo.com/dashboard/" target="_blank" rel="noopener">Plivo console</a>. Changes take effect after a server restart.</p>
             <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-plivo-auth-id">Plivo Auth ID</label>
+                <input type="text" id="cfg-plivo-auth-id" name="PLIVO_AUTH_ID" placeholder="MAMJxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-plivo-auth-token">Plivo Auth Token</label>
+                <input type="password" id="cfg-plivo-auth-token" name="PLIVO_AUTH_TOKEN" placeholder="••••••••" autocomplete="new-password" />
+              </div>
               <div class="form-group" style="grid-column:1/-1;">
-                <label for="cfg-sms-webhook">SMS Gateway Webhook URL</label>
-                <input type="text" id="cfg-sms-webhook" name="SMS_WEBHOOK_URL" placeholder="https://hooks.zapier.com/hooks/catch/..." autocomplete="off" />
+                <label for="cfg-plivo-source">Plivo Source (From) Number</label>
+                <input type="text" id="cfg-plivo-source" name="PLIVO_SOURCE_NUMBER" placeholder="+15671234567" autocomplete="off" />
+                <label for="cfg-plivo-verify-app-id">Plivo Verify App ID</label>
+                <input type="text" id="cfg-plivo-verify-app-id" name="PLIVO_VERIFY_APP_ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
+                <p style="font-size:0.78rem;color:var(--muted);margin-top:0.25rem;">From the Plivo Verify product. Required to send sign-in codes via the Plivo Verify API (replaces the Messaging API).</p>
               </div>
             </div>
 

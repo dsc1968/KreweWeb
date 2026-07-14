@@ -115,6 +115,36 @@
               </div>
             </div>
 
+            <p class="db-config-section-label" style="margin-top:1rem;">Multi-Factor Authentication (MFA)</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Require members to verify their identity with a one-time code (email or SMS) when they register and/or sign in. Admin and store-admin accounts always require MFA. Changes apply immediately.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-mfa-mode">MFA Requirement</label>
+                <select id="cfg-mfa-mode" name="mfa_mode">
+                  <option value="off">Disabled — no MFA for members</option>
+                  <option value="registration">Required at registration only</option>
+                  <option value="registration_and_login">Required at registration and login (recommended)</option>
+                </select>
+              </div>
+            </div>
+
+            <p class="db-config-section-label" style="margin-top:1rem;">SMS Gateway &mdash; Plivo (for text-message MFA)</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Enter your Plivo credentials to send MFA codes by SMS. Leave these blank to disable SMS sending (email MFA still works). Get credentials from the <a href="https://console.plivo.com/dashboard/" target="_blank" rel="noopener">Plivo console</a>. Changes take effect after a server restart.</p>
+            <div class="db-form-grid">
+              <div class="form-group">
+                <label for="cfg-plivo-auth-id">Plivo Auth ID</label>
+                <input type="text" id="cfg-plivo-auth-id" name="PLIVO_AUTH_ID" placeholder="MAMJxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfg-plivo-auth-token">Plivo Auth Token</label>
+                <input type="password" id="cfg-plivo-auth-token" name="PLIVO_AUTH_TOKEN" placeholder="••••••••" autocomplete="new-password" />
+              </div>
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-plivo-source">Plivo Source (From) Number</label>
+                <input type="text" id="cfg-plivo-source" name="PLIVO_SOURCE_NUMBER" placeholder="+15671234567" autocomplete="off" />
+              </div>
+            </div>
+
             <p class="db-config-section-label" style="margin-top:1rem;">Season</p>
             <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">When this date arrives each year all member dues and fees are automatically reset to unpaid. The server checks at midnight UTC each day.</p>
             <div class="db-form-grid">
