@@ -53,7 +53,7 @@ async function saveRegistrationProfile(token) {
 function setMfaPrompt(promptEl, info) {
   if (!promptEl || !info) return;
   const parts = [];
-  if (info.maskedTarget) parts.push(`We sent a verification code to ${info.maskedTarget}.`);
+  if (info.maskedTarget) parts.push(`We sent a two-factor (MFA) sign-in code to ${info.maskedTarget}.`);
   if (info.notice) parts.push(info.notice);
   if (info.devCode) parts.push(`Dev code: ${info.devCode}`);
   promptEl.textContent = parts.join(' ').trim() || 'Enter the verification code.';
@@ -76,6 +76,23 @@ if (registerForm) {
   const mfaResendButton = document.getElementById('mfa-resend-button');
   let registerMfaToken = null;
   let registerMfaMethod = 'email';
+  let registrationRequiresMfa = true; // default to the verification flow until policy is known
+
+  // Reflect the site MFA policy on the registration button: when members don't
+  // need MFA the form is a single "Register" action; otherwise it starts the
+  // email-verification (and possibly MFA) code flow.
+  (async () => {
+    try {
+      const policyRes = await fetch('/api/mfa-policy');
+      if (policyRes.ok) {
+        const policy = await policyRes.json();
+        registrationRequiresMfa = !!policy.registrationRequiresMfa;
+      }
+    } catch (_policyErr) { /* keep default (verification flow) */ }
+    if (submitButton) {
+      submitButton.textContent = registrationRequiresMfa ? 'Send verification code' : 'Register';
+    }
+  })();
 
   function setRegisterFeedback(message, isError) {
     if (!feedback) return;
@@ -121,6 +138,18 @@ if (registerForm) {
         }
 
         setRegisterFeedback(resp.error || 'Verification failed', true);
+        return;
+      }
+
+      if (!registrationRequiresMfa) {
+        const resp = await postJSON('/api/auth/register', { full_name, email, password });
+        if (resp.token) {
+          sessionStorage.setItem('krewe_token', resp.token);
+          await saveRegistrationProfile(resp.token);
+          window.location.href = '/dashboard.html';
+          return;
+        }
+        setRegisterFeedback(resp.error || 'Unable to create account', true);
         return;
       }
 
@@ -176,7 +205,7 @@ if (registerForm) {
     if (mfaResendButton) mfaResendButton.hidden = false;
     registerForm.dataset.phase = 'mfa';
     submitButton.textContent = 'Verify and finish';
-    setRegisterFeedback(info.notice || 'Verify your sign-in method to finish creating your account.', false);
+    setRegisterFeedback(info.notice || 'A separate two-factor (MFA) code was just emailed to confirm your sign-in method. This is different from the email verification code you entered above \u2014 enter the new MFA code below.', false);
   }
 
   if (mfaResendButton) {

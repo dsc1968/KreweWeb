@@ -217,7 +217,9 @@ h1 {
   min-height: 3rem;
   padding: 0 1.4rem;
   border-radius: 999px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
@@ -228,6 +230,7 @@ h1 {
 .primary {
   color: #08102a;
   background: linear-gradient(135deg, var(--accent), #ffb24d);
+  border-color: transparent;
   box-shadow: 0 18px 38px rgba(255, 179, 72, 0.18);
 }
 
@@ -1678,4 +1681,18 @@ body.admin-edit-mode .album-tools {
   border-color: rgba(239, 191, 88, 0.75);
   box-shadow: 0 0 0 4px rgba(239, 191, 88, 0.14);
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* "Resend code" secondary action inside the MFA verify block. Explicit
+   light text (the base .button no longer relies on inheritance) plus a
+   visible outline + hover so it is clearly readable on the dark panel. */
+#pd-mfa-verify .db-resend-btn {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+#pd-mfa-verify .db-resend-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
 }

@@ -32,7 +32,10 @@ function isElevatedRole(role) {
 
 // Whether MFA is mandated for this user under the current system policy.
 function mfaPolicyRequires(role, mode) {
-  return isElevatedRole(role) || mode !== 'off';
+  // Admins and store-admins always require MFA regardless of the site setting.
+  // For members, MFA at login is only required under "registration_and_login";
+  // the "registration" mode enforces MFA at sign-up only, and "off" enforces none.
+  return isElevatedRole(role) || mode === 'registration_and_login';
 }
 
 function issueMfaToken(userId) {
@@ -198,29 +201,15 @@ async function post__api_auth_register_verify_code(req, res) {
     const user = insertResult.rows[0];
 
     const mode = await getMfaMode();
+    // When MFA is required at registration the email verification code the user
+    // just entered already proves ownership of the address, which is the member
+    // MFA factor (email). So we enroll email MFA here and finish sign-up in one
+    // step — we deliberately do NOT prompt for a second MFA code.
     if (mode !== 'off') {
-      // Registration always enrolls with email; SMS can be chosen later in profile.
-      let method = 'email';
-      let target = method === 'sms' ? (pending.phone || user.email) : user.email;
-      let notice = null;
-      if (method === 'sms' && !pending.phone) {
-        method = 'email';
-        target = user.email;
-        notice = 'SMS was selected but no phone number was provided, so email was used instead.';
-      }
-      await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = FALSE WHERE id = $2', [method, user.id]);
-      await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
-      await client.query('COMMIT');
-      const delivery = await startMfaChallenge(user.id, method, target);
-      return res.status(201).json({
-        mfaEnrollmentRequired: true,
-        mfaToken: issueMfaToken(user.id),
-        method,
-        maskedTarget: maskMfaTarget(method, target),
-        deliveryNotice: (delivery && delivery.notice) || notice,
-        devCode: (delivery && delivery.devCode) || undefined,
-        message: 'Verify your selected sign-in method to finish creating your account.',
-      });
+      await client.query(
+        "UPDATE users SET mfa_method = 'email', mfa_enrolled = TRUE WHERE id = $1",
+        [user.id]
+      );
     }
 
     await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
@@ -237,10 +226,81 @@ async function post__api_auth_register_verify_code(req, res) {
         role: user.role,
       },
       token,
+      mfaEnrolled: mode !== 'off',
+      message: mode !== 'off'
+        ? 'Account created. Two-factor sign-in (email) is now enabled for your account.'
+        : 'Account created.',
     });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Registration verification failed', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'That email is already in use' });
+    }
+    res.status(500).json({ error: 'Unable to complete registration' });
+  } finally {
+    client.release();
+  }
+}
+
+// Direct registration — only used when MFA is disabled for members
+// (mfa_mode === 'off'). It skips the email-verification code step entirely so
+// the registration form can behave as a plain "Register" button. When MFA is
+// required at registration the client must use the request-code/verify-code
+// flow instead (enforced below as a safety net).
+async function post__api_auth_register(req, res) {
+  const email = normalizeEmailAddress(req.body.email);
+  const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  if (!email || !fullName || !password) {
+    return res.status(400).json({ error: 'Email, full name and password are required' });
+  }
+  if (!isValidEmailAddress(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address' });
+  }
+
+  const mode = await getMfaMode();
+  if (mode !== 'off') {
+    // MFA is required at registration, so a verification code flow is mandatory.
+    return res.status(400).json({ error: 'Registration requires verification. Please request a verification code.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(password, salt);
+    const insertResult = await client.query(
+      `INSERT INTO users (email, full_name, role, password_hash)
+       VALUES ($1, $2, 'member', $3)
+       RETURNING id, email, full_name, role, joined_at`,
+      [email, fullName, hash]
+    );
+    await client.query('COMMIT');
+
+    const user = insertResult.rows[0];
+    const token = generateToken(user);
+    res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        phone: null,
+        full_name: user.full_name,
+        role: user.role,
+      },
+      token,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Direct registration failed', error);
     if (error.code === '23505') {
       return res.status(409).json({ error: 'That email is already in use' });
     }
@@ -398,6 +458,27 @@ async function put__api_profile_details(req, res) {
     return res.status(400).json({ error: 'A phone number is required to use SMS for MFA.' });
   }
 
+  // Capture the member's prior MFA settings so we only force an SMS
+  // verification when something actually changed: they switched their
+  // method TO "sms", or they edited the phone number the code is sent to.
+  // Saving unrelated profile fields must not re-prompt on every save.
+  let prevMfaMethod = 'email';
+  let prevPhone = '';
+  try {
+    const prevRes = await pool.query(
+      'SELECT u.mfa_method, p.phone FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.id = $1',
+      [userId]
+    );
+    const prevRow = prevRes.rows[0] || {};
+    prevMfaMethod = prevRow.mfa_method || 'email';
+    prevPhone = (prevRow.phone || '').toString().trim();
+  } catch (_prevErr) {
+    // If we can't read the prior values, fail safe to re-prompting (treat as a
+    // change) so we never silently skip a security step.
+    prevMfaMethod = 'email';
+    prevPhone = '';
+  }
+
   try {
     await pool.query(
       `INSERT INTO user_profiles (
@@ -432,11 +513,17 @@ async function put__api_profile_details(req, res) {
     );
     await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
 
-    // When a member chooses SMS, start an MFA challenge so the choice actually
-    // enrolls (they must verify the code). This is what makes the profile
-    // "Text message (SMS)" option take effect (completed in the dashboard UI).
+    // Start an SMS MFA challenge only when the member is actually (re)enrolling
+    // SMS — i.e. they just switched their MFA method TO "sms", or they changed
+    // the phone number the code is texted to. This keeps the profile
+    // "Text message (SMS)" option working without re-prompting on every save
+    // of unrelated fields.
+    const switchedToSms = mfa_method === 'sms' && prevMfaMethod !== 'sms';
+    const phoneChanged = (phone || '').trim() !== prevPhone;
+    const needSmsChallenge = mfa_method === 'sms' && !!phone && (switchedToSms || phoneChanged);
+
     let mfaChallenge = null;
-    if (mfa_method === 'sms' && phone) {
+    if (needSmsChallenge) {
       try {
         const delivery = await startMfaChallenge(userId, 'sms', phone);
         mfaChallenge = {
@@ -610,4 +697,4 @@ async function put__api_profile_mfa(req, res) {
 function generateToken(user) {
   return jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
-module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa };
+module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa };
