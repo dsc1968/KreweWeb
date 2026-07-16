@@ -173,9 +173,15 @@ npm run init-db -- yourStrongPassword
 
 **Default admin credentials created by the initializer:**
 
+> **MFA is enforced for admin accounts.** On first login you must complete an
+> MFA sign-in step, so the bootstrap admin needs a **reachable email** to receive
+> the code. When you run the initializer interactively it prompts for this email
+> and defaults to `admin@krewe.local` — **enter a real, deliverable address** (or
+> set `DEFAULT_ADMIN_EMAIL` below) so you can actually log in.
+
 | Field | Value |
 |-------|-------|
-| Email | `admin@krewe.local` |
+| Email | prompted (default `admin@krewe.local`) |
 | Password | `admin123` |
 
 Change this password immediately after your first login.
@@ -204,7 +210,7 @@ arguments:
 | `DB_USER` | `krewe_db_user` | Database role to create |
 | `PORT` | `8000` | Port written into `.env` |
 | `CREATE_DEFAULT_ADMIN` | `true` | Set `false` to skip creating the default admin account |
-| `DEFAULT_ADMIN_EMAIL` | `admin@krewe.local` | Email for the bootstrap admin account |
+| `DEFAULT_ADMIN_EMAIL` | `admin@krewe.local` | Email for the bootstrap admin account (prompted interactively; must be reachable for MFA) |
 | `DEFAULT_ADMIN_NAME` | `Admin User` | Display name for the bootstrap admin account |
 | `DEFAULT_ADMIN_PASSWORD` | `admin123` | Password for the bootstrap admin account |
 

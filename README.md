@@ -79,7 +79,6 @@ terminate TLS, so the app itself never deals with certificates.
 | `db-init.sql` | PostgreSQL base schema (applied by the init script) |
 | `scripts/init_db.sh` | Database and `.env` initializer (`npm run init-db`) |
 | `seed.js` | Demo data seeder (`npm run seed`) |
-| `server.legacy.js` | Legacy single-file server (not used by `npm start`) |
 | `_backups/` | Server-managed database backups |
 
 > The repository also contains duplicate copies under `frontend/frontend/…`
