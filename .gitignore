@@ -1,5 +1,7 @@
 .env
+.env.bak
 # Track node_modules so the package works after a GitHub sync,
 # but exclude the plivo test/secret file.
 node_modules/plivo/dist/rest/request-test.js
 tmp/
+.gitignore
