@@ -209,8 +209,40 @@ h1 {
   color: #08102a;
 }
 
+.history-hero .eyebrow {
+  color: #6b4e12;
+}
+
 .history-hero {
   min-height: 48vh;
+}
+
+.events-hero {
+  min-height: 52vh;
+}
+
+.events-hero .container {
+  max-width: 760px;
+}
+
+.royal-court-hero {
+  min-height: 82vh;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-color: #020816;
+}
+
+.contact-hero {
+  min-height: 48vh;
+}
+
+.join-hero {
+  min-height: 48vh;
+}
+
+.royal-court-hero .container {
+  max-width: 820px;
 }
 
 .hero-actions {
@@ -889,16 +921,18 @@ body.admin-edit-mode .album-tools {
 
 .auth-card {
   background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.98));
-  padding: 2rem;
+  padding: 2.25rem;
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,0.06);
   box-shadow: 0 10px 30px rgba(2,8,22,0.6);
   width: 100%;
-  max-width: 480px;
+  max-width: 680px;
 }
 
 .auth-card h1 {
   margin-top: 0;
+  font-size: clamp(1.75rem, 3.5vw, 2.4rem);
+  line-height: 1.1;
 }
 
 .auth-card label {
@@ -1503,13 +1537,50 @@ body.admin-edit-mode .album-tools {
 }
 
 .event-calendar-card,
-.event-calendar-notes,
-.event-card {
+.event-calendar-notes {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 1.25rem;
+}
+
+.event-card {
+  display: grid;
+  gap: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 1.75rem;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.event-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 210, 98, 0.45);
+  box-shadow: 0 28px 55px rgba(0, 0, 0, 0.4);
+}
+
+.event-card-tag {
+  align-self: start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #08102a;
+  background: linear-gradient(135deg, var(--accent), #ffb24d);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+}
+
+.event-card h3 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.event-card p {
+  margin: 0;
 }
 
 .event-calendar-card h3,
@@ -1599,6 +1670,24 @@ body.admin-edit-mode .album-tools {
   padding-left: 1rem;
   display: grid;
   gap: 0.6rem;
+}
+
+.events-cta {
+  text-align: center;
+  border-radius: 28px;
+  padding: 3rem 2rem;
+  background: linear-gradient(135deg, rgba(255, 210, 98, 0.18), rgba(255, 178, 72, 0.05));
+  border: 1px solid rgba(255, 210, 98, 0.32);
+  box-shadow: var(--shadow);
+}
+
+.events-cta h2 {
+  margin: 0 0 0.75rem;
+}
+
+.events-cta p {
+  max-width: 42rem;
+  margin: 0 auto 1.5rem;
 }
 
 .events-page .section {
