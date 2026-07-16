@@ -241,6 +241,10 @@ h1 {
   min-height: 48vh;
 }
 
+.photos-hero {
+  min-height: 52vh;
+}
+
 .royal-court-hero .container {
   max-width: 820px;
 }
@@ -625,6 +629,33 @@ body.admin-edit-mode .album-tools {
   font-size: 0.82rem;
   color: #dbe7ff;
   padding: 0.45rem 0.5rem 0.55rem;
+}
+
+/* Album/editor modal backdrop — fixed full-screen overlay so the modal
+   opens centered in the viewport instead of at the bottom of the page. */
+.admin-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: rgba(2, 8, 22, 0.72);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+
+.admin-editor-modal {
+  width: min(680px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  margin: auto 0;
+  background: linear-gradient(180deg, rgba(10, 19, 44, 0.98), rgba(15, 26, 56, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  padding: 1.75rem;
 }
 
 .album-lightbox {
