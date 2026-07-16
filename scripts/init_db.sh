@@ -306,30 +306,6 @@ if [ -n "$NOT_OWNED_REQUIRED" ]; then
   exit 1
 fi
 
-# Resolve the bootstrap admin email. MFA is enforced for admin accounts, so the
-# address must be reachable to receive the sign-in code on first login. If the
-# email is still the non-deliverable default (or unset) and we are attached to a
-# terminal, prompt for a real one (defaulting to admin@krewe.local). An explicit
-# DEFAULT_ADMIN_EMAIL (env / inline) is always honored without prompting.
-valid_email() {
-  [[ "$1" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]
-}
-
-if [ -t 0 ] && { [ -z "${DEFAULT_ADMIN_EMAIL:-}" ] || [ "${DEFAULT_ADMIN_EMAIL}" = "admin@krewe.local" ]; }; then
-  while true; do
-    read -r -p "Enter a valid email for the bootstrap admin [admin@krewe.local]: " ADMIN_EMAIL_INPUT
-    if [ -z "$ADMIN_EMAIL_INPUT" ]; then
-      echo "  Using default: admin@krewe.local (MFA codes cannot be delivered to this address — change it after first login)."
-      break
-    elif valid_email "$ADMIN_EMAIL_INPUT"; then
-      DEFAULT_ADMIN_EMAIL="$ADMIN_EMAIL_INPUT"
-      break
-    else
-      echo "  That does not look like a valid email address. Please try again."
-    fi
-  done
-fi
-
 if [ "$CREATE_DEFAULT_ADMIN" = "true" ]; then
   echo "-> Ensuring default admin account exists..."
   ADMIN_HASH=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync(process.argv[1], 10));" "$DEFAULT_ADMIN_PASSWORD" 2>/dev/null || true)

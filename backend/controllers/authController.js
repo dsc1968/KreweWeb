@@ -31,12 +31,17 @@ function isElevatedRole(role) {
 }
 
 // Whether MFA is mandated for this user under the current system policy.
-function mfaPolicyRequires(role, mode) {
+function mfaPolicyRequires(role, mode, email) {
+  // The bootstrap admin (admin@krewe.local) is exempt from MFA so the initial
+  // login works before email/SMS delivery is configured.
+  if (email && email.toLowerCase() === 'admin@krewe.local') return false;
   // Admins and store-admins always require MFA regardless of the site setting.
   // For members, MFA at login is only required under "registration_and_login";
   // the "registration" mode enforces MFA at sign-up only, and "off" enforces none.
   return isElevatedRole(role) || mode === 'registration_and_login';
 }
+
+
 
 function issueMfaToken(userId) {
   return jwt.sign({ userId, mfaChallenge: true }, JWT_SECRET, { expiresIn: '10m' });
@@ -330,7 +335,7 @@ async function post__api_auth_login(req, res) {
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
     const mode = await getMfaMode();
-    if (mfaPolicyRequires(user.role, mode)) {
+    if (mfaPolicyRequires(user.role, mode, user.email)) {
       if (!user.mfa_enrolled) {
         return res.json({
           mfaEnrollmentRequired: true,
