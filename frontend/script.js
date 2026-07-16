@@ -118,6 +118,10 @@ if (countdownElements.days) {
     savePendingCount: 0,
     saveStatusNode: null,
     selectionHandlesOverlay: null,
+    // Snapshot of the published page HTML captured the moment edit mode is
+    // entered, so the admin can revert to the original if edits go wrong.
+    pageBackup: null,
+    revertButton: null,
   };
   const albumRootElementKey = 'media-albums-root|container';
   const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
@@ -909,7 +913,7 @@ if (countdownElements.days) {
   }
 
   function isInsideAdminUi(element) {
-    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay'));
+    return Boolean(element.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-revert-button, .admin-save-status, .admin-editor-modal, .admin-editor-backdrop, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay'));
   }
 
   function hasNestedEditableText(element) {
@@ -2870,6 +2874,33 @@ if (countdownElements.days) {
       }
 
       .admin-add-section-button svg {
+        width: 1rem;
+        height: 1rem;
+        fill: currentColor;
+      }
+
+      .admin-revert-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border: 1px solid rgba(255, 210, 98, 0.35);
+        border-radius: 10px;
+        background: rgba(255, 210, 98, 0.10);
+        color: #ffd262;
+        cursor: pointer;
+        transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      }
+      .admin-revert-button:hover,
+      .admin-revert-button:focus-visible {
+        transform: translateY(-1px);
+        border-color: rgba(255, 210, 98, 0.55);
+        background: rgba(255, 210, 98, 0.18);
+      }
+      .admin-revert-button svg {
         width: 1rem;
         height: 1rem;
         fill: currentColor;
@@ -7102,6 +7133,94 @@ if (countdownElements.days) {
     await loadFile(activeFile);
   }
 
+  // Edit-mode snapshot & revert: when the admin enters edit mode we capture the
+  // currently published page HTML from the server. That snapshot is the
+  // "original" the admin can fall back to if edits get messed up.
+  async function capturePageBackup() {
+    if (state.pageBackup) return state.pageBackup;
+    const pagePath = state.pagePath === '/' ? '/index.html' : state.pagePath;
+    const token = getStoredToken();
+    try {
+      const res = await fetch(
+        '/api/admin/file-source?path=' + encodeURIComponent(pagePath),
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || typeof data.content !== 'string') return null;
+      state.pageBackup = { path: pagePath, html: data.content, savedAt: new Date().toISOString() };
+      return state.pageBackup;
+    } catch (err) {
+      console.error('Failed to capture page backup:', err);
+      return null;
+    }
+  }
+
+  function ensureRevertButton() {
+    if (state.revertButton && document.body.contains(state.revertButton)) return state.revertButton;
+    const controls = document.getElementById('admin-nav-controls');
+    if (!controls) return null;
+
+    const button = document.createElement('button');
+    button.id = 'admin-revert-original';
+    button.type = 'button';
+    button.className = 'admin-revert-button';
+    button.setAttribute('aria-label', 'Revert page to original');
+    button.setAttribute('title', 'Discard all edits and restore the originally published page');
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z" /></svg>';
+
+    button.addEventListener('click', revertToOriginalPage);
+
+    const editToggle = document.getElementById('admin-edit-toggle');
+    if (editToggle && editToggle.nextSibling) {
+      controls.insertBefore(button, editToggle.nextSibling);
+    } else {
+      controls.appendChild(button);
+    }
+    state.revertButton = button;
+    return button;
+  }
+
+  function removeRevertButton() {
+    if (state.revertButton && state.revertButton.parentNode) {
+      state.revertButton.parentNode.removeChild(state.revertButton);
+    }
+    state.revertButton = null;
+  }
+
+  async function revertToOriginalPage() {
+    if (!state.pageBackup) {
+      const captured = await capturePageBackup();
+      if (!captured) {
+        alert('Could not load the original page to revert to. Please try again.');
+        return;
+      }
+    }
+    const ok = window.confirm(
+      'Revert this page to its originally published version? All edits made in this session will be discarded.'
+    );
+    if (!ok) return;
+
+    const snap = state.pageBackup;
+    const token = getStoredToken();
+    updateSaveStatus('saving', 'Reverting...');
+    try {
+      const res = await fetch('/api/admin/file-source', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ path: snap.path, content: snap.html }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Revert failed');
+      setEditMode(false);
+      window.location.reload();
+    } catch (err) {
+      console.error('Revert error:', err);
+      updateSaveStatus('error', err.message);
+      alert('Revert failed: ' + err.message);
+    }
+  }
+
   function setEditMode(nextValue) {
     state.editMode = nextValue;
     document.body.classList.toggle('admin-edit-mode', nextValue);
@@ -7118,12 +7237,15 @@ if (countdownElements.days) {
         state.domObserver.disconnect();
         state.domObserver = null;
       }
+      removeRevertButton();
+      state.pageBackup = null;
     }
     ensureInspectorPanel();
     updateInspectorPanel(nextValue ? document.querySelector('main[data-admin-editable="page-root"]') : null);
     if (nextValue) {
       ensureEditorDomObserver();
       scheduleEditorSync();
+      capturePageBackup().then(function () { ensureRevertButton(); });
     }
     applyElementOverrides();
     registerSectionEditing();
@@ -7380,7 +7502,7 @@ if (countdownElements.days) {
           return;
         }
       }
-      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay')) return;
+      if (event.target.closest('.admin-nav-controls, .admin-edit-nav-button, .admin-add-section-button, .admin-revert-button, .admin-save-status, .admin-editor-modal, .admin-code-editor-backdrop, .admin-section-tools, .admin-element-toolbar, .admin-inspector-panel, .admin-selection-handles-overlay')) return;
 
       const calendarCell = event.target.closest('.event-calendar td[data-calendar-day]');
       if (calendarCell) {
