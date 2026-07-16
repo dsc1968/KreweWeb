@@ -161,13 +161,21 @@ a {
 
 .hero-overlay {
   position: absolute;
-  inset: 0;
+  inset:0;
+  z-index: 1;
+  pointer-events: none;
   background: radial-gradient(circle at top left, rgba(255, 210, 98, 0.1), transparent 32%);
+}
+
+/* Keep hero text/buttons above the tint overlay so they stay clickable */
+.hero .container {
+  position: relative;
+  z-index: 2;
 }
 
 .hero-content {
   position: relative;
-  z-index: 1;
+  z-index:1;
   display: grid;
   gap: 1.5rem;
   max-width: 720px;
@@ -178,7 +186,8 @@ a {
   color: var(--accent);
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  font-size: 0.85rem;
+  font-size: clamp(1.5rem, 5vw, 3.4rem);
+  line-height: 1.1;
   font-weight: 700;
 }
 
@@ -762,6 +771,8 @@ body.admin-edit-mode .album-tools {
     flex-direction: row;
     align-items: center;
     flex-wrap: wrap;
+    width: 100%;
+    margin: 0;
     padding: 0.75rem 1rem;
   }
 

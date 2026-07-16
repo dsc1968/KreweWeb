@@ -9,8 +9,9 @@ Repository: https://github.com/dsc1968/KreweWeb.git
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Prerequisites](#prerequisites)
-3. [Linux Installation (Ubuntu 22.04 / Debian)](#linux-installation-ubuntu-2204--debian)
+2. [Dependencies](#dependencies)
+3. [Prerequisites](#prerequisites)
+4. [Linux Installation (Ubuntu 22.04 / Debian)](#linux-installation-ubuntu-2204--debian)
    - [1. System packages](#1-system-packages)
    - [2. Install Node.js](#2-install-nodejs)
    - [3. Install PostgreSQL](#3-install-postgresql)
@@ -19,7 +20,7 @@ Repository: https://github.com/dsc1968/KreweWeb.git
    - [6. Initialize the database and .env file](#6-initialize-the-database-and-env-file)
    - [7. Start the app](#7-start-the-app)
    - [8. Auto-start on boot — systemd](#8-auto-start-on-boot--systemd)
-4. [Windows Installation](#windows-installation)
+5. [Windows Installation](#windows-installation)
    - [1. Install Git for Windows](#1-install-git-for-windows)
    - [2. Install Node.js](#2-install-nodejs-1)
    - [3. Install PostgreSQL](#3-install-postgresql-1)
@@ -28,8 +29,8 @@ Repository: https://github.com/dsc1968/KreweWeb.git
    - [6. Initialize the database and .env file](#6-initialize-the-database-and-env-file-1)
    - [7. Start the app](#7-start-the-app-1)
    - [8. Auto-start on boot — NSSM Windows service](#8-auto-start-on-boot--nssm-windows-service)
-5. [Environment Variables Reference](#environment-variables-reference)
-6. [Nginx Proxy Manager — Reverse Proxy and SSL Certificates](#nginx-proxy-manager--reverse-proxy-and-ssl-certificates)
+6. [Environment Variables Reference](#environment-variables-reference)
+7. [Nginx Proxy Manager — Reverse Proxy and SSL Certificates](#nginx-proxy-manager--reverse-proxy-and-ssl-certificates)
    - [Why Nginx Proxy Manager](#why-nginx-proxy-manager)
    - [Install Docker and Docker Compose (Linux)](#install-docker-and-docker-compose-linux)
    - [Install Docker Desktop (Windows)](#install-docker-desktop-windows)
@@ -38,15 +39,15 @@ Repository: https://github.com/dsc1968/KreweWeb.git
    - [Add a Proxy Host for the Krewe app](#add-a-proxy-host-for-the-krewe-app)
    - [Request a free SSL certificate](#request-a-free-ssl-certificate)
    - [Firewall rules](#firewall-rules)
-7. [Backup & Cloud Storage](#backup--cloud-storage)
+8. [Backup & Cloud Storage](#backup--cloud-storage)
    - [Provider 1 — Local filesystem (default)](#provider-1--local-filesystem-default)
    - [Provider 2 — AWS S3 / S3-compatible](#provider-2--aws-s3--s3-compatible-r2-minio-backblaze-b2)
    - [Provider 3 — rclone (OneDrive, Google Drive, Dropbox…)](#provider-3--rclone-onedrive-personal--m365-google-drive-dropbox-and-70-others)
-8. [Troubleshooting](#troubleshooting)
-9. [Optional: demo seed data](#optional-demo-seed-data)
-10. [Project layout](#project-layout)
-11. [Account and login features](#account-and-login-features)
-12. [Notes](#notes)
+9. [Troubleshooting](#troubleshooting)
+10. [Optional: demo seed data](#optional-demo-seed-data)
+11. [Project layout](#project-layout)
+12. [Account and login features](#account-and-login-features)
+13. [Notes](#notes)
 
 ---
 
@@ -63,6 +64,57 @@ The Node.js app handles all HTTP traffic on port `8000`. Nginx Proxy Manager sit
 
 ---
 
+## Dependencies
+
+This section lists everything you must install before the app will run.
+
+### npm packages (installed by `npm install` at the repository root)
+
+All production dependencies are declared in the root `package.json`. Run `npm install` **once, from the repository root** (the folder that contains `package.json`) — do **not** run it from `frontend/` or any nested copy, because only the root install populates the `node_modules/` that the backend loads. `npm start` runs `node backend/server.js`, which requires these packages.
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `express` | ^4.18.4 | HTTP server and REST API framework |
+| `pg` | ^8.11.3 | PostgreSQL client / connection pool |
+| `dotenv` | ^16.3.1 | Loads environment variables from `.env` |
+| `jsonwebtoken` | ^9.0.0 | Signs and verifies JWT auth tokens |
+| `bcryptjs` | ^2.4.3 | Hashes user passwords (also used by the init script) |
+| `cors` | ^2.8.5 | Cross-origin resource sharing middleware |
+| `multer` | ^1.4.5-lts.1 | Handles multipart file uploads (photos, images) |
+| `nodemailer` | ^9.0.1 | Sends email (verification codes, contact form) |
+| `archiver` | ^5.3.2 | Creates `.zip` database backups |
+| `unzipper` | ^0.12.5 | Extracts `.zip` backups on restore |
+| `@aws-sdk/client-s3` | ^3.1077.0 | S3 / S3-compatible backup storage (R2, MinIO, Backblaze B2) |
+| `plivo` | ^4.78.0 | Declared for Plivo SMS; the app currently calls the Plivo REST API via HTTPS using `PLIVO_*` env vars |
+| `@zapier/zapier-sdk` | ^0.84.4 | Declared for Zapier integration (not directly required by the running app) |
+
+> Note: `plivo` and `@zapier/zapier-sdk` are listed in `package.json` but are not directly `require`d by the shipped backend code — they are kept for optional integrations. There are no `devDependencies`, and a committed `package-lock.json` pins exact versions.
+
+### System / runtime prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| **Node.js 20.x (LTS)** | Runtime. Provides `node` and `npm`. |
+| **npm 10.x** | Installed with Node.js; used to install dependencies. |
+| **PostgreSQL 15 / 16** | Database server (`postgresql`) and the `psql` CLI (`postgresql-client`). |
+| **bash** | The DB initializer (`scripts/init_db.sh`) is a Bash script run via `npm run init-db`. |
+| **git** | To clone the repository. |
+| **curl** | Downloads installers and tests API endpoints. |
+| **openssl**, **xxd** | Used by the init script to generate the JWT secret. |
+| **build-essential** | Native compiler for any npm packages that build native add-ons. |
+| **ca-certificates**, **gnupg** | Verify signed package sources when adding the Node/PostgreSQL repos. |
+
+### Optional external tools / services
+
+| Tool / service | When needed |
+|----------------|-------------|
+| **rclone** | Only if you choose the rclone backup provider (OneDrive, Google Drive, Dropbox, …). |
+| **Docker + Docker Compose** | Only if you deploy Nginx Proxy Manager for HTTPS / reverse proxy. |
+| **SMTP server** | Only if you enable email verification / the contact form (`SMTP_*` vars). |
+| **Plivo account** | Only if you enable SMS verification / MFA (`PLIVO_*` vars). |
+| **PayPal app credentials** | Only if you enable shop payments (`PAYPAL_*` / `PAYMENT_SIMULATE` vars). |
+
+---
 
 ## Prerequisites
 
@@ -279,7 +331,8 @@ Type=simple
 User=your-username
 WorkingDirectory=/srv/kreweweb/Krewe
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node /srv/kreweweb/Krewe/server.js
+
+ExecStart=/usr/bin/node /srv/kreweweb/Krewe/backend/server.js
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -486,7 +539,6 @@ where.exe node
 
 Install the service:
 
-```powershell
 nssm install krewe "C:\Program Files\nodejs\node.exe" "C:\srv\kreweweb\Krewe\server.js"
 nssm set krewe AppDirectory "C:\srv\kreweweb\Krewe"
 nssm set krewe DisplayName "Krewe Mystique Web App"
@@ -543,12 +595,17 @@ From this point on, the Krewe app starts automatically when Windows boots, after
 
 The `.env` file in the project root controls all runtime settings. The init script creates it for you, but you can edit it manually at any time.
 
+### Runtime variables
+
+These are read by the running server (after `npm start`).
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `JWT_SECRET` | Yes | — | Secret key for signing JWT tokens. Use a long random string in production |
 | `PORT` | No | `8000` | Port the Express server listens on |
-| `NODE_ENV` | No | — | Set to `production` in production |
+| `NODE_ENV` | No | `development` | Set to `production` in production |
+| `REGISTRATION_CODE_TTL_MINUTES` | No | `10` | How long registration / verification codes stay valid (minutes) |
 | `SMTP_HOST` | No | — | SMTP server hostname for outbound email |
 | `SMTP_PORT` | No | `587` | SMTP server port |
 | `SMTP_SECURE` | No | `false` | Set to `true` to use TLS on the SMTP connection |
@@ -556,7 +613,40 @@ The `.env` file in the project root controls all runtime settings. The init scri
 | `SMTP_PASS` | No | — | SMTP login password |
 | `SMTP_FROM` | No | — | From address for outbound email |
 | `SMTP_REPLY_TO` | No | — | Reply-To address for outbound email |
-| `CONTACT_RECIPIENT` | No | — | Address that receives contact form submissions |
+| `CONTACT_RECIPIENT` | No | `dougscobb@hotmail.com` | Address that receives contact form submissions |
+| `PLIVO_AUTH_ID` | No | — | Plivo Auth ID for SMS verification / MFA |
+| `PLIVO_AUTH_TOKEN` | No | — | Plivo Auth Token |
+| `PLIVO_SOURCE_NUMBER` | No | — | Plivo sender phone number (E.164 format) |
+| `PLIVO_VERIFY_APP_ID` | No | — | Plivo Verify application ID (if using Plivo Verify) |
+| `PAYPAL_CLIENT_ID` | No | — | PayPal app client ID for shop payments |
+| `PAYPAL_CLIENT_SECRET` | No | — | PayPal app secret |
+| `PAYPAL_MODE` | No | `sandbox` | `sandbox` or `live` |
+| `PAYMENT_SIMULATE` | No | `false` | Set `true` to simulate payments without contacting PayPal |
+| `SEASON_END_DATE` | No | (computed) | Season-end rule, e.g. `fixed:7:15` or `relative:-1:5:8`. Defaults to Ash Wednesday when unset |
+| `BACKUP_PROVIDER` | No | `local` | Backup storage backend: `local`, `s3`, or `rclone` |
+| `BACKUP_S3_BUCKET` | No* | — | S3 bucket name (required when `BACKUP_PROVIDER=s3`) |
+| `BACKUP_S3_REGION` | No* | — | S3 region |
+| `BACKUP_S3_PREFIX` | No | `krewe-backups/` | Key prefix / path inside the bucket |
+| `BACKUP_S3_ENDPOINT` | No | — | Custom endpoint for R2 / MinIO / B2 (leave blank for AWS) |
+| `BACKUP_AWS_ACCESS_KEY_ID` | No* | — | S3 access key id |
+| `BACKUP_AWS_SECRET_ACCESS_KEY` | No* | — | S3 secret access key |
+| `RCLONE_CONFIG` | No | — | Path to `rclone.conf` when running as a service with `BACKUP_PROVIDER=rclone` |
+
+\* Required only when using the S3 backup provider. The `BACKUP_*` settings are also editable from the **Backup & Restore** page in the admin dashboard.
+
+### Variables used by `npm run init-db`
+
+These are read by the database initializer (`scripts/init_db.sh`) — **not** by the running server — and can be passed as environment variables or inline arguments:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_NAME` | `krewe_db` | Name of the database to create |
+| `DB_USER` | `krewe_db_user` | Database role to create |
+| `PORT` | `8000` | Port written into `.env` |
+| `CREATE_DEFAULT_ADMIN` | `true` | Set `false` to skip creating the default admin account |
+| `DEFAULT_ADMIN_EMAIL` | `admin@krewe.local` | Email for the bootstrap admin account |
+| `DEFAULT_ADMIN_NAME` | `Admin User` | Display name for the bootstrap admin account |
+| `DEFAULT_ADMIN_PASSWORD` | `admin123` | Password for the bootstrap admin account |
 
 Keep `.env` private. It is listed in `.gitignore` and must never be committed to the repository.
 
@@ -1057,15 +1147,22 @@ Do not use demo accounts in production.
 
 | Path | Description |
 |------|-------------|
-| `app/index.html` | Homepage |
-| `app/styles.css` | Landing page styling |
-| `app/script.js` | Front-end behavior |
-| `server.js` | Express server — API and static file serving |
-| `package.json` | Node dependencies and npm scripts |
-| `db-init.sql` | PostgreSQL schema |
-| `scripts/init_db.sh` | Database and `.env` initializer |
-| `seed.js` | Demo data seeder |
+| `frontend/` | Static site (HTML / CSS / JS). Served by the backend at runtime |
+| `frontend/index.html` | Homepage |
+| `frontend/styles.css` | Site styling |
+| `frontend/script.js` | Front-end behavior |
+| `backend/server.js` | Express entry point — starts the API + static server (`npm start`) |
+| `backend/app.js` | Express app: middleware, static assets, and API routers |
+| `backend/` | API routes, controllers, config, and utils (Node / Express backend) |
+| `package.json` | Node dependencies and npm scripts — run `npm install` here |
+| `package-lock.json` | Pinned dependency versions |
+| `db-init.sql` | PostgreSQL base schema (applied by the init script) |
+| `scripts/init_db.sh` | Database and `.env` initializer (`npm run init-db`) |
+| `seed.js` | Demo data seeder (`npm run seed`) |
+| `server.legacy.js` | Legacy single-file server (not used by `npm start`) |
 | `_backups/` | Server-managed database backups |
+
+> The repository also contains duplicate copies under `frontend/frontend/…` (and a `frontend/package.json`). The canonical install and run location is the **repository root** — ignore the nested copies.
 
 ---
 

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" style="--home-hero-image: url('assets/images/MardiGras_Pic.jpg');"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Krewe Mystique de la Capitale</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+      /* ===== Home — modern layout (scoped to index.html) ===== */
+      .home-hero-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 3rem;
+        align-items: center;
+      }
+      .home-hero-copy { display: grid; gap: 1.25rem; }
+      .home-hero-title {
+        margin: 0;
+        font-size: clamp(2rem, 3.4vw, 3rem);
+        line-height: 1.05;
+        font-weight: 800;
+      }
+      .home-hero-copy .hero-copy { font-size: 1.05rem; max-width: 34rem; }
+      .home-hero-panel {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 210, 98, 0.28);
+        border-radius: 26px;
+        padding: 1.75rem;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+      }
+      .home-hero-panel .countdown-card {
+        background: transparent;
+        border: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .home-section-header { margin-bottom: 2rem; }
+      .home-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+      .home-stat {
+        text-align: center;
+        padding: 1.5rem 1rem;
+        border-radius: 18px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+      }
+      .home-stat strong {
+        display: block;
+        font-size: clamp(1.6rem, 2.6vw, 2.2rem);
+        color: var(--accent);
+        line-height: 1.1;
+      }
+      .home-stat span { color: var(--muted); font-size: 0.85rem; letter-spacing: 0.02em; }
+      .home-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+      .home-card {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        min-height: 170px;
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+        text-decoration: none;
+        color: inherit;
+      }
+      .home-card:hover {
+        transform: translateY(-5px);
+        border-color: rgba(255, 210, 98, 0.55);
+        box-shadow: 0 28px 55px rgba(0, 0, 0, 0.4);
+      }
+      .home-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .home-card-body { padding: 1.3rem 1.5rem; display: grid; align-content: center; gap: 0.5rem; }
+      .home-card-body h3 { margin: 0; font-size: 1.25rem; }
+      .home-card-body p { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.55; }
+      .home-card-link { color: var(--accent); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.03em; }
+      .home-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .home-gallery figure {
+        margin: 0;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+      }
+      .home-gallery img {
+        width: 100%;
+        height: 280px;
+        object-fit: cover;
+        display: block;
+        transition: transform 0.35s ease;
+      }
+      .home-gallery figure:hover img { transform: scale(1.06); }
+      .home-cta {
+        text-align: center;
+        border-radius: 28px;
+        padding: 3rem 2rem;
+        background: linear-gradient(135deg, rgba(255, 210, 98, 0.18), rgba(255, 178, 72, 0.05));
+        border: 1px solid rgba(255, 210, 98, 0.32);
+        box-shadow: var(--shadow);
+      }
+      .home-cta h2 { margin: 0 0 0.5rem; }
+      .home-cta p { color: var(--muted); max-width: 40rem; margin: 0 auto 1.5rem; }
+      @media (max-width: 900px) {
+        .home-hero-grid { grid-template-columns: 1fr; gap: 2rem; }
+        .home-stats { grid-template-columns: repeat(2, 1fr); }
+        .home-cards { grid-template-columns: 1fr; }
+        .home-gallery { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 560px) {
+        .home-gallery { grid-template-columns: 1fr; }
+        .home-card { grid-template-columns: 110px 1fr; min-height: 140px; }
+      }
+    </style>
+  </head>
+  <body style="">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html" style="display: none;">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button></div>
+    </header>
+
+    <header id="home" class="hero home-hero" data-admin-background-var="--admin-bg-image" style="--admin-bg-image: var(--home-hero-image, url('assets/images/2026_KM_RoyalCourt.jpeg'));">
+      <div class="hero-overlay" style=""></div>
+      <div class="container">
+        <div class="home-hero-grid">
+          <div class="home-hero-copy">
+            <p class="eyebrow">Krewe Mystique de la Capitale</p>
+            <h1 class="home-hero-title">Tradition in motion, modern by design.</h1>
+            <p class="hero-copy">
+              Discover the Royal Court, parade culture, veteran honors, and community
+              celebration that define the oldest parading krewe in Baton Rouge.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="/events.html">Explore Events</a>
+              <a class="button secondary" href="/contact.html">Contact Us</a>
+            </div>
+          </div>
+          <div class="home-hero-panel">
+            <div class="countdown-card" aria-label="Countdown to next parade day">
+              <span class="label">Next Parade Day</span>
+              <div id="countdown" class="countdown-grid">
+                <div class="countdown-item">
+                  <strong id="days">228</strong>
+                  <small>Days</small>
+                </div>
+                <div class="countdown-item">
+                  <strong id="hours">21</strong>
+                  <small>Hours</small>
+                </div>
+                <div class="countdown-item">
+                  <strong id="minutes">24</strong>
+                  <small>Minutes</small>
+                </div>
+                <div class="countdown-item">
+                  <strong id="seconds">50</strong>
+                  <small>Seconds</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section" data-admin-static-section-key="static-section:0" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true">
+        <div class="container">
+          <div class="home-stats">
+            <div class="home-stat"><strong>1977</strong><span>Year founded</span></div>
+            <div class="home-stat"><strong>1st</strong><span>Oldest parading krewe</span></div>
+            <div class="home-stat"><strong>Veterans</strong><span>Honored every parade</span></div>
+            <div class="home-stat"><strong>Community</strong><span>At our core</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-alt" data-admin-static-section-key="static-section:1" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true">
+        <div class="container">
+          <div class="section-header home-section-header">
+            <span class="section-tag">Discover</span>
+            <h2>What Makes Us Mystique</h2>
+          </div>
+          <div class="home-cards">
+            <a class="home-card" href="/royal-court.html">
+              <img src="assets/images/2026_KM_RoyalCourt.jpeg" alt="The 2026 Krewe Mystique Royal Court">
+              <div class="home-card-body">
+                <h3>Royal Court</h3>
+                <p>Meet the 2026 Court carrying our traditions forward each parade season.</p>
+                <span class="home-card-link">Meet the Court →</span>
+              </div>
+            </a>
+            <a class="home-card" href="/contact.html">
+              <img src="assets/images/Mystique_Ball_2017_1077-1.jpg" alt="2026 Tableau">
+              <div class="home-card-body">
+                <h3>2026 Tableau</h3>
+                <p>A beautiful court and a great time was had by all. Roll with us.</p>
+                <span class="home-card-link">Get Involved →</span>
+              </div>
+            </a>
+            <a class="home-card" href="/events.html">
+              <img src="assets/images/Rudy-at-KC-party-sq.jpg" alt="King Cake Party">
+              <div class="home-card-body">
+                <h3>King Cake Party</h3>
+                <p>The executive board's famous King Cake celebration each season.</p>
+                <span class="home-card-link">See Events →</span>
+              </div>
+            </a>
+            <a class="home-card" href="/veterans.html">
+              <img src="assets/images/Float-and-Flag.png" alt="Nominate a Veteran">
+              <div class="home-card-body">
+                <h3>Nominate a Veteran</h3>
+                <p>We provide the ride and throws to our veterans every parade.</p>
+                <span class="home-card-link">Nominate →</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" data-admin-static-section-key="static-section:2" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true">
+        <div class="container">
+          <div class="section-header home-section-header" style="text-align:center; max-width:720px; margin-inline:auto;">
+            <span class="section-tag">It's a Celebration</span>
+            <h2>Friendships That Last a Lifetime</h2>
+            <p class="section-copy">
+              At the core of Krewe Mystique's rich heritage is the special bond
+              established between our members, developing into friendships that last
+              a lifetime.
+            </p>
+          </div>
+          <div class="home-gallery">
+            <figure><img src="assets/images/group-sq.jpg" alt="Krewe Mystique members gathered together"></figure>
+            <figure><img src="assets/images/Rudy-at-KC-party-sq.jpg" alt="Rudy at the King Cake party"></figure>
+            <figure><img src="assets/images/Mystique_Ball_Candids_1570.jpg" alt="A candid moment from the Mystique Ball"></figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-alt" data-admin-static-section-key="static-section:3" data-admin-section-type="static" data-admin-background-var="--admin-section-bg" data-admin-bg-var-auto="true">
+        <div class="container">
+          <div class="home-cta">
+            <h2>Join the Krewe</h2>
+            <p>
+              Become a member of Baton Rouge's oldest parading krewe — royalty, rides,
+              celebrations, and community all season long.
+            </p>
+            <a class="button primary" href="/register.html">Join Now</a>
+          </div>
+        </div>
+      </section>
+    <div id="dynamic-page-sections"><section class="section dynamic-page-section" data-admin-dynamic-section="true" data-admin-section-id="1784147702647" data-admin-section-field="background_path" data-admin-image-path="" style="background-color: rgb(2, 8, 22);"><div class="container"><div class="dynamic-page-section-content-host"></div></div></section><section class="section dynamic-page-section" data-admin-dynamic-section="true" data-admin-section-id="1784147706187" data-admin-section-field="background_path" data-admin-image-path="" style="background-color: rgb(2, 8, 22);"><div class="container"><div class="dynamic-page-section-content-host"></div></div></section><section class="section dynamic-page-section" data-admin-dynamic-section="true" data-admin-section-id="1784147707927" data-admin-section-field="background_path" data-admin-image-path="" style="background-color: rgb(2, 8, 22);"><div class="container"><div class="dynamic-page-section-content-host"></div></div></section><section class="section dynamic-page-section" data-admin-dynamic-section="true" data-admin-section-id="1784147709952" data-admin-section-field="background_path" data-admin-image-path="" style="background-color: rgb(2, 8, 22);"><div class="container"><div class="dynamic-page-section-content-host"></div></div></section></div></main>
+
+    
+
+    <footer class="footer">
+      <div class="container footer-grid">
+        <p>© 2026 Krewe Mystique de la Capitale.</p>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  
+</body></html>
