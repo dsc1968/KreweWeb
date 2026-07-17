@@ -359,7 +359,6 @@ async function post__api_auth_login(req, res) {
         method,
         maskedTarget: maskMfaTarget(method, target),
         deliveryNotice: (delivery && delivery.notice) || notice,
-        devCode: (delivery && delivery.devCode) || undefined,
       });
     }
 
@@ -537,7 +536,6 @@ async function put__api_profile_details(req, res) {
           method: 'sms',
           maskedTarget: maskMfaTarget('sms', phone),
           deliveryNotice: (delivery && delivery.notice) || null,
-          devCode: (delivery && delivery.devCode) || undefined,
         };
       } catch (smsErr) {
         mfaChallenge = { mfaChallengeSent: false, error: 'SMS could not be sent: ' + (smsErr.message || smsErr) };
@@ -598,7 +596,6 @@ async function post__api_auth_mfa_send(req, res) {
       method,
       maskedTarget: maskMfaTarget(method, target),
       deliveryNotice: delivery && delivery.notice,
-      devCode: delivery && delivery.devCode,
     });
   } catch (error) {
     console.error('Failed to send MFA code', error);
@@ -691,7 +688,6 @@ async function put__api_profile_mfa(req, res) {
       method,
       maskedTarget: maskMfaTarget(method, target),
       deliveryNotice: delivery && delivery.notice,
-      devCode: delivery && delivery.devCode,
     });
   } catch (error) {
     console.error('Failed to start MFA enrollment', error);
