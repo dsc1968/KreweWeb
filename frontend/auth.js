@@ -1024,7 +1024,7 @@ function renderAdminUsers(users, currentUserId) {
               ? 'No disabled users found.'
               : 'No users found.'
       );
-      emptyCell.colSpan = 5;
+      emptyCell.colSpan = 6;
       emptyRow.appendChild(emptyCell);
       tbody.appendChild(emptyRow);
       return;
@@ -1043,6 +1043,18 @@ function renderAdminUsers(users, currentUserId) {
         const emailCell = buildCell(user.email || '');
         const joinedCell = buildCell(new Date(user.joined_at).toLocaleDateString());
         const roleCell = buildCell(user.role || 'member');
+        const isDisabled = user.role === 'disabled';
+
+        // Status cell — clearly shows Enabled / Disabled
+        const statusCell = document.createElement('td');
+        statusCell.style.cssText = 'padding:0.75rem;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;';
+        const statusPill = document.createElement('span');
+        statusPill.textContent = isDisabled ? 'Disabled' : 'Enabled';
+        statusPill.style.cssText = `display:inline-block;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.18rem 0.6rem;border-radius:999px;border:1px solid ${isDisabled ? 'rgba(248,113,113,0.45)' : 'rgba(74,222,128,0.45)'};background:${isDisabled ? 'rgba(248,113,113,0.12)' : 'rgba(74,222,128,0.12)'};color:${isDisabled ? '#f87171' : '#4ade80'};`;
+        statusCell.appendChild(statusPill);
+        if (isDisabled) {
+          row.style.opacity = '0.6';
+        }
 
         // Payment status cell
         const payCell = document.createElement('td');
@@ -1069,6 +1081,7 @@ function renderAdminUsers(users, currentUserId) {
         row.appendChild(emailCell);
         row.appendChild(joinedCell);
         row.appendChild(roleCell);
+        row.appendChild(statusCell);
         row.appendChild(payCell);
         row.appendChild(actionCell);
 
@@ -1110,6 +1123,39 @@ function renderAdminUsers(users, currentUserId) {
         });
 
         nameCell.addEventListener('click', () => editButton.click());
+
+        // Disable / Enable button directly in the list (not shown for self)
+        if (user.id !== currentUserId) {
+          const disableButton = document.createElement('button');
+          disableButton.type = 'button';
+          disableButton.className = 'button secondary';
+          disableButton.style.marginLeft = '0.5rem';
+          disableButton.textContent = isDisabled ? 'Enable' : 'Disable';
+          if (isDisabled) {
+            disableButton.style.borderColor = 'rgba(74,222,128,0.45)';
+            disableButton.style.color = '#88d498';
+          } else {
+            disableButton.style.borderColor = 'rgba(255,155,155,0.45)';
+            disableButton.style.color = '#ff9b9b';
+          }
+          disableButton.addEventListener('click', async () => {
+            const shouldDisable = !isDisabled;
+            disableButton.disabled = true;
+            setAdminFeedback(shouldDisable ? `Disabling ${user.email}…` : `Enabling ${user.email}…`, false);
+            const result = await setUserDisabled(user.id, shouldDisable, user.role);
+            disableButton.disabled = false;
+            if (result.ok && result.data.user) {
+              Object.assign(user, result.data.user);
+              roleCell.textContent = user.role || 'member';
+              drawRows();
+              setAdminFeedback(shouldDisable ? `${user.email} disabled.` : `${user.email} enabled.`, false);
+            } else {
+              setAdminFeedback((result.data && result.data.error) || 'Unable to update account.', true);
+            }
+          });
+          actionCell.appendChild(disableButton);
+        }
+
         actionCell.appendChild(editButton);
         tbody.appendChild(row);
       });
