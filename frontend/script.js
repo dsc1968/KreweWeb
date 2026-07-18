@@ -2879,6 +2879,12 @@ if (countdownElements.days) {
         fill: currentColor;
       }
 
+      /* Hide the navigation "+ Add section" control while in edit mode;
+         admins use the add-section buttons on the edit palette instead. */
+      body.admin-edit-mode .admin-add-section-button {
+        display: none !important;
+      }
+
       .admin-revert-button {
         display: inline-flex;
         align-items: center;
