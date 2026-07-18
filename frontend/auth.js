@@ -2987,10 +2987,14 @@ async function initShopAdminPage() {
     submitBtn.disabled = false;
   });
 
-  // Product image — reuse the SAME admin image editor dialog used by the page editor.
+  // Product image — simple Browse: pick an image from the existing library.
   const imagePreview = document.getElementById('sa-image-preview');
   const imageName    = document.getElementById('sa-image-name');
   const clearImageBtn = document.getElementById('sa-clear-image');
+  const imageModal   = document.getElementById('sa-image-modal');
+  const imageGrid    = document.getElementById('sa-image-grid');
+  const imageEmpty   = document.getElementById('sa-image-empty');
+  let selectedImagePath = null;
 
   function setImageValue(path) {
     document.getElementById('sa-image').value = path || '';
@@ -3007,21 +3011,61 @@ async function initShopAdminPage() {
     }
   }
 
-  document.getElementById('sa-browse-image').addEventListener('click', () => {
-    const target = document.createElement('img');
-    target.dataset.adminImagePath = document.getElementById('sa-image').value.trim() || '';
-    openImageEditor(target, async (nextPath) => {
-      setImageValue(nextPath);
+  function renderImageGrid(items) {
+    imageGrid.innerHTML = '';
+    if (!items || items.length === 0) {
+      imageEmpty.style.display = '';
+      return;
+    }
+    imageEmpty.style.display = 'none';
+    items.forEach((path) => {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'cursor:pointer;border:2px solid transparent;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.04);';
+      cell.dataset.path = path;
+      const img = document.createElement('img');
+      img.src = path;
+      img.loading = 'lazy';
+      img.style.cssText = 'width:100%;height:84px;object-fit:cover;display:block;';
+      cell.appendChild(img);
+      cell.addEventListener('click', () => {
+        imageGrid.querySelectorAll('[data-path]').forEach((c) => { c.style.borderColor = 'transparent'; });
+        cell.style.borderColor = '#ffd262';
+        selectedImagePath = path;
+      });
+      imageGrid.appendChild(cell);
     });
-  });
+  }
+
+  async function openImagePicker() {
+    selectedImagePath = document.getElementById('sa-image').value.trim() || null;
+    imageGrid.querySelectorAll('[data-path]').forEach((c) => {
+      c.style.borderColor = (c.dataset.path === selectedImagePath) ? '#ffd262' : 'transparent';
+    });
+    document.getElementById('sa-image-upload-feed').textContent = '';
+    imageModal.style.display = 'flex';
+    try {
+      const res = await fetch('/api/admin/images', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await parseJSONResponse(res);
+      if (res.ok) renderImageGrid(data.items);
+      else imageEmpty.textContent = (data && data.error) || 'Unable to load images.';
+    } catch {
+      imageEmpty.style.display = '';
+      imageEmpty.textContent = 'Unable to load images.';
+    }
+  }
+
+  function closeImagePicker() { imageModal.style.display = 'none'; }
+
+  document.getElementById('sa-browse-image').addEventListener('click', openImagePicker);
+  document.getElementById('sa-image-close').addEventListener('click', closeImagePicker);
+  document.getElementById('sa-image-cancel').addEventListener('click', closeImagePicker);
+  imageModal.addEventListener('click', (e) => { if (e.target === imageModal) closeImagePicker(); });
   clearImageBtn.addEventListener('click', () => setImageValue(''));
 
-  // Reflect an existing product's image when the edit modal opens
-  const origOpenModal = openModal;
-  openModal = function (product) {
-    origOpenModal(product);
-    setImageValue(product && product.image_path ? product.image_path : '');
-  };
+  document.getElementById('sa-image-select').addEventListener('click', () => {
+    if (selectedImagePath) setImageValue(selectedImagePath);
+    closeImagePicker();
+  });
 
   // ── Products table ───────────────────────────────────────────────────────
   async function loadAdminProducts() {
