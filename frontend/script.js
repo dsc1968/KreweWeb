@@ -7267,6 +7267,13 @@ if (countdownElements.days) {
     }
   }
 
+  // Hide the navigation "Add section" control while in edit mode; admins use
+  // the add-section buttons on the edit palette instead. Restored on exit.
+  const navAddSection = document.getElementById('admin-add-section-toggle');
+  if (navAddSection) {
+    navAddSection.style.display = state.editMode ? 'none' : '';
+  }
+
   const NAV_DYNAMIC_IDS = new Set(['nav-auth-link', 'nav-dashboard-link', 'nav-logout-link']);
 
   function getStaticNavLinks() {
