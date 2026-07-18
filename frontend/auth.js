@@ -3013,12 +3013,18 @@ async function initShopAdminPage() {
 
   function renderImageGrid(items) {
     imageGrid.innerHTML = '';
-    if (!items || items.length === 0) {
-      imageEmpty.style.display = '';
-      return;
-    }
-    imageEmpty.style.display = 'none';
-    items.forEach((path) => {
+    imageEmpty.style.display = (items && items.length) ? 'none' : '';
+
+    // "No image" option at the start of the grid
+    const none = document.createElement('div');
+    none.style.cssText = 'cursor:pointer;border:2px solid transparent;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;height:84px;color:#b8c4e0;font-size:0.8rem;text-align:center;';
+    none.dataset.path = '__none__';
+    none.textContent = 'No image';
+    if (!selectedImagePath) none.style.borderColor = '#ffd262';
+    none.addEventListener('click', () => { setImageValue(''); closeImagePicker(); });
+    imageGrid.appendChild(none);
+
+    (items || []).forEach((path) => {
       const cell = document.createElement('div');
       cell.style.cssText = 'cursor:pointer;border:2px solid transparent;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.04);';
       cell.dataset.path = path;
@@ -3029,9 +3035,12 @@ async function initShopAdminPage() {
       cell.appendChild(img);
       if (path === selectedImagePath) cell.style.borderColor = '#ffd262';
       cell.addEventListener('click', () => {
-        imageGrid.querySelectorAll('[data-path]').forEach((c) => { c.style.borderColor = 'transparent'; });
-        cell.style.borderColor = '#ffd262';
-        selectedImagePath = path;
+        if (selectedImagePath === path) {
+          setImageValue('');
+        } else {
+          setImageValue(path);
+        }
+        closeImagePicker();
       });
       imageGrid.appendChild(cell);
     });
@@ -3059,11 +3068,6 @@ async function initShopAdminPage() {
   imageModal.addEventListener('click', (e) => { if (e.target === imageModal) closeImagePicker(); });
   clearImageBtn.addEventListener('click', () => setImageValue(''));
 
-  document.getElementById('sa-image-select').addEventListener('click', () => {
-    if (selectedImagePath) setImageValue(selectedImagePath);
-    closeImagePicker();
-  });
-
   // ── Products table ───────────────────────────────────────────────────────
   async function loadAdminProducts() {
     prodFeed.textContent = 'Loading…';
@@ -3074,7 +3078,7 @@ async function initShopAdminPage() {
       prodFeed.textContent = '';
       if (!res.ok) { prodFeed.textContent = data.error || 'Unable to load products.'; return; }
       if (data.products.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:1.5rem;text-align:center;">No products yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:1.5rem;text-align:center;">No products yet.</td></tr>';
         return;
       }
       tbody.innerHTML = '';
@@ -3082,6 +3086,7 @@ async function initShopAdminPage() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escHtml(p.name)}</td>
+          <td>${p.image_path ? `<img src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;" />` : '<span style="color:var(--muted);font-size:0.8rem;">—</span>'}</td>
           <td>${escHtml(p.category || '—')}</td>
           <td>$${parseFloat(p.price).toFixed(2)}</td>
           <td>${p.stock_qty != null ? p.stock_qty : '∞'}</td>
