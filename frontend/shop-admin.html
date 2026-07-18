@@ -235,27 +235,6 @@
       </div>
     </div>
 
-    <!-- Image picker modal -->
-    <div id="sa-image-modal" style="display:none;position:fixed;inset:0;z-index:12000;align-items:center;justify-content:center;padding:1rem;background:rgba(2,8,22,0.82);">
-      <div style="width:min(720px,100%);max-height:85vh;overflow-y:auto;background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;color:#f5f7ff;box-shadow:0 24px 60px rgba(0,0,0,0.4);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
-          <h2 style="margin:0;font-size:1.05rem;">Choose Product Image</h2>
-          <button type="button" id="sa-image-close" style="background:none;border:none;color:#b8c4e0;font-size:1.4rem;cursor:pointer;line-height:1;">&times;</button>
-        </div>
-        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;">
-          <input type="file" id="sa-image-file" accept="image/*" style="display:none;" />
-          <button type="button" id="sa-image-upload-btn" class="button secondary">Upload New Image…</button>
-          <span id="sa-image-upload-feed" style="font-size:0.85rem;color:#b8c4e0;"></span>
-        </div>
-        <div id="sa-image-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:0.6rem;"></div>
-        <p id="sa-image-empty" style="color:#b8c4e0;font-size:0.88rem;display:none;">No images yet. Upload one above.</p>
-        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.25rem;">
-          <button type="button" id="sa-image-cancel" class="button secondary">Cancel</button>
-          <button type="button" id="sa-image-select" class="button">Use Selected</button>
-        </div>
-      </div>
-    </div>
-
     <script src="script.js"></script>
     <script src="auth.js"></script>
   </body>
