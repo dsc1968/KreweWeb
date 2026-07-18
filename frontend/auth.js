@@ -3027,6 +3027,7 @@ async function initShopAdminPage() {
       img.loading = 'lazy';
       img.style.cssText = 'width:100%;height:84px;object-fit:cover;display:block;';
       cell.appendChild(img);
+      if (path === selectedImagePath) cell.style.borderColor = '#ffd262';
       cell.addEventListener('click', () => {
         imageGrid.querySelectorAll('[data-path]').forEach((c) => { c.style.borderColor = 'transparent'; });
         cell.style.borderColor = '#ffd262';
@@ -3038,10 +3039,6 @@ async function initShopAdminPage() {
 
   async function openImagePicker() {
     selectedImagePath = document.getElementById('sa-image').value.trim() || null;
-    imageGrid.querySelectorAll('[data-path]').forEach((c) => {
-      c.style.borderColor = (c.dataset.path === selectedImagePath) ? '#ffd262' : 'transparent';
-    });
-    document.getElementById('sa-image-upload-feed').textContent = '';
     imageModal.style.display = 'flex';
     try {
       const res = await fetch('/api/admin/images', { headers: { Authorization: 'Bearer ' + token } });
