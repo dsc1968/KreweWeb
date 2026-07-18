@@ -2879,12 +2879,6 @@ if (countdownElements.days) {
         fill: currentColor;
       }
 
-      /* Hide the navigation "+ Add section" control while in edit mode;
-         admins use the add-section buttons on the edit palette instead. */
-      body.admin-edit-mode .admin-add-section-button {
-        display: none !important;
-      }
-
       .admin-revert-button {
         display: inline-flex;
         align-items: center;
@@ -7235,6 +7229,12 @@ if (countdownElements.days) {
     if (!nextValue) {
       clearFreeDragCursors();
       hideElementToolbar();
+      // Defensive cleanup so edit-mode visuals (yellow outlines, selection
+      // highlight, free-positioning) can never linger when not in edit mode.
+      document.body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+      document.querySelectorAll('.admin-current-selection, .admin-free-positioned, .admin-is-dragging').forEach((node) => {
+        node.classList.remove('admin-current-selection', 'admin-free-positioned', 'admin-is-dragging');
+      });
       if (state.editorSyncTimer) {
         window.clearTimeout(state.editorSyncTimer);
         state.editorSyncTimer = null;
@@ -7272,14 +7272,6 @@ if (countdownElements.days) {
       toggleButton.setAttribute('aria-pressed', String(nextValue));
     }
   }
-
-  // Hide the navigation "Add section" control while in edit mode; admins use
-  // the add-section buttons on the edit palette instead. Restored on exit.
-  const navAddSection = document.getElementById('admin-add-section-toggle');
-  if (navAddSection) {
-    navAddSection.style.display = state.editMode ? 'none' : '';
-  }
-
   const NAV_DYNAMIC_IDS = new Set(['nav-auth-link', 'nav-dashboard-link', 'nav-logout-link']);
 
   function getStaticNavLinks() {
@@ -7424,18 +7416,6 @@ if (countdownElements.days) {
       </svg>
     `;
 
-    const addButton = document.createElement('button');
-    addButton.id = 'admin-add-section-toggle';
-    addButton.type = 'button';
-    addButton.className = 'admin-add-section-button';
-    addButton.setAttribute('aria-label', 'Add page section');
-    addButton.setAttribute('title', 'Add a new page section');
-    addButton.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z" />
-      </svg>
-    `;
-
     const codeButton = document.createElement('button');
     codeButton.id = 'admin-code-editor-toggle';
     codeButton.type = 'button';
@@ -7448,7 +7428,7 @@ if (countdownElements.days) {
       </svg>
     `;
 
-    controls.replaceChildren(button, addButton, codeButton);
+    controls.replaceChildren(button, codeButton);
     ensureSaveStatusNode();
     updateSaveStatus('idle', 'Saved');
 
