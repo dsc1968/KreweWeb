@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middlewares/auth');
 const { upload } = require('../utils/files');
-const { get__api_users, get__api_current_season, get__api_admin_users, get__api_admin_users__userId, put__api_admin_users__userId_details, post__api_admin_users, post__api_users, put__api_admin_users__userId_role, put__api_users__userId_role, put__api_admin_users__userId_disable, put__api_users__userId_disable, delete__api_admin_users__userId, delete__api_users__userId, put__api_admin_users__userId_password, put__api_users__userId_password, get__api_admin_users__userId_orders } = require('../controllers/usersController');
+const { get__api_users, get__api_current_season, get__api_admin_users, get__api_admin_users__userId, put__api_admin_users__userId_details, post__api_admin_users, post__api_users, put__api_admin_users__userId_role, put__api_users__userId_role, put__api_admin_users__userId_disable, put__api_users__userId_disable, delete__api_admin_users__userId, delete__api_users__userId, put__api_admin_users__userId_password, put__api_users__userId_password, get__api_admin_users__userId_orders, patch__api_admin_users__userId_payments } = require('../controllers/usersController');
 
 router.get('/api/users', authenticateToken, get__api_users);
 router.get('/api/current-season', authenticateToken, get__api_current_season);
@@ -20,5 +20,6 @@ router.delete('/api/users/:userId', authenticateToken, delete__api_users__userId
 router.put('/api/admin/users/:userId/password', authenticateToken, put__api_admin_users__userId_password);
 router.put('/api/users/:userId/password', authenticateToken, put__api_users__userId_password);
 router.get('/api/admin/users/:userId/orders', authenticateToken, get__api_admin_users__userId_orders);
+router.patch('/api/admin/users/:userId/payments', authenticateToken, patch__api_admin_users__userId_payments);
 
 module.exports = router;

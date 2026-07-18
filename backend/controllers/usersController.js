@@ -602,4 +602,50 @@ async function get__api_admin_users__userId_orders(req, res) {
     res.status(500).json({ error: 'Unable to fetch orders' });
   }
 }
-module.exports = { delete__api_admin_users__userId,delete__api_users__userId,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role, };
+async function patch__api_admin_users__userId_payments(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const userId = Number.parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Valid user id is required' });
+  }
+
+  const duesPaid = Boolean(req.body && req.body.dues_paid);
+  const guestFeePaid = Boolean(req.body && req.body.guest_fee_paid);
+  const costumePaid = Boolean(req.body && req.body.costume_paid);
+
+  try {
+    // Ensure a profile row exists, then update the payment flags.
+    await pool.query(
+      `INSERT INTO user_profiles (user_id)
+       VALUES ($1)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    );
+    const result = await pool.query(
+      `UPDATE user_profiles
+       SET dues_paid = $1, guest_fee_paid = $2, costume_paid = $3
+       WHERE user_id = $4
+       RETURNING dues_paid, guest_fee_paid, costume_paid`,
+      [duesPaid, guestFeePaid, costumePaid, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      user: {
+        dues_paid: row.dues_paid,
+        guest_fee_paid: row.guest_fee_paid,
+        costume_paid: row.costume_paid,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to update payment status', error);
+    res.status(500).json({ error: 'Unable to update payment status' });
+  }
+}
+
+module.exports = { delete__api_admin_users__userId,delete__api_users__userId,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role,patch__api_admin_users__userId_payments, };
