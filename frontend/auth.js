@@ -572,6 +572,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
               <option value="member" ${full.role==='member'?'selected':''}>Member</option>
               <option value="store_admin" ${full.role==='store_admin'?'selected':''}>Store Admin</option>
               <option value="admin" ${full.role==='admin'?'selected':''}>Admin</option>
+              ${full.role==='disabled'?'<option value="disabled" selected>Disabled</option>':''}
             </select></div>
           <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Phone</label>
             <input id="uem-phone" type="tel" value="${escHtml(full.phone||'')}" placeholder="555-867-5309" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
@@ -851,7 +852,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     const payload = {
       full_name: backdrop.querySelector('#uem-name').value.trim(),
       email: backdrop.querySelector('#uem-email').value.trim(),
-      role: backdrop.querySelector('#uem-role').value,
+      role: full.role === 'disabled' ? 'disabled' : backdrop.querySelector('#uem-role').value,
       phone: backdrop.querySelector('#uem-phone').value.trim(),
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
@@ -903,19 +904,31 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
   // Disable / Enable
   backdrop.querySelector('#uem-toggle-disable').addEventListener('click', async () => {
-    const shouldDisable = full.role !== 'disabled';
     const btn = backdrop.querySelector('#uem-toggle-disable');
     btn.disabled = true;
-    setFeedback(shouldDisable ? 'Disabling account…' : 'Enabling account…', false);
-    // Pass the user's pre-disable role so re-enable restores it correctly (e.g. store_admin)
-    const result = await setUserDisabled(user.id, shouldDisable, full.role);
-    if (result.ok && result.data.user) {
-      full.role = result.data.user.role;
-      btn.textContent = full.role === 'disabled' ? 'Enable Account' : 'Disable Account';
-      onUpdate(result.data.user);
-      setFeedback(shouldDisable ? 'Account disabled.' : 'Account enabled.', false);
-    } else { setFeedback(result.data.error || 'Unable to update account.', true); }
-    btn.disabled = false;
+    try {
+      const shouldDisable = full.role !== 'disabled';
+      setFeedback(shouldDisable ? 'Disabling account…' : 'Enabling account…', false);
+      // Pass the user's pre-disable role so re-enable restores it correctly (e.g. store_admin)
+      const prevRole = full.role;
+      const restoreRole = shouldDisable ? prevRole : (full._preDisableRole || 'member');
+      const result = await setUserDisabled(user.id, shouldDisable, restoreRole);
+      if (result.ok && result.data && result.data.user) {
+        full.role = result.data.user.role;
+        if (shouldDisable) full._preDisableRole = prevRole;
+        btn.textContent = full.role === 'disabled' ? 'Enable Account' : 'Disable Account';
+        onUpdate(result.data.user);
+        setFeedback(shouldDisable ? 'Account disabled.' : 'Account enabled.', false);
+      } else {
+        const msg = (result.data && result.data.error) || 'Unable to update account.';
+        setFeedback(msg, true);
+      }
+    } catch (err) {
+      console.error('Disable/enable failed', err);
+      setFeedback('Network or server error while updating account. Is the server running the latest code?', true);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // Delete

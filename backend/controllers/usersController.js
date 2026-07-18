@@ -108,11 +108,11 @@ async function put__api_admin_users__userId_details(req, res) {
 
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const email = normalizeEmailAddress(req.body.email);
-  const role = ['admin', 'store_admin', 'member'].includes(req.body.role) ? req.body.role : null;
+  const role = ['admin', 'store_admin', 'member', 'disabled'].includes(req.body.role) ? req.body.role : null;
 
   if (!fullName) return res.status(400).json({ error: 'Full name is required' });
   if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
-  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
+  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, or disabled' });
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
