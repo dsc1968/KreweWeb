@@ -7442,7 +7442,6 @@ if (countdownElements.days) {
     button.addEventListener('click', () => {
       setEditMode(!state.editMode);
     });
-    addButton.addEventListener('click', openAddSectionModal);
     codeButton.addEventListener('click', openSourceCodeEditor);
 
     bindFreeDragHandlers();
