@@ -5853,6 +5853,9 @@ if (countdownElements.days) {
       }
     };
   }
+  // Expose to other scripts (e.g. auth.js store-admin product image picker)
+  window.openImageEditor = openImageEditor;
+
 
   function openStaticImageEditor(element) {
     openImageEditor(element, async (nextPath) => {
