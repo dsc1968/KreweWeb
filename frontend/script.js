@@ -130,6 +130,11 @@ if (countdownElements.days) {
   const minResizableHeight = 32;
   const gridSnapSize = 12;
 
+  // Snap a value to the editing grid for predictable, controlled movement.
+  function snapToGrid(value) {
+    return Math.round(value / gridSnapSize) * gridSnapSize;
+  }
+
   function isPageEditable() {
     return !nonEditablePagePaths.has(state.pagePath);
   }
@@ -1200,14 +1205,11 @@ if (countdownElements.days) {
       if (element.dataset.adminEditable === 'album-root') {
         ensureAlbumRootPlaceholder(element);
       }
-      // Always position relative to main so coordinates are page-wide and
-      // consistent with what ensureAbsoluteForFreeDrag stores on drag-end.
-      const main = document.querySelector('main') || document.body;
-      if (window.getComputedStyle(main).position === 'static') {
-        main.style.position = 'relative';
-      }
-      if (element.parentElement !== main) {
-        main.appendChild(element);
+      // Position absolute relative to the element's own positioning context
+      // (its container/section), matching what ensureAbsoluteForFreeDrag stores.
+      const ctx = getPositioningContext(element);
+      if (ctx !== document.body && window.getComputedStyle(ctx).position === 'static') {
+        ctx.style.position = 'relative';
       }
       element.style.position = 'absolute';
       element.style.left = `${Number.isFinite(override.pos_x) ? override.pos_x : 0}px`;
@@ -5282,15 +5284,17 @@ if (countdownElements.days) {
     const key = element.dataset.adminKey;
     if (!key) return;
     const override = state.elementOverrides.get(key) || {};
-    const main = document.querySelector('main[data-admin-editable="page-root"]') || document.querySelector('main') || document.body;
-    const mainRect = main.getBoundingClientRect();
+    // Compute absolute coordinates relative to the element's own positioning
+    // context (container/section), matching the free-drag model.
+    const ctx = getPositioningContext(element);
+    const ctxRect = ctx.getBoundingClientRect();
     const elemRect = element.getBoundingClientRect();
     const item = await saveElementOverride(key, {
       hidden: false,
       deleted: false,
       positionMode: 'absolute',
-      posX: Number.isFinite(override.pos_x) ? override.pos_x : Math.round(elemRect.left - mainRect.left),
-      posY: Number.isFinite(override.pos_y) ? override.pos_y : Math.round(elemRect.top - mainRect.top),
+      posX: Number.isFinite(override.pos_x) ? override.pos_x : Math.round(elemRect.left - ctxRect.left),
+      posY: Number.isFinite(override.pos_y) ? override.pos_y : Math.round(elemRect.top - ctxRect.top),
     });
     applyElementStyles(element, item);
   }
@@ -6777,28 +6781,43 @@ if (countdownElements.days) {
     });
   }
 
+  // Position an element absolutely relative to its OWN positioned ancestor
+  // (usually its direct container/section). Keeping the element inside its
+  // original parent — instead of reparenting it into <main> — avoids large,
+  // unexpected layout shifts and lets sibling elements reflow predictably when
+  // the element leaves normal flow.
+  function getPositioningContext(target) {
+    let ctx = target.parentElement;
+    while (ctx && ctx !== document.body) {
+      const pos = window.getComputedStyle(ctx).position;
+      if (pos === 'relative' || pos === 'absolute' || pos === 'fixed' || pos === 'sticky') return ctx;
+      ctx = ctx.parentElement;
+    }
+    // No positioned ancestor — make the direct parent the positioning context.
+    return target.parentElement || document.body;
+  }
+
   function ensureAbsoluteForFreeDrag(target, override) {
     if (!target) return;
-    const main = document.querySelector('main') || document.body;
 
     if (override.position_mode !== 'absolute') {
       if (target.dataset.adminEditable === 'album-root') {
         ensureAlbumRootPlaceholder(target);
       }
-      // Capture viewport position BEFORE reparenting so we can convert to
-      // main-relative page coords — this lets the element move freely anywhere
-      // on the page, not just within its original section/container.
-      const rect = target.getBoundingClientRect();
-      const mainRect = main.getBoundingClientRect();
-      const posX = Math.round(rect.left - mainRect.left);
-      const posY = Math.round(rect.top  - mainRect.top);
-      if (window.getComputedStyle(main).position === 'static') {
-        main.style.position = 'relative';
+      // Establish a positioning context on the element's own parent so the
+      // absolute coordinates are local to that container (predictable movement).
+      const ctx = getPositioningContext(target);
+      if (ctx !== document.body && window.getComputedStyle(ctx).position === 'static') {
+        ctx.style.position = 'relative';
       }
-      main.appendChild(target);
+      const rect = target.getBoundingClientRect();
+      const ctxRect = ctx.getBoundingClientRect();
+      const posX = Math.round(rect.left - ctxRect.left);
+      const posY = Math.round(rect.top  - ctxRect.top);
       target.style.position = 'absolute';
       target.style.left = `${posX}px`;
       target.style.top  = `${posY}px`;
+      target.style.margin = '0';
       target.style.zIndex = target.dataset.adminEditable === 'text' ? '12' : '8';
       target.classList.add('admin-free-positioned');
     }
@@ -6897,11 +6916,11 @@ if (countdownElements.days) {
         }
       }
 
-      state.draggingElement.style.left = `${Math.round(nextX)}px`;
-      state.draggingElement.style.top = `${Math.round(nextY)}px`;
+      state.draggingElement.style.left = `${snapToGrid(nextX)}px`;
+      state.draggingElement.style.top = `${snapToGrid(nextY)}px`;
       if (isResizeAction) {
-        state.draggingElement.style.width = `${Math.round(nextWidth)}px`;
-        state.draggingElement.style.height = `${Math.round(nextHeight)}px`;
+        state.draggingElement.style.width = `${snapToGrid(nextWidth)}px`;
+        state.draggingElement.style.height = `${snapToGrid(nextHeight)}px`;
       }
     };
 
