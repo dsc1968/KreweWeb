@@ -94,6 +94,7 @@ if (countdownElements.days) {
     calendarDefaultYear: 2027,
     calendarDefaultMonth: 2,
     freeDragHandlersBound: false,
+    editModeClassGuardAttached: false,
     draggingElement: null,
     dragStartX: 0,
     dragStartY: 0,
@@ -7695,6 +7696,19 @@ if (countdownElements.days) {
     // never appear outside active edit mode, even if a stale class lingered
     // from a previous session or soft navigation.
     document.body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+
+    // Bulletproof guard: if anything adds the edit-mode class to <body> while we
+    // are NOT actually in edit mode, strip it immediately. This guarantees the
+    // yellow edit outlines can never show outside active edit mode on any page.
+    if (!state.editModeClassGuardAttached) {
+      state.editModeClassGuardAttached = true;
+      const guard = new MutationObserver(() => {
+        if (!state.editMode && document.body.classList.contains('admin-edit-mode')) {
+          document.body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+        }
+      });
+      guard.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
 
     initContactForm();
     bindAlbumUiEvents();
