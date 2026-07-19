@@ -7601,6 +7601,20 @@ if (countdownElements.days) {
     });
     codeButton.addEventListener('click', openSourceCodeEditor);
 
+    // Prevent a spurious amber focus ring on the admin nav buttons after a
+    // page refresh. Browsers restore focus to the last-focused element (e.g. the
+    // Edit button) on reload, which draws the :focus-visible ring and looks like
+    // a stray yellow box around the header until the user scrolls/clicks.
+    const blurStrayAdminFocus = () => {
+      const active = document.activeElement;
+      if (active && active.closest && active.closest('#admin-nav-controls')) {
+        active.blur();
+      }
+    };
+    // Run after focus-restoration has settled (post-load, next frame).
+    window.addEventListener('load', () => window.requestAnimationFrame(blurStrayAdminFocus), { once: true });
+    window.requestAnimationFrame(blurStrayAdminFocus);
+
     bindFreeDragHandlers();
     bindNavReorderEvents();
     ensureElementToolbar();
