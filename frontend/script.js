@@ -2786,6 +2786,15 @@ if (countdownElements.days) {
         z-index: 8 !important;
       }
 
+      body.admin-edit-mode .admin-drag-placeholder {
+        outline: 2px dashed rgba(255, 210, 98, 0.55);
+        outline-offset: 0;
+        background: rgba(255, 210, 98, 0.06);
+        border-radius: 6px;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+
       body.admin-edit-mode .admin-hidden-element {
         opacity: 0.55;
       }
@@ -6823,6 +6832,117 @@ if (countdownElements.days) {
     }
   }
 
+  // Text elements reorder in normal document flow (not absolute positioning)
+  // so sibling text reflows to make room — the predictable, professional
+  // behaviour users expect when rearranging paragraphs/headings.
+  function beginTextReorderDrag(target, event) {
+    const key = target.dataset.adminKey;
+    if (!key) return;
+
+    let dragInitialized = false;
+    let didMove = false;
+    state.draggingElement = target;
+    state.dragStartX = event.clientX;
+    state.dragStartY = event.clientY;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'move';
+
+    // Placeholder that occupies the dragged text's space and reflows siblings.
+    const placeholder = document.createElement(target.tagName || 'p');
+    placeholder.className = target.className;
+    placeholder.classList.add('admin-drag-placeholder');
+    placeholder.style.height = `${target.offsetHeight}px`;
+    placeholder.style.marginTop = window.getComputedStyle(target).marginTop;
+    placeholder.style.marginBottom = window.getComputedStyle(target).marginBottom;
+    placeholder.dataset.adminDragPlaceholder = 'true';
+
+    const parent = target.parentElement;
+    const siblings = () => Array.from(parent.children).filter(
+      (el) => el !== target && el !== placeholder && el.dataset && el.dataset.adminEditable === 'text' && !isInsideAdminUi(el)
+    );
+
+    const positionPlaceholder = (clientY) => {
+      const list = siblings();
+      if (list.length === 0) {
+        parent.insertBefore(placeholder, target.nextSibling === placeholder ? target : target.nextSibling);
+        return;
+      }
+      let inserted = false;
+      for (const el of list) {
+        const r = el.getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) {
+          parent.insertBefore(placeholder, el);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) parent.appendChild(placeholder);
+    };
+
+    const onMove = (moveEvent) => {
+      if (!state.draggingElement) return;
+      const rawDx = moveEvent.clientX - state.dragStartX;
+      const rawDy = moveEvent.clientY - state.dragStartY;
+      if (!dragInitialized && (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3)) {
+        dragInitialized = true;
+        // Hide the original; the placeholder takes its place and reflows siblings.
+        target.style.display = 'none';
+        parent.insertBefore(placeholder, target);
+        removeSelectionHandleOverlay();
+        const canvas = document.querySelector('main');
+        if (canvas) canvas.dataset.adminCanvasDropzone = 'true';
+      }
+      if (!dragInitialized) return;
+      didMove = true;
+      positionPlaceholder(moveEvent.clientY);
+    };
+
+    const onUp = async () => {
+      window.removeEventListener('pointermove', onMove);
+      const dragged = state.draggingElement;
+      state.draggingElement = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      const canvas = document.querySelector('main');
+      if (canvas) delete canvas.dataset.adminCanvasDropzone;
+      if (!dragged) return;
+
+      if (!dragInitialized) return; // treated as a plain click (selection)
+
+      if (didMove) state.suppressEditClickUntil = Date.now() + 300;
+
+      try {
+        // Drop the text at the placeholder location, back in normal flow.
+        if (placeholder.parentElement) {
+          placeholder.parentElement.insertBefore(dragged, placeholder);
+        }
+        placeholder.remove();
+        dragged.style.display = '';
+        dragged.classList.remove('admin-is-dragging', 'admin-free-positioned');
+        // Clear any stale absolute positioning so it sits in flow.
+        dragged.style.position = '';
+        dragged.style.left = '';
+        dragged.style.top = '';
+        dragged.style.margin = '';
+        dragged.style.zIndex = '';
+        const item = await saveElementOverride(key, {
+          hidden: false,
+          deleted: false,
+          positionMode: 'flow',
+          posX: null,
+          posY: null,
+        });
+        applyElementStyles(dragged, item);
+        registerEditableElements();
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+  }
+
   // forcedResizeEdges: pass edge string (e.g. 'se') when called from a handle widget
   function beginFreeDrag(target, event, forcedResizeEdges = null) {
     const key = target.dataset.adminKey;
@@ -6832,6 +6952,12 @@ if (countdownElements.days) {
     const resizeEdges = forcedResizeEdges || getResizeEdges(target, event);
     const isResizeAction = Boolean(resizeEdges);
     const activeCursor = isResizeAction ? getCursorForEdges(resizeEdges) : 'move';
+
+    // Text elements reorder in flow (siblings reflow) rather than going absolute.
+    if (!isResizeAction && target.dataset.adminEditable === 'text') {
+      beginTextReorderDrag(target, event);
+      return;
+    }
 
     let startLeft = 0;
     let startTop = 0;
@@ -7565,6 +7691,11 @@ if (countdownElements.days) {
   }
 
   async function initEditableContent() {
+    // Guarantee a clean start: edit-mode visuals (yellow outlines, etc.) must
+    // never appear outside active edit mode, even if a stale class lingered
+    // from a previous session or soft navigation.
+    document.body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+
     initContactForm();
     bindAlbumUiEvents();
 
