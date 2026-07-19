@@ -11,6 +11,14 @@ app.use(express.json());
 
 // Serve the frontend (moved from app/ to frontend/).
 const frontendDir = path.join(__dirname, '..', 'frontend');
+// Prevent browsers from caching JS/CSS so admin/editor fixes are always picked
+// up immediately (avoids stale-script issues where some pages keep old behavior).
+app.use((req, res, next) => {
+  if (/\.(js|css|html)$/i.test(req.path)) {
+    res.set('Cache-Control', 'no-cache');
+  }
+  next();
+});
 app.use(express.static(frontendDir));
 
 // Domain routers (handlers live in backend/controllers, wired in backend/routes).

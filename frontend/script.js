@@ -7733,11 +7733,30 @@ if (countdownElements.days) {
     loadPageSectionsFromDom();
     registerEditableElements();
     initializeCalendarUi();
-    await loadCalendarEvents();
 
-    const profile = await fetchCurrentProfile();
+    // Determine admin role early so the edit toggle is always available, even if
+    // calendar/media/profile loads fail (those must not block the editor UI).
+    let profile = null;
+    try {
+      profile = await fetchCurrentProfile();
+    } catch (err) {
+      console.error('Profile load failed:', err);
+    }
     state.isAdmin = Boolean(profile && profile.role === 'admin');
-    await loadMediaAlbums();
+
+    // Calendar + media are non-critical for the editor shell; guard each so a
+    // failure can't abort initEditableContent (which would leave the Edit toggle
+    // missing and the user unable to exit edit mode on pages like events/contact).
+    try {
+      await loadCalendarEvents();
+    } catch (err) {
+      console.error('Calendar events load failed:', err);
+    }
+    try {
+      await loadMediaAlbums();
+    } catch (err) {
+      console.error('Media albums load failed:', err);
+    }
 
     if (!state.isAdmin) return;
 
