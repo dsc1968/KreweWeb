@@ -3009,10 +3009,10 @@ if (countdownElements.days) {
       /* ── Inspector sidebar (full-height right panel) ──────────── */
       .admin-inspector-panel {
         position: fixed;
-        top: 0;
+        top: var(--admin-header-h, 64px);
         right: 0;
         width: 340px;
-        height: 100vh;
+        height: calc(100vh - var(--admin-header-h, 64px));
         z-index: 10020;
         display: none;
         flex-direction: column;
@@ -4313,6 +4313,15 @@ if (countdownElements.days) {
     }
   }
 
+  // Keep the inspector panel below the fixed site header so it never
+  // covers the navigation menu. Measures the header and exposes its height
+  // via the --admin-header-h CSS variable used by .admin-inspector-panel.
+  function syncInspectorTop() {
+    const header = document.querySelector('.site-header');
+    const h = header ? header.getBoundingClientRect().height : 64;
+    document.documentElement.style.setProperty('--admin-header-h', Math.ceil(h) + 'px');
+  }
+
   function ensureInspectorPanel() {
     if (state.inspectorPanel) return state.inspectorPanel;
 
@@ -4632,6 +4641,7 @@ if (countdownElements.days) {
     });
 
     document.body.appendChild(panel);
+    syncInspectorTop();
     state.inspectorPanel = panel;
     return panel;
   }
@@ -4645,6 +4655,7 @@ if (countdownElements.days) {
       return;
     }
     panel.style.display = 'flex';
+    syncInspectorTop();
     state.inspectorShownFor = element || null;
 
     const breadcrumb = panel.querySelector('#admin-panel-breadcrumb');
@@ -7451,6 +7462,7 @@ if (countdownElements.days) {
 
     window.addEventListener('resize', () => {
       hideElementToolbar();
+      if (state.editMode) syncInspectorTop();
     });
     window.addEventListener('scroll', (event) => {
       // Only dismiss the floating toolbar when the MAIN PAGE scrolls. Scrolling
