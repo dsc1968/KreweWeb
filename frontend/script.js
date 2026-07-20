@@ -1,3 +1,10 @@
+// ── EDITOR BUILD MARKER ─────────────────────────────────────────────────────────
+// Open the browser console and run:  window.KREWE_EDITOR_VERSION
+// If it does NOT show "20250719b-editor-fixes", your browser is serving a STALE
+// cached script.js. Hard-refresh (Ctrl/Cmd+Shift+R) or restart the dev server.
+window.KREWE_EDITOR_VERSION = '20250719b-editor-fixes';
+console.log('[KreweEditor] loaded version', window.KREWE_EDITOR_VERSION);
+
 const countdownTarget = new Date('2027-03-01T12:00:00').getTime();
 
 // ── Mobile hamburger nav ──────────────────────────────────────
@@ -616,17 +623,17 @@ if (countdownElements.days) {
         font_weight: patch.fontWeight ?? current.font_weight ?? null,
         font_style: patch.fontStyle ?? current.font_style ?? null,
         text_transform: patch.textTransform ?? current.text_transform ?? null,
-        font_size: patch.fontSize ?? current.font_size ?? null,
+        font_size: normalizeLength(patch.fontSize ?? current.font_size ?? null),
         opacity_value: patch.opacityValue ?? current.opacity_value ?? null,
         text_color: patch.textColor ?? current.text_color ?? null,
         background_color: patch.backgroundColor ?? current.background_color ?? null,
         background_opacity_value: patch.backgroundOpacityValue ?? current.background_opacity_value ?? null,
-        width_value: patch.widthValue ?? current.width_value ?? null,
-        height_value: patch.heightValue ?? current.height_value ?? null,
+        width_value: normalizeLength(patch.widthValue ?? current.width_value ?? null),
+        height_value: normalizeLength(patch.heightValue ?? current.height_value ?? null),
         border_style: patch.borderStyle ?? current.border_style ?? null,
-        border_width: patch.borderWidth ?? current.border_width ?? null,
+        border_width: normalizeLength(patch.borderWidth ?? current.border_width ?? null),
         border_color: patch.borderColor ?? current.border_color ?? null,
-        border_radius: patch.borderRadius ?? current.border_radius ?? null,
+        border_radius: normalizeLength(patch.borderRadius ?? current.border_radius ?? null),
         position_mode: patch.positionMode ?? current.position_mode ?? null,
         pos_x: Number.isFinite(patch.posX) ? Math.round(patch.posX) : (Number.isFinite(current.pos_x) ? Math.round(current.pos_x) : null),
         pos_y: Number.isFinite(patch.posY) ? Math.round(patch.posY) : (Number.isFinite(current.pos_y) ? Math.round(current.pos_y) : null),
@@ -1281,6 +1288,26 @@ if (countdownElements.days) {
     const g = Number.parseInt(normalized.slice(3, 5), 16);
     const b = Number.parseInt(normalized.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // Coerce a bare number into a valid CSS length so values a user types without a
+  // unit (e.g. "42" for font size) become "42px" and actually apply. Values that
+  // already include a unit (e.g. "1rem", "18px", "50%", "0") pass through unchanged.
+  // Without this, "element.style.fontSize = '42'" is invalid CSS and is silently
+  // ignored, so the edit would appear to do nothing.
+  function normalizeLength(value) {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (trimmed === '') return trimmed;
+    if (trimmed.charAt(0) === '-' || (trimmed.charAt(0) >= '0' && trimmed.charAt(0) <= '9')) {
+      let allNum = true;
+      for (let i = 0; i < trimmed.length; i++) {
+        const c = trimmed[i];
+        if (c !== '-' && c !== '.' && (c < '0' || c > '9')) { allNum = false; break; }
+      }
+      if (allNum) return trimmed + 'px';
+    }
+    return trimmed;
   }
 
   function rememberInlineDisplay(element) {
@@ -2601,9 +2628,10 @@ if (countdownElements.days) {
       }
 
       .admin-edit-nav-button.is-active {
-        border-color: rgba(255, 210, 98, 0.75);
-        background: rgba(255, 210, 98, 0.22);
-        color: #ffd262;
+        border-color: rgba(255, 210, 98, 0.9) !important;
+        background: rgba(255, 210, 98, 0.28) !important;
+        color: #ffd262 !important;
+        box-shadow: 0 0 0 2px rgba(255, 210, 98, 0.45) !important;
       }
 
       .admin-edit-nav-button svg {
