@@ -3071,7 +3071,7 @@ if (countdownElements.days) {
       }
 
       /* ── Selection resize handles overlay ──────────────────────── */
-      .admin-selection-handles-overlay {
+      body.admin-edit-mode .admin-selection-handles-overlay {
         position: fixed;
         pointer-events: none;
         z-index: 10015;
@@ -3079,7 +3079,7 @@ if (countdownElements.days) {
         outline: 1.5px solid rgba(255, 210, 98, 0.65);
         outline-offset: 0;
       }
-      .admin-resize-handle {
+      body.admin-edit-mode .admin-resize-handle {
         position: absolute;
         width: 10px;
         height: 10px;
@@ -3091,14 +3091,14 @@ if (countdownElements.days) {
         box-sizing: border-box;
       }
       /* Corner handles */
-      .admin-resize-handle[data-handle="nw"] { top:-5px; left:-5px; cursor:nw-resize; }
-      .admin-resize-handle[data-handle="n"]  { top:-5px; left:calc(50% - 5px); cursor:n-resize; }
-      .admin-resize-handle[data-handle="ne"] { top:-5px; right:-5px; cursor:ne-resize; }
-      .admin-resize-handle[data-handle="e"]  { top:calc(50% - 5px); right:-5px; cursor:e-resize; }
-      .admin-resize-handle[data-handle="se"] { bottom:-5px; right:-5px; cursor:se-resize; }
-      .admin-resize-handle[data-handle="s"]  { bottom:-5px; left:calc(50% - 5px); cursor:s-resize; }
-      .admin-resize-handle[data-handle="sw"] { bottom:-5px; left:-5px; cursor:sw-resize; }
-      .admin-resize-handle[data-handle="w"]  { top:calc(50% - 5px); left:-5px; cursor:w-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="nw"] { top:-5px; left:-5px; cursor:nw-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="n"]  { top:-5px; left:calc(50% - 5px); cursor:n-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="ne"] { top:-5px; right:-5px; cursor:ne-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="e"]  { top:calc(50% - 5px); right:-5px; cursor:e-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="se"] { bottom:-5px; right:-5px; cursor:se-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="s"]  { bottom:-5px; left:calc(50% - 5px); cursor:s-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="sw"] { bottom:-5px; left:-5px; cursor:sw-resize; }
+      body.admin-edit-mode .admin-resize-handle[data-handle="w"]  { top:calc(50% - 5px); left:-5px; cursor:w-resize; }
 
       /* header */
       .admin-panel-header {
@@ -3735,6 +3735,7 @@ if (countdownElements.days) {
       '.admin-inspector-panel', '.admin-element-toolbar',
       '.admin-editor-backdrop', '.admin-code-editor-backdrop',
       '#admin-editor-styles',
+      '.admin-selection-handles-overlay', '.admin-resize-handle',
     ].forEach((sel) => {
       clone.querySelectorAll(sel).forEach((el) => el.remove());
     });
@@ -7738,6 +7739,9 @@ if (countdownElements.days) {
     // never appear outside active edit mode, even if a stale class lingered
     // from a previous session or soft navigation.
     document.body.classList.remove('admin-edit-mode', 'admin-free-drag-mode');
+    // Strip any stale selection overlay baked into the saved HTML so the yellow
+    // selection box can never render outside active edit mode.
+    removeSelectionHandleOverlay();
 
     // Bulletproof guard: if anything adds the edit-mode class to <body> while we
     // are NOT actually in edit mode, strip it immediately. This guarantees the
