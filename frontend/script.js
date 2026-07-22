@@ -3070,6 +3070,35 @@ if (countdownElements.days) {
         user-select: text;
       }
 
+      /* Normalize every admin dropdown to the dark theme. The open option list
+         otherwise renders with the OS light palette, making option text invisible
+         on dark panels (esp. Windows/Chrome). color-scheme:dark makes the native
+         control render dark, and the explicit option rules guarantee legibility. */
+      .admin-inspector-panel select,
+      .admin-panel-field select,
+      .admin-format-grid select,
+      .admin-editor-modal select,
+      .admin-editor-backdrop select,
+      .admin-code-editor-backdrop select,
+      .admin-section-tools select,
+      .admin-element-toolbar select {
+        color-scheme: dark;
+        background: rgba(255, 255, 255, 0.05);
+        color: #f5f7ff;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+      .admin-inspector-panel select option,
+      .admin-panel-field select option,
+      .admin-format-grid select option,
+      .admin-editor-modal select option,
+      .admin-editor-backdrop select option,
+      .admin-code-editor-backdrop select option,
+      .admin-section-tools select option,
+      .admin-element-toolbar select option {
+        background: #0a1226;
+        color: #f5f7ff;
+      }
+
       /* ── Selection resize handles overlay ──────────────────────── */
       body.admin-edit-mode .admin-selection-handles-overlay {
         position: fixed;
@@ -6770,7 +6799,10 @@ if (countdownElements.days) {
     // Otherwise clicking a control inside an editable element — e.g. a section's
     // "Remove Section" button — would start a drag and swallow the click, making
     // buttons feel sluggish/unresponsive.
-    if (source.closest('button, input, select, textarea, a, label, [data-admin-remove-section]')) return null;
+    // Only block actionable controls (buttons / form fields / the section
+    // "remove" button). Links and labels stay draggable so linked images and
+    // link text inside editable elements can still be moved.
+    if (source.closest('button, input, select, textarea, [data-admin-remove-section]')) return null;
     const candidate = source.closest('[data-admin-editable="text"], [data-admin-editable="image"], [data-admin-editable="background-image"], [data-admin-editable="container"], [data-admin-editable="generic"], [data-admin-editable="album-root"]');
     if (!candidate) return null;
     if (!candidate.dataset.adminKey) return null;
@@ -6973,6 +7005,145 @@ if (countdownElements.days) {
     window.addEventListener('pointerup', onUp, { once: true });
   }
 
+  // Relocate ANY movable element (text / image / container / generic) by dropping
+  // it into another container/section. The element stays in normal document flow,
+  // so siblings automatically reflow to make room — no absolute positioning, no
+  // manual nudging. Works across sections, divs and containers.
+  function beginRelocationDrag(target, event) {
+    const key = target.dataset.adminKey;
+    if (!key) return;
+    const movable = ['text', 'image', 'container', 'generic'];
+    if (!movable.includes(target.dataset.adminEditable)) return;
+
+    let dragInitialized = false;
+    let didMove = false;
+    state.draggingElement = target;
+    state.dragStartX = event.clientX;
+    state.dragStartY = event.clientY;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'move';
+
+    const originalParent = target.parentElement;
+    // Remember the last valid drop container so the placeholder doesn't "freeze"
+    // when the pointer briefly passes over non-editable chrome (header/panel).
+    let lastContainer = originalParent;
+    const placeholderTag = target.dataset.adminEditable === 'text' ? (target.tagName || 'p') : 'div';
+    const placeholder = document.createElement(placeholderTag);
+    placeholder.classList.add('admin-drag-placeholder');
+    placeholder.style.height = `${target.offsetHeight}px`;
+    if (target.dataset.adminEditable === 'text') {
+      const cs = window.getComputedStyle(target);
+      placeholder.style.marginTop = cs.marginTop;
+      placeholder.style.marginBottom = cs.marginBottom;
+    } else {
+      placeholder.style.width = `${target.offsetWidth}px`;
+    }
+    placeholder.dataset.adminDragPlaceholder = 'true';
+
+    // Pick the container the pointer is over. Walk up from the element under the
+    // cursor to the nearest editable container (section, div/container, album
+    // root, page root). Never resolve to the element being dragged or one of its
+    // descendants (that would create a cycle).
+    function getDropTarget(clientX, clientY) {
+      const point = document.elementFromPoint(clientX, clientY);
+      if (!point) return null;
+      if (target.contains(point)) return null;
+      let node = point;
+      while (node && node !== document.body) {
+        const ed = node.dataset && node.dataset.adminEditable;
+        if (ed === 'container' || ed === 'generic' || ed === 'album-root' || ed === 'page-root' || ed === 'background-image') {
+          if (node === target) return null;
+          return node;
+        }
+        node = node.parentElement;
+      }
+      const main = document.querySelector('main');
+      if (main && main.contains(point)) return main;
+      return null;
+    }
+
+    // Insert a reflow placeholder at the gap nearest the cursor. For flex-row
+    // containers we use the horizontal axis so elements can be dropped
+    // side-by-side (aligned); for everything else we use the vertical axis.
+    function placePlaceholder(container, clientX, clientY) {
+      if (!container) return;
+      const kids = Array.from(container.children).filter((el) => {
+        if (el === target || el === placeholder) return false;
+        if (el.dataset && el.dataset.adminDragPlaceholder) return false;
+        if (isInsideAdminUi(el)) return false;
+        return true;
+      });
+      if (kids.length === 0) { container.appendChild(placeholder); return; }
+      const cs = window.getComputedStyle(container);
+      const horizontal = cs.display === 'flex' && /^(row|row-reverse)$/.test(cs.flexDirection || 'row');
+      const axis = horizontal ? clientX : clientY;
+      let ref = null;
+      for (const el of kids) {
+        const r = el.getBoundingClientRect();
+        const mid = horizontal ? (r.left + r.width / 2) : (r.top + r.height / 2);
+        if (axis < mid) { ref = el; break; }
+      }
+      if (ref) container.insertBefore(placeholder, ref);
+      else container.appendChild(placeholder);
+    }
+
+    const onMove = (moveEvent) => {
+      if (!state.draggingElement) return;
+      const rawDx = moveEvent.clientX - state.dragStartX;
+      const rawDy = moveEvent.clientY - state.dragStartY;
+      if (!dragInitialized && (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3)) {
+        dragInitialized = true;
+        target.style.display = 'none';
+        target.classList.add('admin-is-dragging');
+        originalParent.insertBefore(placeholder, target);
+        removeSelectionHandleOverlay();
+        const canvas = document.querySelector('main');
+        if (canvas) canvas.dataset.adminCanvasDropzone = 'true';
+      }
+      if (!dragInitialized) return;
+      didMove = true;
+      const container = getDropTarget(moveEvent.clientX, moveEvent.clientY);
+      if (container) lastContainer = container;
+      placePlaceholder(lastContainer, moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const onUp = async () => {
+      window.removeEventListener('pointermove', onMove);
+      const dragged = state.draggingElement;
+      state.draggingElement = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      const canvas = document.querySelector('main');
+      if (canvas) delete canvas.dataset.adminCanvasDropzone;
+      if (!dragged) return;
+      if (!dragInitialized) return; // plain click — selection handled elsewhere
+      if (didMove) state.suppressEditClickUntil = Date.now() + 300;
+
+      try {
+        if (placeholder.parentElement) {
+          placeholder.parentElement.insertBefore(dragged, placeholder);
+        }
+        placeholder.remove();
+        dragged.style.display = '';
+        dragged.classList.remove('admin-is-dragging', 'admin-free-positioned');
+        // Return to normal flow so surrounding elements auto-correct positioning.
+        dragged.style.position = '';
+        dragged.style.left = '';
+        dragged.style.top = '';
+        dragged.style.margin = '';
+        dragged.style.zIndex = '';
+        registerEditableElements();
+        // Persist the new DOM structure (inline styles travel with the element).
+        savePageToFile();
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+  }
+
   // forcedResizeEdges: pass edge string (e.g. 'se') when called from a handle widget
   function beginFreeDrag(target, event, forcedResizeEdges = null) {
     const key = target.dataset.adminKey;
@@ -6983,10 +7154,15 @@ if (countdownElements.days) {
     const isResizeAction = Boolean(resizeEdges);
     const activeCursor = isResizeAction ? getCursorForEdges(resizeEdges) : 'move';
 
-    // Text elements reorder in flow (siblings reflow) rather than going absolute.
-    if (!isResizeAction && target.dataset.adminEditable === 'text') {
-      beginTextReorderDrag(target, event);
-      return;
+    // Movable content (text / image / container / generic) relocates in normal
+    // flow — dropped into any container/section, siblings reflow automatically.
+    // Resize handles still use the absolute free-drag path below.
+    if (!isResizeAction) {
+      const movable = ['text', 'image', 'container', 'generic'];
+      if (movable.includes(target.dataset.adminEditable)) {
+        beginRelocationDrag(target, event);
+        return;
+      }
     }
 
     let startLeft = 0;
