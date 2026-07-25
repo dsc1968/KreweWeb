@@ -392,31 +392,66 @@ function computeNextScheduledBackup(sched, from = new Date()) {
   return c;
 }
 
-// Called every minute by the scheduler in server.js. Runs an automatic backup
-// only when the current minute matches the configured slot AND that exact
-// occurrence has not already executed. A window missed while the server was
-// offline is skipped — never replayed.
+// Compute the most recent scheduled occurrence that is <= `from` for the
+// given schedule. Daily has no day constraint; weekly/monthly walk backwards
+// until the day-of-week / day-of-month matches. This lets the tick recover
+// a slot that was missed due to event-loop jitter, a brief outage, or a
+// server restart, instead of only firing if a tick lands exactly on the minute.
+function mostRecentOccurrence(sched, from) {
+  const at = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), sched.hour, sched.minute, 0, 0);
+  const dayMatches = (d) => {
+    if (sched.frequency === 'weekly' && d.getDay() !== sched.dow) return false;
+    if (sched.frequency === 'monthly' && d.getDate() !== sched.dom) return false;
+    return true;
+  };
+  if (sched.frequency === 'weekly') {
+    let c = at(from), guard = 0;
+    while ((!dayMatches(c) || c > from) && guard < 14) { c = new Date(c.getTime() - 24 * 60 * 60 * 1000); guard++; }
+    return c;
+  }
+  if (sched.frequency === 'monthly') {
+    let c = at(from), guard = 0;
+    while ((!dayMatches(c) || c > from) && guard < 400) { c = new Date(c.getTime() - 24 * 60 * 60 * 1000); guard++; }
+    return c;
+  }
+  // daily
+  let c = at(from);
+  if (c > from) c = new Date(c.getTime() - 24 * 60 * 60 * 1000);
+  return c;
+}
+
+// Drives automatic backups. Invoked on a timer from server.js. Finds the most
+// recent scheduled occurrence that has not yet executed and is recent enough
+// to count as a missed window (jitter / short outage / restart) rather than a
+// stale slot left behind by a schedule change or a long downtime we
+// deliberately do not replay. Pure timers/fs/Date — identical on Linux and
+// Windows hosts.
+let scheduledBackupInFlight = false;
 async function runScheduledBackupTick() {
   let sched;
   try { sched = readBackupSchedule(); } catch { return; }
   if (!sched.enabled) return;
+  if (scheduledBackupInFlight) return;
 
   const now = new Date();
-  if (now.getHours() !== sched.hour || now.getMinutes() !== sched.minute) return;
-  if (sched.frequency === 'weekly' && now.getDay() !== sched.dow) return;
-  if (sched.frequency === 'monthly' && now.getDate() !== sched.dom) return;
+  const occ = mostRecentOccurrence(sched, now);
+  // Only act on occurrences within the last hour so a schedule edit to a future
+  // time, or a multi-hour outage, does not trigger an unexpected immediate run.
+  const TOLERANCE_MS = 60 * 60 * 1000;
+  if (now.getTime() - occ.getTime() > TOLERANCE_MS) return;
 
-  const occurrence = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sched.hour, sched.minute, 0, 0);
-  const occurrenceISO = occurrence.toISOString();
-
+  const occKey = occ.toISOString();
   try {
     const last = await getSiteSetting('last_scheduled_backup');
-    if (last === occurrenceISO) return;
+    if (last === occKey) return;
+    scheduledBackupInFlight = true;
     const manifest = await createBackup({ type: sched.type, label: 'Scheduled backup', createdBy: 'scheduled' });
-    await setSiteSetting('last_scheduled_backup', occurrenceISO);
+    await setSiteSetting('last_scheduled_backup', occKey);
     console.log(`[Scheduled Backup] Created ${manifest.id} (${sched.frequency} @ ${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')})`);
   } catch (err) {
     console.error('[Scheduled Backup] Failed:', err);
+  } finally {
+    scheduledBackupInFlight = false;
   }
 }
 

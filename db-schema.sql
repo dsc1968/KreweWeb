@@ -459,7 +459,10 @@ CREATE TABLE public.user_profiles (
     kids_birthdays jsonb DEFAULT '[]'::jsonb NOT NULL,
     grandchildren_names jsonb DEFAULT '[]'::jsonb NOT NULL,
     grandchildren_birthdays jsonb DEFAULT '[]'::jsonb NOT NULL,
-    float_captain boolean DEFAULT false NOT NULL
+    float_captain boolean DEFAULT false NOT NULL,
+    float_captain_user_id integer,
+    float_description text,
+    float_id integer
 );
 
 
@@ -847,6 +850,9 @@ ALTER TABLE ONLY public.shop_products
 
 ALTER TABLE ONLY public.user_profiles
     ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_float_captain_user_id_fkey FOREIGN KEY (float_captain_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --

@@ -121,6 +121,9 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
   beads_paid BOOLEAN NOT NULL DEFAULT FALSE,
   costume_paid BOOLEAN NOT NULL DEFAULT FALSE,
+  float_captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  float_description TEXT,
+  float_id INTEGER,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 

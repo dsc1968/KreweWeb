@@ -536,6 +536,19 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   if (!res.ok) { alert(data.error || 'Unable to load user details'); return; }
   const full = data;
 
+  // Lock state for the current admin (mirrors the dashboard/profile lock UX).
+  // `profile` is not in scope here, so read it from the current user's profile.
+  let uemFloatsLocked = false;
+  let uemIsFloatAdmin = false;
+  try {
+    const profRes = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + token } });
+    if (profRes.ok) {
+      const prof = await parseJSONResponse(profRes);
+      uemFloatsLocked = Boolean(prof.float_locked);
+      uemIsFloatAdmin = prof.role === 'float_admin';
+    }
+  } catch (_e) { /* default to unlocked if the lookup fails */ }
+
   // Build modal backdrop
   const existing = document.getElementById('admin-user-edit-modal');
   if (existing) existing.remove();
@@ -571,6 +584,8 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
             <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
               <option value="member" ${full.role==='member'?'selected':''}>Member</option>
               <option value="store_admin" ${full.role==='store_admin'?'selected':''}>Store Admin</option>
+              <option value="float_admin" ${full.role==='float_admin'?'selected':''}>Float Admin</option>
+              <option value="finance_admin" ${full.role==='finance_admin'?'selected':''}>Finance Admin</option>
               <option value="admin" ${full.role==='admin'?'selected':''}>Admin</option>
               ${full.role==='disabled'?'<option value="disabled" selected>Disabled</option>':''}
             </select></div>
@@ -587,16 +602,21 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
       <!-- Panel: Float & Riders -->
       <div class="uem-panel" data-uem-panel="floats">
+
         <div class="form-group" style="margin-bottom:0.75rem;">
-          <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;font-weight:600;padding:0.7rem 1rem;border-radius:10px;border:1px solid rgba(255,210,98,0.2);background:rgba(255,210,98,0.06);">
-            <input type="checkbox" id="uem-float-captain" ${full.float_captain ? 'checked' : ''} style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#ffd262;" />
+          <label style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;font-weight:600;padding:0.7rem 1rem;border-radius:10px;border:1px solid rgba(255,210,98,0.2);background:rgba(255,210,98,0.06);">
+            <input type="checkbox" id="uem-float-captain" ${full.captain_of ? 'checked' : ''} disabled style="width:1.1rem;height:1.1rem;accent-color:#ffd262;opacity:0.85;" />
             Float Captain
+            ${full.captain_of ? `<span style="margin-left:0.7rem;color:#ffffff;font-weight:500;">Captain of Float #${escHtml(full.captain_of.float_number || '?')} – ${escHtml(full.captain_of.name || 'Unnamed')}</span>` : ''}
           </label>
         </div>
         <div class="form-group">
-          <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Name, Float Name &amp; #)</span></label>
+          <label style="font-size:0.78rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Rider Name, Assigned Float &amp; Comment)</span></label>
           <div id="uem-riders"></div>
           <button type="button" id="uem-add-rider" style="margin-top:0.4rem;padding:0.3rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;font:inherit;font-size:0.82rem;cursor:pointer;">+ Add Rider</button>
+          <div id="uem-float-lock-note" style="display:none;background:rgba(255,98,98,0.12);border:1px solid rgba(255,98,98,0.45);color:#ffb3b3;padding:0.5rem 0.8rem;border-radius:10px;margin-top:0.5rem;font-size:0.85rem;">
+            Floats are locked — only the Float Admin can change float assignments.
+          </div>
         </div>
       </div>
 
@@ -662,48 +682,117 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   // Populate list inputs
   // Kids: Name | Float # | ×
   // Riders: Name | Float Name | Float # | ×
-  function addListItem(containerId, name, floatNum, floatName) {
+  function addListItem(containerId, name, comment, riderFloatId, isMember, floats) {
     const isRider = containerId === 'uem-riders';
     const container = backdrop.querySelector('#' + containerId);
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;';
+    wrapper.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;flex-wrap:wrap;';
+
+    // The member themselves appears in the rider list as a read-only row so the
+    // admin sees them alongside the riders they sponsor. They carry no
+    // .uem-list-name / .uem-list-comment classes, so they are never saved back
+    // as a rider on submit.
+    if (isMember) {
+      wrapper.style.cssText += 'background:rgba(255,210,98,0.06);border-radius:8px;padding:0.25rem 0.4rem;';
+      const tag = document.createElement('span');
+      tag.textContent = name || '(member)';
+      tag.style.cssText = 'flex:2;min-width:0;font-weight:600;color:#f5f7ff;';
+      wrapper.appendChild(tag);
+      const fl = (Array.isArray(floats) ? floats : []).find((f) => String(f.id) === String(riderFloatId));
+      const flSpan = document.createElement('span');
+      flSpan.textContent = fl ? `Float #${(fl.float_number || '?')} – ${fl.name || ''}`.trim() : '';
+      flSpan.style.cssText = 'flex:2;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(flSpan);
+      const cm = document.createElement('span');
+      cm.textContent = comment || '—';
+      cm.style.cssText = 'flex:3;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(cm);
+      const badge = document.createElement('span');
+      badge.textContent = 'Member';
+      badge.style.cssText = 'flex-shrink:0;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.12rem 0.45rem;border-radius:999px;border:1px solid rgba(255,210,98,0.4);color:#ffd262;';
+      wrapper.appendChild(badge);
+      wrapper.classList.add('uem-member-row');
+      container.appendChild(wrapper);
+      return;
+    }
+
     const nameInp = document.createElement('input');
     nameInp.type = 'text';
     nameInp.value = name || '';
-    nameInp.placeholder = 'Name';
+    nameInp.placeholder = 'Rider name';
     nameInp.className = 'uem-list-name';
     nameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
     wrapper.appendChild(nameInp);
     if (isRider) {
-      const floatNameInp = document.createElement('input');
-      floatNameInp.type = 'text';
-      floatNameInp.value = floatName || '';
-      floatNameInp.placeholder = 'Float name';
-      floatNameInp.className = 'uem-list-float-name';
-      floatNameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
-      wrapper.appendChild(floatNameInp);
+      const commentInp = document.createElement('input');
+      commentInp.type = 'text';
+      commentInp.value = comment || '';
+      commentInp.placeholder = 'Comment';
+      commentInp.className = 'uem-list-comment';
+      commentInp.style.cssText = 'flex:3;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+      wrapper.appendChild(commentInp);
+      // Editable float picker: a rider may be assigned to ANY float defined by
+      // the float admin (Option B) — independent of the sponsoring member.
+      const floatSel = document.createElement('select');
+      floatSel.className = 'uem-list-float';
+      floatSel.style.cssText = 'flex:2;min-width:120px;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+      const fl = Array.isArray(floats) ? floats : [];
+      floatSel.innerHTML = '<option value="">No float</option>' + fl
+        .map((f) => {
+          const num = (f.float_number || '').toString().trim();
+          const label = `Float #${escHtml(num || '?')} – ${escHtml(f.name || 'Unnamed')}`;
+          const val = f.id != null ? String(f.id) : '';
+          return `<option value="${escHtml(val)}"${String(val) === String(riderFloatId || '') ? ' selected' : ''}>${label}</option>`;
+        }).join('');
+      floatSel.value = String(riderFloatId || '');
+      wrapper.appendChild(floatSel);
     }
-    const floatInp = document.createElement('input');
-    floatInp.type = 'text';
-    floatInp.value = floatNum || '';
-    floatInp.placeholder = 'Float #';
-    floatInp.className = 'uem-list-float';
-    floatInp.style.cssText = 'flex:1;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;max-width:75px;';
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.textContent = '×';
     rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;flex-shrink:0;';
     rm.addEventListener('click', () => wrapper.remove());
-    wrapper.appendChild(floatInp);
     wrapper.appendChild(rm);
     container.appendChild(wrapper);
   }
 
-  const riderFloatNums = full.rider_float_numbers || [];
-  const riderFloatNames = full.rider_float_names || [];
-  (full.float_riders || []).forEach((n, i) => addListItem('uem-riders', n, riderFloatNums[i] || '', riderFloatNames[i] || ''));
+  // Floats defined by the float admin, so any role can assign a rider to any
+  // float (Option B) — independent of the sponsoring member.
+  let adminFloats = [];
+  try {
+    const afRes = await fetch('/api/floats', { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (afRes.ok) adminFloats = await afRes.json();
+  } catch { /* floats list empty; selects fall back to "No float" */ }
 
-  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', ''));
+  // The member is shown in the rider list too (read-only). Sometimes a member
+  // rides, sometimes they don't — either way they appear here like any entry.
+  const assignedFloatLabel = (full.assigned_float && (full.assigned_float.name || full.assigned_float.float_number))
+    ? `Float #${full.assigned_float.float_number || '?'} – ${full.assigned_float.name || ''}`.trim()
+    : '';
+  if (full.float_id) {
+    addListItem('uem-riders', full.full_name, '', full.float_id, true, adminFloats);
+  }
+
+  (full.float_riders || []).forEach((r) => {
+    const name = (r && typeof r === 'object') ? (r.name || '') : (typeof r === 'string' ? r : '');
+    const comment = (r && typeof r === 'object') ? (r.comment || '') : '';
+    addListItem('uem-riders', name, comment, (r && r.float_id) || '', false, adminFloats);
+  });
+
+  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', '', false, adminFloats));
+
+  // When floats are locked, only the Float Admin may change float assignments.
+  // Mirror the dashboard/profile lock UX: show a note and disable the rider
+  // controls for everyone except the Float Admin.
+  const uemCanEditFloats = !uemFloatsLocked || uemIsFloatAdmin;
+  if (!uemCanEditFloats) {
+    const ridersWrap = backdrop.querySelector('#uem-riders');
+    if (ridersWrap) ridersWrap.querySelectorAll('input, select, button').forEach((el) => { el.disabled = true; });
+    const addRiderBtn = backdrop.querySelector('#uem-add-rider');
+    if (addRiderBtn) addRiderBtn.disabled = true;
+    const note = backdrop.querySelector('#uem-float-lock-note');
+    if (note) note.style.display = 'block';
+  }
 
   const feedbackEl = backdrop.querySelector('#uem-feedback');
   function setFeedback(msg, isError) {
@@ -857,16 +946,18 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
       guest_name: backdrop.querySelector('#uem-guest').value.trim(),
-      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map(i=>i.value.trim()).filter(Boolean),
-      rider_float_names: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
+      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
         const row = nameInp.closest('div');
-        return row ? (row.querySelector('.uem-list-float-name')?.value.trim() || '') : '';
-      }),
-      rider_float_numbers: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
-        const row = nameInp.closest('div');
-        return row ? (row.querySelector('.uem-list-float')?.value.trim() || '') : '';
-      }),
-      float_captain: backdrop.querySelector('#uem-float-captain')?.checked ?? false,
+        const fidRaw = row ? (row.querySelector('.uem-list-float')?.value || '') : '';
+        const float_id = fidRaw ? parseInt(fidRaw, 10) : null;
+        return {
+          name: nameInp.value.trim(),
+          comment: row ? (row.querySelector('.uem-list-comment')?.value.trim() || '') : '',
+          float_id,
+        };
+      }).filter((r) => r.name || r.comment || r.float_id),
+      float_captain: !!full.captain_of,
+      member_float_number: full.member_float_number || '',
     };
     // Read current payment state from checkboxes (managed exclusively by PATCH /payments)
     const currentPayments = {
@@ -1210,9 +1301,14 @@ function buildRemovableInput(container, value, placeholder) {
   input.focus();
 }
 
-function buildRiderInput(container, name, floatName, floatNum) {
+function buildRiderInput(container, rider, floats) {
+  rider = rider || {};
+  const name = (rider && typeof rider === 'object') ? (rider.name || '') : (typeof rider === 'string' ? rider : '');
+  const comment = (rider && typeof rider === 'object') ? (rider.comment || '') : '';
+  const riderFloatId = (rider && typeof rider === 'object' && rider.float_id) ? rider.float_id : '';
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex; gap:0.4rem; margin-bottom:0.4rem; align-items:center;';
+  wrapper.className = 'rider-row';
+  wrapper.style.cssText = 'display:flex; gap:0.4rem; margin-bottom:0.4rem; align-items:center; flex-wrap:wrap;';
 
   const mkInp = (value, placeholder, cls, maxWidth) => {
     const inp = document.createElement('input');
@@ -1225,8 +1321,23 @@ function buildRiderInput(container, name, floatName, floatNum) {
   };
 
   wrapper.appendChild(mkInp(name, 'Rider name', 'rider-name-input'));
-  wrapper.appendChild(mkInp(floatName, 'Float name', 'rider-float-name-input'));
-  wrapper.appendChild(mkInp(floatNum, 'Float #', 'rider-float-num-input', '75px'));
+  wrapper.appendChild(mkInp(comment, 'Comment', 'rider-comment-input'));
+
+  // A rider may be assigned to ANY float defined by the float admin (Option B)
+  // — independent of the sponsoring member.
+  const floatSel = document.createElement('select');
+  floatSel.className = 'rider-float-input';
+  floatSel.style.cssText = 'flex:1; min-width:120px; padding:0.55rem 0.7rem; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:#f5f7ff; font:inherit;';
+  const fl = Array.isArray(floats) ? floats : [];
+  floatSel.innerHTML = '<option value="">No float</option>' + fl
+    .map((f) => {
+      const num = (f.float_number || '').toString().trim();
+      const label = `Float #${escHtml(num || '?')} – ${escHtml(f.name || 'Unnamed')}`;
+      const val = f.id != null ? String(f.id) : '';
+      return `<option value="${escHtml(val)}"${String(val) === String(riderFloatId) ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+  floatSel.value = String(riderFloatId || '');
+  wrapper.appendChild(floatSel);
 
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
@@ -1246,7 +1357,7 @@ function getListValues(container) {
     .filter(Boolean);
 }
 
-function initProfileDetailsForm(profile) {
+async function initProfileDetailsForm(profile) {
   const section = document.getElementById('profile-details-section');
   const form = document.getElementById('profile-details-form');
   if (!section || !form) return;
@@ -1277,10 +1388,30 @@ function initProfileDetailsForm(profile) {
   set('pd-organizations', profile.organizations);
   set('pd-spouse',        profile.spouse_name);
   set('pd-guest',         profile.guest_name);
+  // Load the floats defined by the float admin so both the member's own float
+  // and each rider row can offer a constrained, consistent float picker.
+  let profileFloats = [];
+  try {
+    const pfRes = await fetch('/api/floats', { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (pfRes.ok) profileFloats = await pfRes.json();
+  } catch { /* leave empty; selects fall back to "No float" */ }
+
+  // Member's current float (keyed by float number; the backend links a member
+  // to a float by number). Used to preselect the editable member row below.
+  const memberFloatCur = (profile.member_float_number || '').toString().trim();
 
   // Float Captain checkbox
+  // Float Captain is read-only on the member profile: it reflects what the
+  // Float Admin set (captain_of is the source of truth). The member cannot
+  // self-appoint, so the checkbox is disabled and driven by captain_of.
   const floatCaptainEl = document.getElementById('pd-float-captain');
-  if (floatCaptainEl) floatCaptainEl.checked = Boolean(profile.float_captain);
+  if (floatCaptainEl) floatCaptainEl.checked = Boolean(profile.captain_of);
+  const captainLabelEl = document.getElementById('pd-captain-label');
+  if (captainLabelEl) {
+    captainLabelEl.textContent = profile.captain_of
+      ? `Captain of Float #${(profile.captain_of.float_number || '?')} – ${profile.captain_of.name || 'Unnamed'}`.trim()
+      : 'Float Captain';
+  }
 
   // Auto-update age when birthdate changes
   const bdEl = document.getElementById('pd-birthdate');
@@ -1325,15 +1456,48 @@ function initProfileDetailsForm(profile) {
   const gcBdays = profile.grandchildren_birthdays || [];
   (profile.grandchildren_names || []).forEach((name, i) => buildPersonRow(gcList, name, gcBdays[i] || '', 'Grandchild name'));
 
-  const riderFloatNames = profile.rider_float_names || [];
-  const riderFloatNums  = profile.rider_float_numbers || [];
-  (profile.float_riders || []).forEach((name, i) =>
-    buildRiderInput(ridersList, name, riderFloatNames[i] || '', riderFloatNums[i] || '')
-  );
+  (profile.float_riders || []).forEach((r) => buildRiderInput(ridersList, r, profileFloats));
 
   document.getElementById('add-kid-btn').addEventListener('click', () => buildPersonRow(kidsList, '', '', 'Child name'));
   document.getElementById('add-grandchild-btn').addEventListener('click', () => buildPersonRow(gcList, '', '', 'Grandchild name'));
-  document.getElementById('add-rider-btn').addEventListener('click', () => buildRiderInput(ridersList, '', '', ''));
+  document.getElementById('add-rider-btn').addEventListener('click', () => buildRiderInput(ridersList, '', profileFloats));
+
+  // The member appears as an editable row in the "Float Riders" list — just
+  // like any rider entry — so they can change their own float here. There is no
+  // separate "Your Float" section. Uses class "profile-member-row" (not
+  // "rider-row") so it is never saved back as one of their sponsored riders,
+  // and it has no remove button (a member can't remove themselves).
+  const memberName = profile.full_name || profile.name || 'Member';
+  const memberFloatObj = (profileFloats || []).find((f) => String(f.float_number) === String(memberFloatCur));
+  const memberFloatId = memberFloatObj ? memberFloatObj.id : '';
+  const memberRow = document.createElement('div');
+  memberRow.className = 'profile-member-row';
+  memberRow.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;flex-wrap:wrap;background:rgba(255,210,98,0.06);border-radius:8px;padding:0.25rem 0.4rem;';
+  const mTag = document.createElement('span');
+  mTag.textContent = memberName;
+  mTag.style.cssText = 'flex:2;min-width:0;font-weight:600;color:#f5f7ff;';
+  const mCm = document.createElement('span');
+  mCm.textContent = '—';
+  mCm.style.cssText = 'flex:3;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+  // Editable float picker — the member can change which float they're on.
+  const mFloatSel = document.createElement('select');
+  mFloatSel.className = 'profile-member-float';
+  mFloatSel.style.cssText = 'flex:1;min-width:120px;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+  mFloatSel.innerHTML = '<option value="">No float</option>' + (profileFloats || []).map((f) => {
+    const num = (f.float_number || '').toString().trim();
+    const label = `Float #${escHtml(num || '?')} – ${escHtml(f.name || 'Unnamed')}`;
+    const val = f.id != null ? String(f.id) : '';
+    return `<option value="${escHtml(val)}"${String(val) === String(memberFloatId || '') ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+  mFloatSel.value = String(memberFloatId || '');
+  const mBadge = document.createElement('span');
+  mBadge.textContent = 'Member';
+  mBadge.style.cssText = 'flex-shrink:0;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.12rem 0.45rem;border-radius:999px;border:1px solid rgba(255,210,98,0.4);color:#ffd262;';
+  memberRow.appendChild(mTag);
+  memberRow.appendChild(mCm);
+  memberRow.appendChild(mFloatSel);
+  memberRow.appendChild(mBadge);
+  ridersList.insertBefore(memberRow, ridersList.firstChild);
 
   const feedback = document.getElementById('profile-details-feedback');
   function setFeedback(msg, isError) {
@@ -1371,20 +1535,27 @@ function initProfileDetailsForm(profile) {
           organizations: document.getElementById('pd-organizations').value.trim(),
           spouse_name:   document.getElementById('pd-spouse').value.trim(),
           guest_name:    document.getElementById('pd-guest').value.trim(),
+          member_float_number: (() => {
+            const mr = ridersList.querySelector('.profile-member-row');
+            const fidRaw = mr ? (mr.querySelector('.profile-member-float')?.value || '') : '';
+            const fid = fidRaw ? parseInt(fidRaw, 10) : null;
+            const obj = (profileFloats || []).find((f) => f.id === fid);
+            return obj ? (obj.float_number || '').toString().trim() : '';
+          })(),
           kids_names:       Array.from(kidsList.querySelectorAll('.person-name-input')).map(i => i.value.trim()).filter(Boolean),
           kids_birthdays:   Array.from(kidsList.querySelectorAll('.person-name-input')).map(i => { const r = i.closest('div'); return r ? (r.querySelector('.person-bd-input')?.value || null) : null; }),
           grandchildren_names:       Array.from(gcList.querySelectorAll('.person-name-input')).map(i => i.value.trim()).filter(Boolean),
           grandchildren_birthdays:   Array.from(gcList.querySelectorAll('.person-name-input')).map(i => { const r = i.closest('div'); return r ? (r.querySelector('.person-bd-input')?.value || null) : null; }),
-          float_riders: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => i.value.trim()).filter(Boolean),
-          rider_float_names: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => {
-            const row = i.closest('div');
-            return row ? (row.querySelector('.rider-float-name-input')?.value.trim() || '') : '';
-          }),
-          rider_float_numbers: Array.from(ridersList.querySelectorAll('.rider-name-input')).map(i => {
-            const row = i.closest('div');
-            return row ? (row.querySelector('.rider-float-num-input')?.value.trim() || '') : '';
-          }),
-          float_captain: document.getElementById('pd-float-captain')?.checked ?? false,
+          float_riders: Array.from(ridersList.querySelectorAll('.rider-row')).map((row) => {
+            const fidRaw = row.querySelector('.rider-float-input') ? row.querySelector('.rider-float-input').value : '';
+            const float_id = fidRaw ? parseInt(fidRaw, 10) : null;
+            return {
+              name: row.querySelector('.rider-name-input').value.trim(),
+              comment: row.querySelector('.rider-comment-input').value.trim(),
+              float_id,
+            };
+          }).filter((r) => r.name || r.comment || r.float_id),
+          float_captain: !!profile.captain_of,
         }),
       });
       const data = await parseJSONResponse(res);
@@ -1404,6 +1575,19 @@ function initProfileDetailsForm(profile) {
       submitBtn.disabled = false;
     }
   });
+
+  // When floats are locked, only the Float Admin may change float assignments.
+  // Disable the float/riders controls for everyone else.
+  const floatsLocked = Boolean(profile.float_locked);
+  const canEditFloats = !floatsLocked || profile.role === 'float_admin';
+  if (!canEditFloats) {
+    const rl = document.getElementById('riders-list');
+    if (rl) rl.querySelectorAll('input, select, button').forEach((el) => { el.disabled = true; });
+    const addRiderBtn = document.getElementById('add-rider-btn');
+    if (addRiderBtn) addRiderBtn.disabled = true;
+    const lockNote = document.getElementById('float-lock-note');
+    if (lockNote) lockNote.style.display = 'block';
+  }
 
   section.style.display = 'block';
 }
@@ -1476,8 +1660,8 @@ async function initDashboard() {
     .slice(0, 2)
     .join('');
 
-  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : 'db-badge--member';
-  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : 'Member';
+  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : 'db-badge--member';
+  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : 'Member';
 
   function payBadgeHtml(paid, label) {
     const c = paid ? '#4ade80' : '#f87171';
@@ -1505,23 +1689,30 @@ async function initDashboard() {
     </div>
   `;
 
-  const isShopMgr = profile.role === 'admin' || profile.role === 'store_admin';
-  if (profile.role === 'admin' || isShopMgr) {
+  // Any elevated role sees the Admin tab + the admin-tools card, but each
+  // role only gets the specific console links it is allowed to use.
+  const adminToolLinksByRole = {
+    admin: ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin'],
+    store_admin: ['open-shop-admin'],
+    float_admin: ['open-float-admin'],
+    finance_admin: ['open-finance-admin'],
+  };
+  const myAdminLinks = adminToolLinksByRole[profile.role];
+  if (myAdminLinks) {
     const adminTab = document.getElementById('db-tab-admin');
     if (adminTab) adminTab.hidden = false;
     const adminTools = document.getElementById('admin-tools');
     if (adminTools) adminTools.style.display = 'block';
-    // Shop Management is visible to both admin and store_admin
-    const shopAdminLink = document.getElementById('open-shop-admin');
-    if (shopAdminLink) shopAdminLink.style.display = '';
-    // Full-admin-only links: hide for store_admin
-    if (profile.role === 'store_admin') {
-      const adminOnlyIds = ['open-user-management', 'open-site-config', 'open-backup-restore'];
-      adminOnlyIds.forEach((id) => {
+    // Every admin-tool link starts hidden; reveal only this role's allowed set.
+    ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin']
+      .forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
-    }
+    myAdminLinks.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = '';
+    });
   }
 
   // Wire up tabs
@@ -3203,6 +3394,366 @@ async function initShopAdminPage() {
   loadAdminProducts();
 }
 
+async function initFloatAdminPage() {
+  const section = document.getElementById('float-admin-page');
+  if (!section) return;
+  const feedback = document.getElementById('float-admin-feedback');
+  const summaryEl = document.getElementById('float-admin-summary');
+  const listEl = document.getElementById('float-admin-list');
+  const deniedEl = document.getElementById('float-admin-denied');
+
+  let profile;
+  try { profile = await fetchProfile(); } catch (err) { return; }
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'float_admin')) {
+    section.style.display = 'none';
+    if (deniedEl) deniedEl.style.display = 'block';
+    return;
+  }
+  section.style.display = 'block';
+
+  const token = getToken();
+  function api(path, opts) {
+    return fetch(path, Object.assign({ headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' } }, opts));
+  }
+  function setFeedback(msg, isError) {
+    if (!feedback) return;
+    feedback.textContent = msg || '';
+    feedback.style.color = isError ? '#ff9b9b' : '#88d498';
+  }
+
+  let floats = [];
+  let users = [];
+  let lockState = false;
+
+  function userOptions(selectedId, excludeIds) {
+    const opts = ['<option value="">- None -</option>'];
+    users.forEach((u) => {
+      if (excludeIds && excludeIds.has(u.id)) return;
+      const sel = u.id === selectedId ? ' selected' : '';
+      opts.push('<option value="' + u.id + '"' + sel + '>' + escHtml(u.full_name || u.email) + '</option>');
+    });
+    return opts.join('');
+  }
+
+  function riderRow(r) {
+    r = r || {};
+    const memberSel = Number(r.user_id) || null;
+    return (
+      '<div class="fa-rider" style="display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;flex-wrap:wrap;">' +
+        '<select class="fa-rider-member" title="Sponsoring Member" style="flex:2;min-width:160px;">' + userOptions(memberSel, null) + '</select>' +
+        '<input type="text" class="fa-rider-name" value="' + escHtml(r.name || '') + '" placeholder="Rider Name" style="flex:2;min-width:140px;" />' +
+        '<input type="text" class="fa-rider-comment" value="' + escHtml(r.comment || '') + '" placeholder="Comment" style="flex:3;min-width:160px;" />' +
+        '<button type="button" class="fa-rider-remove button secondary" style="flex-shrink:0;">X</button>' +
+      '</div>'
+    );
+  }
+
+  function floatCardHtml(f) {
+    const riders = (f.riders || []).map(riderRow).join('');
+    return (
+      '<div class="fa-card" data-float-id="' + f.id + '">' +
+        '<div class="fa-card-head">' +
+          '<div style="display:flex;gap:0.6rem;flex:1;flex-wrap:wrap;align-items:flex-end;">' +
+          '<div class="form-group" style="flex:2;min-width:160px;margin:0;">' +
+            '<label>Float name</label>' +
+            '<input type="text" class="fa-name" value="' + escHtml(f.name || '') + '" placeholder="Float name" />' +
+          '</div>' +
+          '<div class="form-group" style="flex:1;max-width:120px;margin:0;">' +
+            '<label>Float #</label>' +
+            '<input type="text" class="fa-float-number" value="' + escHtml(f.float_number || '') + '" placeholder="Float #" />' +
+          '</div>' +
+          '<div class="form-group" style="flex:1;max-width:110px;margin:0;">' +
+            '<label>Capacity</label>' +
+            '<input type="number" min="0" class="fa-capacity" value="' + (f.capacity != null ? escHtml(String(f.capacity)) : '') + '" placeholder="Capacity" title="Maximum riders for this float" />' +
+          '</div>' +
+        '</div>' +
+          '<button type="button" class="fa-delete button secondary">Delete</button>' +
+        '</div>' +
+        '<div class="form-group" style="grid-column:1 / -1;margin-top:0.6rem;"><label>Float Captain</label><select class="fa-captain">' + userOptions(f.captain_user_id, null) + '</select></div>' +
+        '<div class="form-group">' +
+          '<label>Description / Comments</label>' +
+          '<textarea class="fa-desc" rows="2" maxlength="2000">' + escHtml(f.description || '') + '</textarea>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>Sponsoring Members &amp; Riders</label>' +
+          '<div class="fa-riders">' + riders + '</div>' +
+          '<button type="button" class="fa-add-rider button secondary">+ Add Row</button>' +
+        '</div>' +
+        '<div class="fa-capacity-info" style="font-size:0.85rem;margin-top:0.4rem;color:' + (f.capacity != null && (f.current_riders || 0) > f.capacity ? '#ff9b9b' : '#b8c4e0') + ';">' +
+          'Riders: ' + (f.current_riders || 0) + (f.capacity != null ? ' / ' + f.capacity : '') +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:0.6rem;">' +
+          '<button type="button" class="fa-save button">Save Changes</button>' +
+        '</div>' +
+        '<div class="fa-row-feedback" style="font-size:0.85rem;min-height:1.1em;margin-top:0.4rem;"></div>' +
+      '</div>'
+    );
+  }
+  function collectRiders(card) {
+    const riders = [];
+    card.querySelectorAll('.fa-rider').forEach((r) => {
+      const memberVal = r.querySelector('.fa-rider-member').value;
+      const user_id = Number(memberVal) || null;
+      riders.push({
+        user_id: user_id,
+        name: r.querySelector('.fa-rider-name').value.trim(),
+        comment: r.querySelector('.fa-rider-comment').value.trim(),
+      });
+    });
+    return riders;
+  }
+
+
+  function updateRiderCount(card, delta) {
+    const info = card.querySelector('.fa-capacity-info');
+    if (!info) return;
+    const capRaw = card.querySelector('.fa-capacity').value;
+    const capacity = (capRaw !== '' && !Number.isNaN(parseInt(capRaw, 10))) ? parseInt(capRaw, 10) : null;
+    const m = /Riders:\s*(\d+)/.exec(info.textContent);
+    const current = m ? parseInt(m[1], 10) : 0;
+    const next = Math.max(0, current + delta);
+    info.textContent = 'Riders: ' + next + (capacity != null ? ' / ' + capacity : '');
+    info.style.color = (capacity != null && next > capacity) ? '#ff9b9b' : '#b8c4e0';
+  }
+  function render() {
+    const canEdit = !lockState || profile.role === 'float_admin' || profile.role === 'admin';
+    if (summaryEl) {
+      summaryEl.textContent = floats.length + ' float' + (floats.length === 1 ? '' : 's') + ' - ' + users.length + ' member' + (users.length === 1 ? '' : 's') + (lockState ? '  (LOCKED)' : '');
+    }
+    listEl.innerHTML = floats.map(floatCardHtml).join('');
+    wireList();
+
+    // When floats are locked, say so plainly and prevent edits for everyone
+    // except the Float Admin - mirroring the user-profile lock behaviour.
+    const lockToggleEl = document.getElementById('fa-lock-toggle');
+    if (lockToggleEl) { lockToggleEl.checked = lockState; lockToggleEl.disabled = !canEdit; }
+    const bannerEl = document.getElementById('float-lock-banner');
+    if (bannerEl) bannerEl.style.display = lockState ? 'block' : 'none';
+    if (!canEdit) {
+      listEl.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = true; });
+      ['fac-name', 'fac-number', 'fac-capacity', 'fac-create'].forEach((id) => {
+        const e = document.getElementById(id);
+        if (e) e.disabled = true;
+      });
+    }
+  }
+
+  function wireList() {
+    listEl.querySelectorAll('.fa-card').forEach((card) => {
+      const fb = card.querySelector('.fa-row-feedback');
+      const floatId = card.dataset.floatId;
+
+      card.querySelector('.fa-add-rider').addEventListener('click', () => {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = riderRow();
+        card.querySelector('.fa-riders').appendChild(wrap.firstElementChild);
+      });
+      card.querySelectorAll('.fa-rider-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const row = btn.closest('.fa-rider');
+          if (!row) return;
+          const riderUserId = Number(row.querySelector('.fa-rider-member').value) || null;
+          const riderName = row.querySelector('.fa-rider-name').value.trim();
+          const riderComment = row.querySelector('.fa-rider-comment').value.trim();
+          // Remove the row from the UI immediately; restore it if the server rejects.
+          row.remove();
+          try {
+            const res = await api('/api/admin/floats/' + floatId + '/riders', {
+              method: 'DELETE',
+              body: JSON.stringify({ user_id: riderUserId, name: riderName, comment: riderComment }),
+            });
+            const data = await parseJSONResponse(res);
+            if (!res.ok) throw new Error(data.error || 'Unable to remove rider');
+            updateRiderCount(card, -1);
+          } catch (err) {
+            if (fb) { fb.style.color = '#ff9b9b'; fb.textContent = err.message || 'Unable to remove rider'; }
+            load(); // resync from the server (re-adds the row)
+          }
+        });
+      });
+      card.querySelector('.fa-save').addEventListener('click', async () => {
+        const btn = card.querySelector('.fa-save');
+        const capRaw = card.querySelector('.fa-capacity').value;
+        const capacityVal = (capRaw !== '' && !Number.isNaN(parseInt(capRaw, 10))) ? parseInt(capRaw, 10) : null;
+        const body = {
+          name: card.querySelector('.fa-name').value.trim(),
+          float_number: card.querySelector('.fa-float-number').value.trim(),
+          captain_user_id: Number(card.querySelector('.fa-captain').value) || null,
+          description: card.querySelector('.fa-desc').value.trim(),
+          capacity: capacityVal,
+          riders: collectRiders(card),
+        };
+        if (!body.name) { fb.style.color = '#ff9b9b'; fb.textContent = 'Float name is required'; return; }
+        btn.disabled = true;
+        fb.style.color = '#b8c4e0'; fb.textContent = 'Saving...';
+        try {
+          const res = await api('/api/admin/floats/' + floatId, { method: 'PUT', body: JSON.stringify(body) });
+          const data = await parseJSONResponse(res);
+          if (!res.ok) throw new Error(data.error || 'Unable to save');
+          fb.style.color = '#88d498'; fb.textContent = 'Saved.';
+        } catch (err) {
+          fb.style.color = '#ff9b9b'; fb.textContent = err.message || 'Unable to save';
+        } finally { btn.disabled = false; }
+      });
+      card.querySelector('.fa-delete').addEventListener('click', async () => {
+        if (!confirm('Delete this float? Assigned members will be detached (not deleted).')) return;
+        try {
+          const res = await api('/api/admin/floats/' + floatId, { method: 'DELETE' });
+          const data = await parseJSONResponse(res);
+          if (!res.ok) throw new Error(data.error || 'Unable to delete');
+          await load();
+        } catch (err) { setFeedback(err.message || 'Unable to delete', true); }
+      });
+
+    });
+  }
+
+  const createName = document.getElementById('fac-name');
+  const createNumber = document.getElementById('fac-number');
+  const createBtn = document.getElementById('fac-create');
+  const createFb = document.getElementById('fac-feedback');
+  if (createBtn) {
+    createBtn.addEventListener('click', async () => {
+      const name = (createName ? createName.value : '').trim();
+      const float_number = (createNumber ? createNumber.value : '').trim();
+      const createCapacity = document.getElementById('fac-capacity');
+      const capRaw = createCapacity ? createCapacity.value : '';
+      const capacity = (capRaw !== '' && !Number.isNaN(parseInt(capRaw, 10))) ? parseInt(capRaw, 10) : null;
+      if (!name) { if (createFb) { createFb.textContent = 'Float name is required'; createFb.style.color = '#ff9b9b'; } return; }
+      createBtn.disabled = true;
+      try {
+        const res = await api('/api/admin/floats', { method: 'POST', body: JSON.stringify({ name, float_number, capacity }) });
+        const data = await parseJSONResponse(res);
+        if (!res.ok) throw new Error(data.error || 'Unable to create float');
+        if (createName) createName.value = '';
+        if (createNumber) createNumber.value = '';
+        if (createFb) { createFb.textContent = 'Created.'; createFb.style.color = '#88d498'; }
+        await load();
+      } catch (err) {
+        if (createFb) { createFb.textContent = err.message || 'Unable to create float'; createFb.style.color = '#ff9b9b'; }
+      } finally { createBtn.disabled = false; }
+    });
+  }
+
+  // Float-lock toggle: persists the lock state. Guarded server-side so only
+  // the Float Admin (or any float admin while unlocked) may change it.
+  const lockToggle = document.getElementById('fa-lock-toggle');
+  if (lockToggle && !lockToggle.dataset.wired) {
+    lockToggle.dataset.wired = '1';
+    lockToggle.addEventListener('change', async () => {
+      try {
+        const res = await api('/api/admin/floats/lock', { method: 'PUT', body: JSON.stringify({ locked: lockToggle.checked }) });
+        const data = await parseJSONResponse(res);
+        if (!res.ok) throw new Error(data.error || 'Unable to update lock');
+        lockState = !!(data.locked);
+        await load();
+      } catch (err) {
+        setFeedback(err.message || 'Unable to update lock', true);
+        await load();
+      }
+    });
+  }
+
+  async function load() {
+    try {
+      const res = await api('/api/admin/floats');
+      const data = await parseJSONResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Unable to load floats');
+      floats = Array.isArray(data.floats) ? data.floats : [];
+      users = Array.isArray(data.users) ? data.users : [];
+      lockState = !!(data.locked);
+      render();
+      setFeedback('');
+    } catch (err) {
+      setFeedback(err.message || 'Unable to load floats', true);
+    }
+  }
+
+  await load();
+}
+
+async function initFinanceAdminPage() {
+  const section = document.getElementById('finance-admin-page');
+  if (!section) return;
+  const feedback = document.getElementById('finance-admin-feedback');
+  const summaryEl = document.getElementById('finance-admin-summary');
+  const listEl = document.getElementById('finance-admin-list');
+  const deniedEl = document.getElementById('finance-admin-denied');
+
+  let profile;
+  try { profile = await fetchProfile(); } catch (err) { return; }
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'finance_admin')) {
+    section.style.display = 'none';
+    if (deniedEl) deniedEl.style.display = 'block';
+    return;
+  }
+  section.style.display = 'block';
+
+  const token = getToken();
+  function api(path, opts) {
+    return fetch(path, Object.assign({ headers: { Authorization: 'Bearer ' + token } }, opts));
+  }
+
+  const FIELDS = [['dues_paid', 'Dues'], ['guest_fee_paid', 'Guest Fee'], ['beads_paid', 'Beads'], ['costume_paid', 'Costume']];
+
+  function rowHtml(m) {
+    const toggles = FIELDS.map((entry) => {
+      const key = entry[0];
+      const label = entry[1];
+      const checked = m[key] ? ' checked' : '';
+      return '<label class="fin-toggle"><input type="checkbox" data-key="' + key + '"' + checked + ' /><span>' + label + '</span></label>';
+    }).join('');
+    return (
+      '<div class="fin-card" data-user-id="' + m.id + '">' +
+        '<div class="fin-head"><div><strong>' + escHtml(m.full_name || 'Unnamed') + '</strong> &nbsp;<span style="color:#b8c4e0;">' + escHtml(m.email || '') + '</span></div>' +
+          '<div class="fin-guest">Guest: <strong>' + escHtml(m.guest_name || '—') + '</strong></div></div>' +
+        '<div class="fin-toggles">' + toggles + '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireList() {
+    listEl.querySelectorAll('.fin-card').forEach((card) => {
+      card.querySelectorAll('.fin-toggle input').forEach((cb) => {
+        cb.addEventListener('change', async () => {
+          const key = cb.dataset.key;
+          cb.disabled = true;
+          try {
+            const res = await api('/api/admin/users/' + card.dataset.userId + '/payments', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ [key]: cb.checked }),
+            });
+            const data = await parseJSONResponse(res);
+            if (!res.ok) throw new Error(data.error || 'Unable to update');
+          } catch (err) {
+            cb.checked = !cb.checked;
+            if (feedback) { feedback.textContent = (err.message || 'Unable to update') + ' (reverted)'; feedback.style.color = '#ff9b9b'; }
+          } finally {
+            cb.disabled = false;
+          }
+        });
+      });
+    });
+  }
+
+  async function load() {
+    try {
+      const res = await api('/api/admin/payments');
+      const data = await parseJSONResponse(res);
+      if (!res.ok) throw new Error(data.error || 'Unable to load payments');
+      if (summaryEl) summaryEl.textContent = data.length + ' member' + (data.length === 1 ? '' : 's');
+      listEl.innerHTML = data.map(rowHtml).join('');
+      wireList();
+      if (feedback) feedback.textContent = '';
+    } catch (err) {
+      if (feedback) { feedback.textContent = err.message || 'Unable to load payments'; feedback.style.color = '#ff9b9b'; }
+    }
+  }
+
+  await load();
+}
+
 function initAuthPages() {
   initDashboard();
   initUserManagementPage();
@@ -3210,6 +3761,8 @@ function initAuthPages() {
   initBackupRestorePage();
   initShopPage();
   initShopAdminPage();
+  initFloatAdminPage();
+  initFinanceAdminPage();
   // Show shop nav link for any logged-in user
   if (getToken()) {
     const shopNavLink = document.getElementById('nav-shop-link');

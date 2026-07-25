@@ -1105,6 +1105,18 @@ body.admin-edit-mode .album-tools {
   color: #c4b5fd;
 }
 
+.db-badge--float-admin {
+  background: rgba(255,182,255,0.14);
+  border: 1px solid rgba(255,182,255,0.35);
+  color: #ffb6ff;
+}
+
+.db-badge--finance-admin {
+  background: rgba(94,234,212,0.14);
+  border: 1px solid rgba(94,234,212,0.35);
+  color: #5eead4;
+}
+
 .db-badge--paid {
   background: rgba(74,222,128,0.14);
   border: 1px solid rgba(74,222,128,0.35);
@@ -1826,4 +1838,16 @@ body.admin-edit-mode .album-tools {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.45);
   transform: translateY(-1px);
+}
+
+/* Admin user edit modal: its selects (Role + rider float pickers) are injected
+   into a backdrop appended to <body>, outside the themed form containers, so
+   they only had an inline dark closed-box. Force a dark scheme + dark option
+   list so the dropdown popups match the rest of the app. */
+#admin-user-edit-modal select {
+  color-scheme: dark;
+}
+#admin-user-edit-modal select option {
+  background-color: #12203f;
+  color: #f5f7ff;
 }

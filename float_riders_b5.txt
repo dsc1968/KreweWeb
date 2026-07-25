@@ -1,0 +1,31 @@
+-8<---
+{
+  "target": "backend/controllers/authController.js",
+  "purpose": "Parse per-rider float_id in the member profile save (Option B)."
+}
+```old
+  // Each rider is { name, comment }; tolerate legacy string entries.
+  const float_riders = ridersRaw.map((r) => {
+    if (r && typeof r === 'object') {
+      const name = typeof r.name === 'string' ? r.name.trim().slice(0, 100) : '';
+      const comment = typeof r.comment === 'string' ? r.comment.trim().slice(0, 500) : '';
+      if (!name && !comment) return null;
+      return { name, comment };
+    }
+    const name = String(r).trim().slice(0, 100);
+    return name ? { name, comment: '' } : null;
+  }).filter(Boolean);
+```new
+  // Each rider is { name, comment, float_id }; tolerate legacy string entries.
+  const float_riders = ridersRaw.map((r) => {
+    if (r && typeof r === 'object') {
+      const name = typeof r.name === 'string' ? r.name.trim().slice(0, 100) : '';
+      const comment = typeof r.comment === 'string' ? r.comment.trim().slice(0, 500) : '';
+      const rawFid = typeof r.float_id === 'string' ? parseInt(r.float_id, 10) : r.float_id;
+      const float_id = Number.isInteger(rawFid) && rawFid > 0 ? rawFid : null;
+      if (!name && !comment && !float_id) return null;
+      return { name, comment, float_id };
+    }
+    const name = String(r).trim().slice(0, 100);
+    return name ? { name, comment: '', float_id: null } : null;
+  }).filter(Boolean);

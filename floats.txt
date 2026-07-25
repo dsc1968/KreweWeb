@@ -1,0 +1,97 @@
+-8<---
+{
+  "target": "backend/controllers/usersController.js",
+  "purpose": "Reject creating a float whose name (case-insensitive) or float number collides with an existing float; return 409 with the conflicting field."
+}
+```old
+  const created_by = req.user && req.user.userId ? req.user.userId : null;
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await pool.query(
+      `INSERT INTO floats (name, float_number, captain_user_id, description, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, float_number, captain_user_id, description, position`,
+```new
+  const created_by = req.user && req.user.userId ? req.user.userId : null;
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+
+  // Block duplicates: no two floats may share a name (case-insensitive) or a
+  // float number (when one is supplied). This keeps the float admin from
+  // creating "Parade 1" twice or reusing another float's number. The ::text
+  // casts are required so Postgres can infer the parameter types when the
+  // bound value is NULL (avoids 42P08 "could not determine data type").
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE LOWER(name) = LOWER($1::text)
+        OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text))`,
+    [name, float_number || null]
+  );
+  if (dup.rowCount > 0) {
+    const clash = dup.rows[0];
+    const field = (clash.float_number && float_number && clash.float_number.toLowerCase() === float_number.toLowerCase())
+      ? 'number' : 'name';
+    return res.status(409).json({
+      error: `A float with that ${field} already exists`,
+      field,
+      existing: { id: clash.id, name: clash.name, float_number: clash.float_number },
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await pool.query(
+      `INSERT INTO floats (name, float_number, captain_user_id, description, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, float_number, captain_user_id, description, position`,
+-8<---
+{
+  "target": "backend/controllers/usersController.js",
+  "purpose": "Reject renaming/renumbering a float to a name or number already used by a DIFFERENT float; ignore the float's own current values."
+}
+```old
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upd = await client.query(
+      `UPDATE floats
+       SET name=$1, float_number=$2, captain_user_id=$3, description=$4, updated_at=NOW()
+       WHERE id=$5
+       RETURNING id, name, float_number, captain_user_id, description, position`,
+```new
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+
+  // Block duplicates, but ignore this float itself (a float may keep its own
+  // name/number). Name is matched case-insensitively; float number is matched
+  // only when the incoming number is non-empty. ::text casts avoid 42P08 when
+  // the bound number is NULL.
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE id <> $3
+       AND (LOWER(name) = LOWER($1::text)
+            OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text)))`,
+    [name, float_number || null, floatId]
+  );
+  if (dup.rowCount > 0) {
+    const clash = dup.rows[0];
+    const field = (clash.float_number && float_number && clash.float_number.toLowerCase() === float_number.toLowerCase())
+      ? 'number' : 'name';
+    return res.status(409).json({
+      error: `A float with that ${field} already exists`,
+      field,
+      existing: { id: clash.id, name: clash.name, float_number: clash.float_number },
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upd = await client.query(
+      `UPDATE floats
+       SET name=$1, float_number=$2, captain_user_id=$3, description=$4, updated_at=NOW()
+       WHERE id=$5
+       RETURNING id, name, float_number, captain_user_id, description, position`,

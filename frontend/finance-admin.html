@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Payments Management - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .fin-card {
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.85rem;
+        background: rgba(255,255,255,0.02);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .fin-head { flex: 1; min-width: 200px; }
+      .fin-guest { font-size: 0.85rem; color: #b8c4e0; margin-top: 0.2rem; }
+      .fin-toggles {
+        display: flex;
+        gap: 1.1rem;
+        flex-wrap: wrap;
+      }
+      .fin-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .fin-toggle input { width: 1.1rem; height: 1.1rem; accent-color: #5eead4; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/">Home</a>
+          <a href="/history.html">History</a>
+          <a href="/royal-court.html">Royal Court</a>
+          <a href="/photos.html">Photos</a>
+          <a href="/events.html">Events</a>
+          <a href="/contact.html">Contact</a>
+          <a href="/register.html">Join</a>
+          <a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="finance-admin-page" class="section" style="display:none;">
+        <h2>Payments Management</h2>
+        <p>Toggle dues, guest fee, beads, and costume payment status for each member. Changes save instantly.</p>
+        <div id="finance-admin-feedback" aria-live="polite"></div>
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin:1rem 0;">
+          <p id="finance-admin-summary" style="margin:0;"></p>
+          <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+        </div>
+        <div id="finance-admin-list"></div>
+      </section>
+
+      <section id="finance-admin-denied" class="section" style="display:none;">
+        <h2>Payments Management</h2>
+        <p>You do not have permission to view this page. Please contact an administrator.</p>
+        <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+      </section>
+    </main>
+
+    <script src="script.js?v=20250720c"></script>
+    <script src="auth.js?v=20250722c"></script>
+  </body>
+</html>

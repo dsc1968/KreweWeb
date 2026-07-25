@@ -354,6 +354,22 @@ async function ensureContentTable() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS floats (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      float_number TEXT,
+      captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      description TEXT,
+      capacity INTEGER,
+      riders JSONB NOT NULL DEFAULT '[]',
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Migrations for existing databases
   for (const col of [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_method TEXT NOT NULL DEFAULT 'none' CHECK (mfa_method IN ('none', 'email', 'sms'))",
@@ -384,6 +400,10 @@ async function ensureContentTable() {
     "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_names JSONB NOT NULL DEFAULT '[]'",
     "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS grandchildren_birthdays JSONB NOT NULL DEFAULT '[]'",
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_captain BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_description TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_id INTEGER REFERENCES floats(id) ON DELETE SET NULL',
+    'ALTER TABLE floats ADD COLUMN IF NOT EXISTS capacity INTEGER',
   ]) {
     await pool.query(col);
   }

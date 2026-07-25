@@ -1,0 +1,222 @@
+-8<---
+{
+  "target": "frontend/auth.js",
+  "purpose": "addListItem: rider rows get an editable float <select> (any admin-defined float); member rows show their float by id. Signature now carries riderFloatId + floats."
+}
+```old
+  function addListItem(containerId, name, comment, floatLabel, isMember) {
+    const isRider = containerId === 'uem-riders';
+    const container = backdrop.querySelector('#' + containerId);
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;';
+
+    // The member themselves appears in the rider list as a read-only row so the
+    // admin sees them alongside the riders they sponsor. They carry no
+    // .uem-list-name / .uem-list-comment classes, so they are never saved back
+    // as a rider on submit.
+    if (isMember) {
+      wrapper.style.cssText += 'background:rgba(255,210,98,0.06);border-radius:8px;padding:0.25rem 0.4rem;';
+      const tag = document.createElement('span');
+      tag.textContent = name || '(member)';
+      tag.style.cssText = 'flex:2;min-width:0;font-weight:600;color:#f5f7ff;';
+      wrapper.appendChild(tag);
+      const fl = document.createElement('span');
+      fl.textContent = floatLabel || '';
+      fl.style.cssText = 'flex:2;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(fl);
+      const cm = document.createElement('span');
+      cm.textContent = comment || '—';
+      cm.style.cssText = 'flex:3;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(cm);
+      const badge = document.createElement('span');
+      badge.textContent = 'Member';
+      badge.style.cssText = 'flex-shrink:0;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.12rem 0.45rem;border-radius:999px;border:1px solid rgba(255,210,98,0.4);color:#ffd262;';
+      wrapper.appendChild(badge);
+      wrapper.classList.add('uem-member-row');
+      container.appendChild(wrapper);
+      return;
+    }
+
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.value = name || '';
+    nameInp.placeholder = 'Rider name';
+    nameInp.className = 'uem-list-name';
+    nameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+    wrapper.appendChild(nameInp);
+    if (isRider) {
+      const commentInp = document.createElement('input');
+      commentInp.type = 'text';
+      commentInp.value = comment || '';
+      commentInp.placeholder = 'Comment';
+      commentInp.className = 'uem-list-comment';
+      commentInp.style.cssText = 'flex:3;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+      wrapper.appendChild(commentInp);
+      // Read-only label showing the float this rider is assigned to, so the
+      // user-admin view reflects the same float data as the float admin tool.
+      const flSpan = document.createElement('span');
+      flSpan.textContent = floatLabel || '';
+      flSpan.title = 'Assigned float';
+      flSpan.style.cssText = 'flex:2;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(flSpan);
+    }
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;flex-shrink:0;';
+    rm.addEventListener('click', () => wrapper.remove());
+    wrapper.appendChild(rm);
+    container.appendChild(wrapper);
+  }
+```new
+  function addListItem(containerId, name, comment, riderFloatId, isMember, floats) {
+    const isRider = containerId === 'uem-riders';
+    const container = backdrop.querySelector('#' + containerId);
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;flex-wrap:wrap;';
+
+    // The member themselves appears in the rider list as a read-only row so the
+    // admin sees them alongside the riders they sponsor. They carry no
+    // .uem-list-name / .uem-list-comment classes, so they are never saved back
+    // as a rider on submit.
+    if (isMember) {
+      wrapper.style.cssText += 'background:rgba(255,210,98,0.06);border-radius:8px;padding:0.25rem 0.4rem;';
+      const tag = document.createElement('span');
+      tag.textContent = name || '(member)';
+      tag.style.cssText = 'flex:2;min-width:0;font-weight:600;color:#f5f7ff;';
+      wrapper.appendChild(tag);
+      const fl = (Array.isArray(floats) ? floats : []).find((f) => String(f.id) === String(riderFloatId));
+      const flSpan = document.createElement('span');
+      flSpan.textContent = fl ? `Float #${(fl.float_number || '?')} – ${fl.name || ''}`.trim() : '';
+      flSpan.style.cssText = 'flex:2;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(flSpan);
+      const cm = document.createElement('span');
+      cm.textContent = comment || '—';
+      cm.style.cssText = 'flex:3;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+      wrapper.appendChild(cm);
+      const badge = document.createElement('span');
+      badge.textContent = 'Member';
+      badge.style.cssText = 'flex-shrink:0;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.12rem 0.45rem;border-radius:999px;border:1px solid rgba(255,210,98,0.4);color:#ffd262;';
+      wrapper.appendChild(badge);
+      wrapper.classList.add('uem-member-row');
+      container.appendChild(wrapper);
+      return;
+    }
+
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.value = name || '';
+    nameInp.placeholder = 'Rider name';
+    nameInp.className = 'uem-list-name';
+    nameInp.style.cssText = 'flex:2;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+    wrapper.appendChild(nameInp);
+    if (isRider) {
+      const commentInp = document.createElement('input');
+      commentInp.type = 'text';
+      commentInp.value = comment || '';
+      commentInp.placeholder = 'Comment';
+      commentInp.className = 'uem-list-comment';
+      commentInp.style.cssText = 'flex:3;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;min-width:0;';
+      wrapper.appendChild(commentInp);
+      // Editable float picker: a rider may be assigned to ANY float defined by
+      // the float admin (Option B) — independent of the sponsoring member.
+      const floatSel = document.createElement('select');
+      floatSel.className = 'uem-list-float';
+      floatSel.style.cssText = 'flex:2;min-width:120px;padding:0.55rem 0.7rem;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;';
+      const fl = Array.isArray(floats) ? floats : [];
+      floatSel.innerHTML = '<option value="">No float</option>' + fl
+        .map((f) => {
+          const num = (f.float_number || '').toString().trim();
+          const label = `Float #${escHtml(num || '?')} – ${escHtml(f.name || 'Unnamed')}`;
+          const val = f.id != null ? String(f.id) : '';
+          return `<option value="${escHtml(val)}"${String(val) === String(riderFloatId || '') ? ' selected' : ''}>${label}</option>`;
+        }).join('');
+      floatSel.value = String(riderFloatId || '');
+      wrapper.appendChild(floatSel);
+    }
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.style.cssText = 'padding:0.25rem 0.6rem;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#b8c4e0;cursor:pointer;font:inherit;flex-shrink:0;';
+    rm.addEventListener('click', () => wrapper.remove());
+    wrapper.appendChild(rm);
+    container.appendChild(wrapper);
+  }
+-8<---
+{
+  "target": "frontend/auth.js",
+  "purpose": "Fetch the floats list in the user-admin modal for the rider float pickers."
+}
+```old
+  // The member is shown in the rider list too (read-only). Sometimes a member
+  // rides, sometimes they don't — either way they appear here like any entry.
+  const assignedFloatLabel = (full.assigned_float && (full.assigned_float.name || full.assigned_float.float_number))
+    ? `Float #${full.assigned_float.float_number || '?'} – ${full.assigned_float.name || ''}`.trim()
+    : '';
+```new
+  // Floats defined by the float admin, so any role can assign a rider to any
+  // float (Option B) — independent of the sponsoring member.
+  let adminFloats = [];
+  try {
+    const afRes = await fetch('/api/floats', { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (afRes.ok) adminFloats = await afRes.json();
+  } catch { /* floats list empty; selects fall back to "No float" */ }
+
+  // The member is shown in the rider list too (read-only). Sometimes a member
+  // rides, sometimes they don't — either way they appear here like any entry.
+  const assignedFloatLabel = (full.assigned_float && (full.assigned_float.name || full.assigned_float.float_number))
+    ? `Float #${full.assigned_float.float_number || '?'} – ${full.assigned_float.name || ''}`.trim()
+    : '';
+-8<---
+{
+  "target": "frontend/auth.js",
+  "purpose": "User-admin modal: pass each rider's float_id + the floats list into addListItem."
+}
+```old
+  if (full.float_id) {
+    addListItem('uem-riders', full.full_name, '', assignedFloatLabel, true);
+  }
+
+  (full.float_riders || []).forEach((r) => {
+    const name = (r && typeof r === 'object') ? (r.name || '') : (typeof r === 'string' ? r : '');
+    const comment = (r && typeof r === 'object') ? (r.comment || '') : '';
+    addListItem('uem-riders', name, comment, assignedFloatLabel);
+  });
+
+  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', assignedFloatLabel));
+```new
+  if (full.float_id) {
+    addListItem('uem-riders', full.full_name, '', full.float_id, true, adminFloats);
+  }
+
+  (full.float_riders || []).forEach((r) => {
+    const name = (r && typeof r === 'object') ? (r.name || '') : (typeof r === 'string' ? r : '');
+    const comment = (r && typeof r === 'object') ? (r.comment || '') : '';
+    addListItem('uem-riders', name, comment, (r && r.float_id) || '', false, adminFloats);
+  });
+
+  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', '', false, adminFloats));
+-8<---
+{
+  "target": "frontend/auth.js",
+  "purpose": "User-admin save: capture each rider's float_id."
+}
+```old
+      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
+        const row = nameInp.closest('div');
+        return {
+          name: nameInp.value.trim(),
+          comment: row ? (row.querySelector('.uem-list-comment')?.value.trim() || '') : '',
+        };
+      }).filter((r) => r.name || r.comment),
+```new
+      float_riders: Array.from(backdrop.querySelectorAll('#uem-riders .uem-list-name')).map((nameInp) => {
+        const row = nameInp.closest('div');
+        const fidRaw = row ? (row.querySelector('.uem-list-float')?.value || '') : '';
+        const float_id = fidRaw ? parseInt(fidRaw, 10) : null;
+        return {
+          name: nameInp.value.trim(),
+          comment: row ? (row.querySelector('.uem-list-comment')?.value.trim() || '') : '',
+          float_id,
+        };
+      }).filter((r) => r.name || r.comment || r.float_id),

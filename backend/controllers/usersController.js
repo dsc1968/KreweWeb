@@ -3,7 +3,8 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
-const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
+const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, isFloatAdmin, isFinanceAdmin } = require('../utils/validation');
+const { floatLockEnabled, setFloatLock } = require('../utils/floatsLock');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
@@ -84,8 +85,27 @@ async function get__api_admin_users__userId(req, res) {
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     const row = result.rows[0];
+
+    // Tie the user-admin view to the float-admin data. A member links to one
+    // float via user_profiles.float_id, and may also be the captain_user_id of
+    // a float. Both are surfaced so the admin profile shows the same
+    // floats/riders/captain as the float admin tool.
+    let assigned_float = null;
+    let captain_of = null;
+    const fl = await pool.query('SELECT float_id FROM user_profiles WHERE user_id = $1', [userId]);
+    const floatId = fl.rowCount > 0 ? fl.rows[0].float_id : null;
+    if (floatId) {
+      const af = await pool.query('SELECT id, name, float_number FROM floats WHERE id = $1', [floatId]);
+      if (af.rowCount > 0) assigned_float = { id: af.rows[0].id, name: af.rows[0].name, float_number: af.rows[0].float_number };
+    }
+    const cap = await pool.query('SELECT id, name, float_number FROM floats WHERE captain_user_id = $1', [userId]);
+    if (cap.rowCount > 0) captain_of = { id: cap.rows[0].id, name: cap.rows[0].name, float_number: cap.rows[0].float_number };
+
     res.json({
       ...row,
+      float_id: floatId,
+      assigned_float,
+      captain_of,
       kids_names: row.kids_names || [],
       kids_birthdays: row.kids_birthdays || [],
       grandchildren_names: row.grandchildren_names || [],
@@ -108,11 +128,11 @@ async function put__api_admin_users__userId_details(req, res) {
 
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const email = normalizeEmailAddress(req.body.email);
-  const role = ['admin', 'store_admin', 'member', 'disabled'].includes(req.body.role) ? req.body.role : null;
+  const role = ['admin', 'store_admin', 'member', 'disabled', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : null;
 
   if (!fullName) return res.status(400).json({ error: 'Full name is required' });
   if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
-  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, or disabled' });
+  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, finance_admin, or disabled' });
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
@@ -128,7 +148,19 @@ async function put__api_admin_users__userId_details(req, res) {
   const kidsRaw = Array.isArray(req.body.kids_names) ? req.body.kids_names : [];
   const ridersRaw = Array.isArray(req.body.float_riders) ? req.body.float_riders : [];
   const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
-  const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
+  // Each rider is { name, comment }; tolerate legacy string entries.
+  let float_riders = ridersRaw.map((r) => {
+    if (r && typeof r === 'object') {
+      const name = typeof r.name === 'string' ? r.name.trim().slice(0, 100) : '';
+      const comment = typeof r.comment === 'string' ? r.comment.trim().slice(0, 500) : '';
+      const rawFid = typeof r.float_id === 'string' ? parseInt(r.float_id, 10) : r.float_id;
+      const float_id = Number.isInteger(rawFid) && rawFid > 0 ? rawFid : null;
+      if (!name && !comment && !float_id) return null;
+      return { name, comment, float_id };
+    }
+    const name = String(r).trim().slice(0, 100);
+    return name ? { name, comment: '', float_id: null } : null;
+  }).filter(Boolean);
 
   const kidsBdRaw = Array.isArray(req.body.kids_birthdays) ? req.body.kids_birthdays : [];
   const kids_birthdays = kidsBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
@@ -144,10 +176,34 @@ async function put__api_admin_users__userId_details(req, res) {
   const rider_float_numbers = riderFloatRaw.map((v) => String(v ?? '').trim().slice(0, 20));
   const rider_float_names = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
 
-  const member_float_number = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim().slice(0, 20) : null;
+  let member_float_number = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim().slice(0, 20) : null;
   const spouse_float_number = typeof req.body.spouse_float_number === 'string' ? req.body.spouse_float_number.trim().slice(0, 20) : null;
   const guest_float_number = typeof req.body.guest_float_number === 'string' ? req.body.guest_float_number.trim().slice(0, 20) : null;
   const float_captain = Boolean(req.body.float_captain);
+  // Link the member to a float when their float number matches an existing
+  // float. This keeps the float admin roster in sync with the profile.
+  let adminFloatId = null;
+  if (member_float_number) {
+    try {
+      const fr = await pool.query('SELECT id FROM floats WHERE float_number = $1 LIMIT 1', [member_float_number]);
+      if (fr.rowCount > 0) adminFloatId = fr.rows[0].id;
+    } catch (_e) { /* leave unlinked if lookup fails */ }
+  }
+
+  // When floats are locked, only the Float Admin may edit float assignments.
+  if (await floatLockEnabled() && req.user.role !== 'float_admin') {
+    try {
+      const cur = await pool.query(
+        'SELECT float_riders, member_float_number, float_id FROM user_profiles WHERE user_id = $1',
+        [userId]
+      );
+      const c = cur.rows.length ? cur.rows[0] : {};
+      const asArray = (v) => (Array.isArray(v) ? v : []);
+      float_riders = asArray(c.float_riders);
+      member_float_number = c.member_float_number != null ? c.member_float_number : null;
+      adminFloatId = c.float_id != null ? c.float_id : null;
+    } catch (_e) { /* keep computed values if lookup fails */ }
+  }
 
   const client = await pool.connect();
   try {
@@ -167,8 +223,8 @@ async function put__api_admin_users__userId_details(req, res) {
          guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
-         float_captain, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,NOW())
+         float_captain, float_id, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -185,7 +241,7 @@ async function put__api_admin_users__userId_details(req, res) {
          kids_float_numbers=EXCLUDED.kids_float_numbers,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          rider_float_names=EXCLUDED.rider_float_names,
-         float_captain=EXCLUDED.float_captain,
+         float_captain=EXCLUDED.float_captain, float_id=EXCLUDED.float_id,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -196,7 +252,7 @@ async function put__api_admin_users__userId_details(req, res) {
         guest_name||null, JSON.stringify(float_riders),
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
-        float_captain,
+        float_captain, adminFloatId,
       ]
     );
     await client.query('COMMIT');
@@ -218,7 +274,7 @@ async function post__api_admin_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -258,7 +314,7 @@ async function post__api_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -302,8 +358,8 @@ async function put__api_admin_users__userId_role(req, res) {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'store_admin', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
+  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, or finance_admin' });
   }
 
   if (userId === req.user.userId && role !== 'admin') {
@@ -337,8 +393,8 @@ async function put__api_users__userId_role(req, res) {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'store_admin', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be member, store_admin, or admin' });
+  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, or finance_admin' });
   }
 
   if (userId === req.user.userId && role !== 'admin') {
@@ -368,7 +424,7 @@ async function put__api_admin_users__userId_disable(req, res) {
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
   // When re-enabling, caller may pass restore_role so a store_admin comes back as store_admin
-  const restoreRole = ['member', 'store_admin', 'admin'].includes(req.body && req.body.restore_role)
+  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(req.body && req.body.restore_role)
     ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -406,7 +462,7 @@ async function put__api_users__userId_disable(req, res) {
 
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
-  const restoreRole = ['member', 'store_admin', 'admin'].includes(req.body && req.body.restore_role)
+  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(req.body && req.body.restore_role)
     ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -603,31 +659,43 @@ async function get__api_admin_users__userId_orders(req, res) {
   }
 }
 async function patch__api_admin_users__userId_payments(req, res) {
-  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  if (!isFinanceAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const userId = Number.parseInt(req.params.userId, 10);
   if (!Number.isInteger(userId) || userId <= 0) {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  const duesPaid = Boolean(req.body && req.body.dues_paid);
-  const guestFeePaid = Boolean(req.body && req.body.guest_fee_paid);
-  const costumePaid = Boolean(req.body && req.body.costume_paid);
+  // Partial update: only the payment flags actually present in the body are
+  // changed. This keeps the full admin modal (which sends all four) working
+  // while also supporting the finance console's single-toggle updates without
+  // wiping the other three flags.
+  const fieldMap = {
+    dues_paid: req.body && req.body.dues_paid,
+    guest_fee_paid: req.body && req.body.guest_fee_paid,
+    beads_paid: req.body && req.body.beads_paid,
+    costume_paid: req.body && req.body.costume_paid,
+  };
+  const updates = Object.keys(fieldMap).filter((k) => fieldMap[k] !== undefined);
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No payment field provided' });
+  }
 
   try {
-    // Ensure a profile row exists, then update the payment flags.
+    // Ensure a profile row exists, then update only the provided payment flags.
     await pool.query(
-      `INSERT INTO user_profiles (user_id)
-       VALUES ($1)
-       ON CONFLICT (user_id) DO NOTHING`,
+      `INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
       [userId]
     );
+    const sets = updates.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const params = updates.map((k) => Boolean(fieldMap[k]));
+    params.push(userId);
     const result = await pool.query(
       `UPDATE user_profiles
-       SET dues_paid = $1, guest_fee_paid = $2, costume_paid = $3
-       WHERE user_id = $4
-       RETURNING dues_paid, guest_fee_paid, costume_paid`,
-      [duesPaid, guestFeePaid, costumePaid, userId]
+       SET ${sets}
+       WHERE user_id = $${params.length}
+       RETURNING dues_paid, guest_fee_paid, beads_paid, costume_paid`,
+      params
     );
 
     if (result.rowCount === 0) {
@@ -639,6 +707,7 @@ async function patch__api_admin_users__userId_payments(req, res) {
       user: {
         dues_paid: row.dues_paid,
         guest_fee_paid: row.guest_fee_paid,
+        beads_paid: row.beads_paid,
         costume_paid: row.costume_paid,
       },
     });
@@ -648,4 +717,428 @@ async function patch__api_admin_users__userId_payments(req, res) {
   }
 }
 
-module.exports = { delete__api_admin_users__userId,delete__api_users__userId,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role,patch__api_admin_users__userId_payments, };
+// ── Float admin (scoped): list every member's float roster ──────────────────
+// Gated to float admins (and full admins). Returns only the float-related
+// columns so a float admin never sees unrelated PII or admin powers.
+async function get__api_floats(req, res) {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, float_number
+       FROM floats
+       ORDER BY float_number NULLS LAST, name`,
+    );
+    res.json(result.rows.map((r) => ({ id: r.id, name: r.name, float_number: r.float_number })));
+  } catch (error) {
+    console.error('Failed to fetch floats', error);
+    res.status(500).json({ error: 'Unable to fetch floats' });
+  }
+}
+
+async function get__api_admin_floats(req, res) {
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const floatsRes = await pool.query(
+      `SELECT f.id, f.name, f.float_number, f.captain_user_id, f.description, f.capacity, f.position
+       FROM floats f
+       ORDER BY f.position ASC, f.name ASC`
+    );
+    const floats = floatsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      float_number: r.float_number,
+      captain_user_id: r.captain_user_id,
+      description: r.description || '',
+      capacity: (typeof r.capacity === 'number') ? r.capacity : (r.capacity != null ? parseInt(r.capacity, 10) : null),
+      position: r.position,
+      riders: [],
+      current_riders: 0,
+    }));
+    // Riders live on each sponsoring member's profile (user_profiles
+    // .float_riders, stored as { name, comment }); reconstruct a flat per-float
+    // rider list so the admin tool can render one user list.
+    const membersRes = await pool.query(
+      `SELECT p.float_id AS float_id, u.id AS user_id, u.full_name, u.email,
+              p.float_riders, p.member_float_number
+       FROM user_profiles p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.float_id IS NOT NULL
+       ORDER BY u.full_name ASC`
+    );
+    const ridersByFloat = {};
+    membersRes.rows.forEach((r) => {
+      const memberFid = r.float_id;
+      const riders = Array.isArray(r.float_riders) ? r.float_riders : [];
+      const pushRider = (name, comment, fid) => {
+        if (!ridersByFloat[fid]) ridersByFloat[fid] = [];
+        ridersByFloat[fid].push({ user_id: r.user_id, name, comment, float_id: fid });
+      };
+      if (riders.length === 0) {
+        // A sponsoring member with no riders still appears in the list (under
+        // their own float, if they have one).
+        if (memberFid) pushRider('', '', memberFid);
+        return;
+      }
+      riders.forEach((rider) => {
+        const name = (rider && typeof rider === 'object') ? (rider.name || '') : String(rider || '');
+        const comment = (rider && typeof rider === 'object') ? (rider.comment || '') : '';
+        // A rider may be assigned to any float, not just the sponsoring
+        // member's float (Option B: riders carry their own float_id).
+        const fid = (rider && typeof rider === 'object' && rider.float_id) ? rider.float_id : memberFid;
+        if (!fid) return;
+        if (name || comment) pushRider(name, comment, fid);
+      });
+    });
+    // Defensive: collapse any residual duplicate riders per float (keyed by
+    // sponsoring member + name + comment) so the admin tool never shows a
+    // rider twice even if stored data still carries legacy duplicates.
+    Object.keys(ridersByFloat).forEach((fid) => {
+      const seen = new Set();
+      ridersByFloat[fid] = ridersByFloat[fid].filter((r) => {
+        const key = (r.user_id || '') + '|' + (r.name || '') + '|' + (r.comment || '');
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    });
+    const usersRes = await pool.query(
+      `SELECT u.id, u.full_name, u.email
+       FROM users u
+       WHERE u.role <> 'disabled'
+       ORDER BY u.full_name ASC`
+    );
+    floats.forEach((f) => { f.riders = ridersByFloat[f.id] || []; f.current_riders = f.riders.length; });
+    res.json({ floats, users: usersRes.rows, locked: await floatLockEnabled() });
+  } catch (error) {
+    console.error('Failed to fetch floats', error);
+    res.status(500).json({ error: 'Unable to fetch floats' });
+  }
+}
+
+// ── Float admin (scoped): create / update / delete floats and manage members ──
+// Floats are first-class entities. A member added to a float gets their
+// user_profiles.float_id set (and member_float_number synced to the float's
+// number) so the user's profile reflects the float they belong to. A float
+// admin cannot touch role, email, password, or any other field.
+// A rider entry in the admin tool is a flat row: the sponsoring member it
+// belongs to (user_id) plus the rider's name and an optional comment.
+function normalizeFloatRider(r) {
+  if (r == null || typeof r !== 'object') return null;
+  let user_id = null;
+  const rawUid = typeof r.user_id === 'string' ? parseInt(r.user_id, 10) : r.user_id;
+  if (Number.isInteger(rawUid) && rawUid > 0) user_id = rawUid;
+  const name = typeof r.name === 'string' ? r.name.trim().slice(0, 100) : '';
+  const comment = typeof r.comment === 'string' ? r.comment.trim().slice(0, 500) : '';
+  const rawFid = typeof r.float_id === 'string' ? parseInt(r.float_id, 10) : r.float_id;
+  const float_id = Number.isInteger(rawFid) && rawFid > 0 ? rawFid : null;
+  // Drop fully empty rows; keep rows that reference a member (a sponsoring
+  // member may have no riders of their own yet) or carry any rider text.
+  if (!user_id && !name && !comment) return null;
+  return { user_id, name, comment, float_id };
+}
+
+// Persist a float's flat rider list onto member profiles. Each rider's
+// sponsoring member gets user_profiles.float_riders set to that member's riders
+// and is linked to the float (float_id, with member_float_number synced to the
+// float's number). Members who were on this float but are no longer referenced
+// are detached and have their riders cleared (a member belongs to one float).
+async function applyFloatRiders(client, floatId, floatNumber, riders) {
+  // Group incoming riders by sponsoring member. Each rider carries its own
+  // float_id (may differ from the float being saved when a member has riders
+  // on several floats); a missing float_id defaults to the float being saved.
+  const byMember = {};
+  riders.forEach((r) => {
+    if (!r.user_id) return;
+    if (!byMember[r.user_id]) byMember[r.user_id] = [];
+    if (r.name || r.comment) {
+      const fid = r.float_id ? r.float_id : floatId;
+      byMember[r.user_id].push({ name: r.name, comment: r.comment, float_id: fid });
+    }
+  });
+  const newMemberIds = new Set(Object.keys(byMember).map(Number));
+
+  const prev = await client.query('SELECT user_id FROM user_profiles WHERE float_id = $1', [floatId]);
+  const prevIds = new Set(prev.rows.map((r) => r.user_id));
+
+  for (const userId of newMemberIds) {
+    await client.query('INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+    // Preserve this member's riders that belong to OTHER floats; replace only
+    // the riders for the float currently being saved.
+    const ex = await client.query('SELECT float_riders FROM user_profiles WHERE user_id = $1', [userId]);
+    const existing = Array.isArray(ex.rows[0] && ex.rows[0].float_riders) ? ex.rows[0].float_riders : [];
+    const kept = existing.filter((rr) => rr && rr.float_id && rr.float_id !== floatId);
+    const merged = kept.concat(byMember[userId]);
+    await client.query(
+      `UPDATE user_profiles
+       SET float_id = $1, member_float_number = $2, float_riders = $3::jsonb, updated_at = NOW()
+       WHERE user_id = $4`,
+      [floatId, floatNumber, JSON.stringify(merged), userId]
+    );
+  }
+  for (const userId of prevIds) {
+    if (!newMemberIds.has(userId)) {
+      // Detach only this float's riders; keep riders the member has on other
+      // floats. If none remain, also clear their personal float link.
+      const ex = await client.query('SELECT float_riders, float_id FROM user_profiles WHERE user_id = $1 AND float_id = $2', [userId, floatId]);
+      if (ex.rowCount > 0) {
+        const existing = Array.isArray(ex.rows[0].float_riders) ? ex.rows[0].float_riders : [];
+        const kept = existing.filter((rr) => rr && rr.float_id && rr.float_id !== floatId);
+        if (kept.length > 0) {
+          await client.query(
+            `UPDATE user_profiles SET float_riders = $1::jsonb, updated_at = NOW() WHERE user_id = $2 AND float_id = $3`,
+            [JSON.stringify(kept), userId, floatId]
+          );
+        } else {
+          await client.query(
+            `UPDATE user_profiles SET float_id = NULL, member_float_number = NULL, float_riders = '[]'::jsonb, updated_at = NOW() WHERE user_id = $1 AND float_id = $2`,
+            [userId, floatId]
+          );
+        }
+      }
+    }
+  }
+}
+
+async function post__api_admin_floats(req, res) {
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'Float name is required' });
+  const float_number = typeof req.body.float_number === 'string' ? req.body.float_number.trim().slice(0, 20) : null;
+  const description = typeof req.body.description === 'string' ? req.body.description.trim().slice(0, 2000) : null;
+  const captainRaw = req.body.captain_user_id;
+  const captain_user_id = Number.isInteger(captainRaw) && captainRaw > 0 ? captainRaw : null;
+  const capacityRaw = req.body.capacity;
+  const capacity = Number.isInteger(capacityRaw) && capacityRaw > 0 ? capacityRaw : null;
+  const created_by = req.user && req.user.userId ? req.user.userId : null;
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+
+  // Block duplicates: no two floats may share a name (case-insensitive) or a
+  // float number (when one is supplied). This keeps the float admin from
+  // creating "Parade 1" twice or reusing another float's number.
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE LOWER(name) = LOWER($1::text)
+        OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text))`,
+    [name, float_number || null]
+  );
+  if (dup.rowCount > 0) {
+    const clash = dup.rows[0];
+    const field = (clash.float_number && float_number && clash.float_number.toLowerCase() === float_number.toLowerCase())
+      ? 'number' : 'name';
+    return res.status(409).json({
+      error: `A float with that ${field} already exists`,
+      field,
+      existing: { id: clash.id, name: clash.name, float_number: clash.float_number },
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await pool.query(
+      `INSERT INTO floats (name, float_number, captain_user_id, description, capacity, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, float_number, captain_user_id, description, capacity, position`,
+      [name, float_number || null, captain_user_id, description || null, capacity, created_by]
+    );
+    const row = result.rows[0];
+    await applyFloatRiders(client, row.id, float_number || null, riders);
+    await client.query('COMMIT');
+    res.status(201).json({
+      id: row.id, name: row.name, float_number: row.float_number,
+      captain_user_id: row.captain_user_id, description: row.description || '',
+      capacity: row.capacity, position: row.position, riders: [],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to create float', error);
+    res.status(500).json({ error: 'Unable to create float' });
+  } finally {
+    client.release();
+  }
+}
+
+async function put__api_admin_floats__floatId(req, res) {
+  const floatId = Number.parseInt(req.params.floatId, 10);
+  if (!Number.isInteger(floatId) || floatId <= 0) return res.status(400).json({ error: 'Valid float id is required' });
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'Float name is required' });
+  const float_number = typeof req.body.float_number === 'string' ? req.body.float_number.trim().slice(0, 20) : null;
+  const description = typeof req.body.description === 'string' ? req.body.description.trim().slice(0, 2000) : null;
+  const captainRaw = req.body.captain_user_id;
+  const captain_user_id = Number.isInteger(captainRaw) && captainRaw > 0 ? captainRaw : null;
+  const capacityRaw = req.body.capacity;
+  const capacity = Number.isInteger(capacityRaw) && capacityRaw > 0 ? capacityRaw : null;
+  const riders = Array.isArray(req.body.riders) ? req.body.riders.map(normalizeFloatRider).filter(Boolean) : [];
+
+  // Block duplicates, but ignore this float itself (a float may keep its own
+  // name/number). Name is matched case-insensitively; float number is matched
+  // only when the incoming number is non-empty.
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE id <> $3
+       AND (LOWER(name) = LOWER($1::text)
+            OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text)))`,
+    [name, float_number || null, floatId]
+  );
+  if (dup.rowCount > 0) {
+    const clash = dup.rows[0];
+    const field = (clash.float_number && float_number && clash.float_number.toLowerCase() === float_number.toLowerCase())
+      ? 'number' : 'name';
+    return res.status(409).json({
+      error: `A float with that ${field} already exists`,
+      field,
+      existing: { id: clash.id, name: clash.name, float_number: clash.float_number },
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upd = await client.query(
+      `UPDATE floats
+       SET name=$1, float_number=$2, captain_user_id=$3, description=$4, capacity=$5, updated_at=NOW()
+       WHERE id=$6
+       RETURNING id, name, float_number, captain_user_id, description, capacity, position`,
+      [name, float_number || null, captain_user_id, description || null, capacity, floatId]
+    );
+    if (upd.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Float not found' }); }
+    // Riders live on each sponsoring member's profile and the member is linked
+    // to the float, so the data entered here also appears in that member's own
+    // profile "Float Riders" section.
+    await applyFloatRiders(client, floatId, float_number || null, riders);
+    await client.query('COMMIT');
+    const row = upd.rows[0];
+    res.json({
+      id: row.id, name: row.name, float_number: row.float_number,
+      captain_user_id: row.captain_user_id, description: row.description || '',
+      capacity: row.capacity, position: row.position,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to update float', error);
+    res.status(500).json({ error: 'Unable to update float' });
+  } finally {
+    client.release();
+  }
+}
+
+async function delete__api_admin_floats__floatId(req, res) {
+  const floatId = Number.parseInt(req.params.floatId, 10);
+  if (!Number.isInteger(floatId) || floatId <= 0) return res.status(400).json({ error: 'Valid float id is required' });
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Detach members (and clear their riders) so their profile no longer
+    // references the deleted float.
+    await client.query(
+      `UPDATE user_profiles SET float_id = NULL, member_float_number = NULL, float_riders = '[]'::jsonb, updated_at = NOW() WHERE float_id = $1`,
+      [floatId]
+    );
+    const del = await client.query('DELETE FROM floats WHERE id = $1 RETURNING id', [floatId]);
+    if (del.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Float not found' }); }
+    await client.query('COMMIT');
+    res.json({ deleted: true, id: floatId });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to delete float', error);
+    res.status(500).json({ error: 'Unable to delete float' });
+  } finally {
+    client.release();
+  }
+}
+
+
+
+async function delete__api_admin_floats__floatId_riders(req, res) {
+  const floatId = Number.parseInt(req.params.floatId, 10);
+  if (!Number.isInteger(floatId) || floatId <= 0) return res.status(400).json({ error: 'Valid float id is required' });
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const userId = Number(req.body.user_id) || null;
+  if (!userId) return res.status(400).json({ error: 'user_id is required' });
+  const name = typeof req.body.name === 'string' ? req.body.name : '';
+  const comment = typeof req.body.comment === 'string' ? req.body.comment : '';
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ex = await client.query('SELECT float_riders, float_id FROM user_profiles WHERE user_id = $1', [userId]);
+    if (ex.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Member not found' }); }
+    const existing = Array.isArray(ex.rows[0].float_riders) ? ex.rows[0].float_riders : [];
+    const kept = existing.filter((rr) => {
+      if (!rr || rr.float_id !== floatId) return true;
+      const rn = rr.name || '';
+      const rc = rr.comment || '';
+      return !(rn === name && rc === comment);
+    });
+    if (kept.length === existing.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Rider not found on this float' });
+    }
+    if (kept.length > 0 || ex.rows[0].float_id !== floatId) {
+      // Keep the member's own float link if they still have other riders here,
+      // or if this float was never their own float.
+      await client.query(
+        `UPDATE user_profiles SET float_riders = $1::jsonb, updated_at = NOW() WHERE user_id = $2`,
+        [JSON.stringify(kept), userId]
+      );
+    } else {
+      // No riders remain for this float and it was the member's own float: detach.
+      await client.query(
+        `UPDATE user_profiles SET float_id = NULL, member_float_number = NULL, float_riders = '[]'::jsonb, updated_at = NOW() WHERE user_id = $1`,
+        [userId]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ deleted: true, remaining: kept.length });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Failed to delete rider', error);
+    res.status(500).json({ error: 'Unable to delete rider' });
+  } finally {
+    client.release();
+  }
+}
+
+// ── Finance admin (scoped): list every member's payment status ──────────────
+// Gated to finance admins (and full admins). Returns only payment flags plus
+// the guest name so dues can be reconciled; no other PII or admin powers.
+async function get__api_admin_payments(req, res) {
+  if (!isFinanceAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name,
+              p.guest_name,
+              COALESCE(p.dues_paid, false)      AS dues_paid,
+              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid, false)     AS beads_paid,
+              COALESCE(p.costume_paid, false)   AS costume_paid
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       WHERE u.role <> 'disabled'
+       ORDER BY u.full_name ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Failed to fetch payments', error);
+    res.status(500).json({ error: 'Unable to fetch payments' });
+  }
+}
+
+async function put__api_admin_floats_lock(req, res) {
+  // Guarded by requireFloatChange: when locked only the Float Admin may toggle;
+  // when unlocked any float admin (admin or float_admin) may.
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const locked = !!(req.body && req.body.locked === true);
+  try {
+    await setFloatLock(locked);
+  } catch (error) {
+    console.error('Failed to update float lock', error);
+    return res.status(500).json({ error: 'Unable to update float lock' });
+  }
+  res.json({ locked });
+}
+
+module.exports = {
+ delete__api_admin_users__userId,delete__api_users__userId,get__api_floats,get__api_admin_floats,get__api_admin_payments,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role,post__api_admin_floats,put__api_admin_floats__floatId,delete__api_admin_floats__floatId,delete__api_admin_floats__floatId_riders,put__api_admin_floats_lock,patch__api_admin_users__userId_payments, };

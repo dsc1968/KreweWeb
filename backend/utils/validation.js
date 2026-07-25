@@ -86,6 +86,18 @@ function isShopManager(req) {
   return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'store_admin'));
 }
 
+// Limited-admin roles scoped to a single domain, exactly like store_admin is
+// scoped to the shop. `admin` is always included so a full admin can act
+// through any of these paths. These roles are also treated as "elevated" for
+// MFA purposes (see authController.isElevatedRole).
+function isFloatAdmin(req) {
+  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'float_admin'));
+}
+
+function isFinanceAdmin(req) {
+  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'finance_admin'));
+}
+
 module.exports = {
   ADMIN_EDIT_EXCLUDED_PAGES,
   HEX_COLOR_PATTERN,
@@ -102,4 +114,6 @@ module.exports = {
   normalizeOpacityValue,
   isAdmin,
   isShopManager,
+  isFloatAdmin,
+  isFinanceAdmin,
 };

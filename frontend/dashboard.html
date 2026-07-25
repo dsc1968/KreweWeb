@@ -143,20 +143,25 @@
                 <button type="button" class="db-add-btn" id="add-grandchild-btn">+ Add Grandchild</button>
               </div>
 
+              <!-- Your Float section removed; the member is now an editable row in the Float Riders list -->
               <!-- Float Riders -->
-              <p class="db-config-section-label" style="margin-top:1rem;">Float Riders</p>
+              <p class="db-config-section-label" style="margin-top:1rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Rider Name, Assigned Float &amp; Comment)</span></p>
               <div class="form-group">
                 <label class="db-checkbox-label">
-                  <input type="checkbox" id="pd-float-captain" name="float_captain" />
-                  Float Captain
+                  <input type="checkbox" id="pd-float-captain" name="float_captain" disabled title="Set by the Float Admin" />
+                  <span id="pd-captain-label">Float Captain</span>
                 </label>
               </div>
               <div class="form-group">
                 <div id="riders-list"></div>
                 <button type="button" class="db-add-btn" id="add-rider-btn">+ Add Rider</button>
               </div>
+              <div id="float-lock-note" style="display:none;background:rgba(255,98,98,0.12);border:1px solid rgba(255,98,98,0.45);color:#ffb3b3;padding:0.5rem 0.8rem;border-radius:10px;margin-top:0.5rem;font-size:0.85rem;">
+                Floats are locked — only the Float Admin can change float assignments.
+              </div>
 
               <div id="profile-details-feedback" class="db-feedback" aria-live="polite"></div>
+```
               <button type="submit" class="button db-save-btn">Save Information</button>
             </form>
           </div>
@@ -191,6 +196,8 @@
               <a id="open-site-config" class="button secondary" href="/configuration.html">Site Configuration</a>
               <a id="open-backup-restore" class="button secondary" href="/backup-restore.html">Backup &amp; Restore</a>
               <a id="open-shop-admin" class="button secondary" href="/shop-admin.html" style="display:none;">Shop Management</a>
+              <a id="open-float-admin" class="button secondary" href="/float-admin.html" style="display:none;">Manage Floats</a>
+              <a id="open-finance-admin" class="button secondary" href="/finance-admin.html" style="display:none;">Manage Payments</a>
             </div>
           </section>
 
@@ -200,6 +207,6 @@
     </main>
 
     <script src="script.js?v=20250720c"></script>
-    <script src="auth.js?v=20250719"></script>
+    <script src="auth.js?v=20250722c"></script>
   </body>
 </html>

@@ -1,0 +1,49 @@
+-8<---
+{
+  "target": "frontend/dashboard.html",
+  "purpose": "Align the profile 'Float Riders' label with the user-admin modal's label."
+}
+```old
+              <!-- Float Riders -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Float Riders</p>
+```new
+              <!-- Float Riders -->
+              <p class="db-config-section-label" style="margin-top:1rem;">Float Riders <span style="font-weight:400;text-transform:none;letter-spacing:0;">(Rider Name, Assigned Float &amp; Comment)</span></p>
+-8<---
+{
+  "target": "frontend/auth.js",
+  "purpose": "Mirror the user-admin 'Float Riders' section: show the member themselves as a read-only highlighted row (name + assigned float) above their riders."
+}
+```old
+  document.getElementById('add-rider-btn').addEventListener('click', () => buildRiderInput(ridersList, '', profileFloats));
+```new
+  document.getElementById('add-rider-btn').addEventListener('click', () => buildRiderInput(ridersList, '', profileFloats));
+
+  // Mirror the user-admin "Float Riders" section: show the member themselves
+  // as a read-only highlighted row (name + assigned float) above their riders.
+  // Uses a non-"rider-row" class so it is never saved back as a rider.
+  const memberName = profile.full_name || profile.name || 'Member';
+  const memberFloatObj = (profileFloats || []).find((f) => String(f.float_number) === String(memberFloatCur));
+  const memberFloatLabel = memberFloatObj
+    ? `Float #${(memberFloatObj.float_number || '?')} – ${memberFloatObj.name || 'Unnamed'}`.trim()
+    : (memberFloatCur ? `Float #${memberFloatCur}` : '');
+  const memberRow = document.createElement('div');
+  memberRow.className = 'profile-member-row';
+  memberRow.style.cssText = 'display:flex;gap:0.35rem;margin-bottom:0.4rem;align-items:center;background:rgba(255,210,98,0.06);border-radius:8px;padding:0.25rem 0.4rem;flex-wrap:wrap;';
+  const mTag = document.createElement('span');
+  mTag.textContent = memberName;
+  mTag.style.cssText = 'flex:2;min-width:0;font-weight:600;color:#f5f7ff;';
+  const mFl = document.createElement('span');
+  mFl.textContent = memberFloatLabel;
+  mFl.style.cssText = 'flex:2;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+  const mCm = document.createElement('span');
+  mCm.textContent = '—';
+  mCm.style.cssText = 'flex:3;min-width:0;color:#b8c4e0;font-size:0.82rem;';
+  const mBadge = document.createElement('span');
+  mBadge.textContent = 'Member';
+  mBadge.style.cssText = 'flex-shrink:0;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;padding:0.12rem 0.45rem;border-radius:999px;border:1px solid rgba(255,210,98,0.4);color:#ffd262;';
+  memberRow.appendChild(mTag);
+  memberRow.appendChild(mFl);
+  memberRow.appendChild(mCm);
+  memberRow.appendChild(mBadge);
+  ridersList.insertBefore(memberRow, ridersList.firstChild);

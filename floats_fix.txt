@@ -1,0 +1,40 @@
+-8<---
+{
+  "target": "backend/controllers/usersController.js",
+  "purpose": "Fix 42P08 parameter-type inference on the create-float duplicate check by casting the name/number params to ::text."
+}
+```old
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE LOWER(name) = LOWER($1)
+        OR (float_number IS NOT NULL AND $2 IS NOT NULL AND LOWER(float_number) = LOWER($2))`,
+    [name, float_number || null]
+  );
+```new
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE LOWER(name) = LOWER($1::text)
+        OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text))`,
+    [name, float_number || null]
+  );
+-8<---
+{
+  "target": "backend/controllers/usersController.js",
+  "purpose": "Fix 42P08 parameter-type inference on the update-float duplicate check by casting the name/number params to ::text."
+}
+```old
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE id <> $3
+       AND (LOWER(name) = LOWER($1)
+            OR (float_number IS NOT NULL AND $2 IS NOT NULL AND LOWER(float_number) = LOWER($2)))`,
+    [name, float_number || null, floatId]
+  );
+```new
+  const dup = await pool.query(
+    `SELECT id, name, float_number FROM floats
+     WHERE id <> $3
+       AND (LOWER(name) = LOWER($1::text)
+            OR (float_number IS NOT NULL AND $2::text IS NOT NULL AND LOWER(float_number) = LOWER($2::text)))`,
+    [name, float_number || null, floatId]
+  );

@@ -25,9 +25,10 @@ async function getMfaMode() {
   }
 }
 
-// admin or store_admin — anyone with elevated privilege over a plain member
+// Anyone with elevated privilege over a plain member: full admins plus the
+// scoped limited-admin roles (store, float, finance). All require MFA.
 function isElevatedRole(role) {
-  return role === 'admin' || role === 'store_admin';
+  return role === 'admin' || role === 'store_admin' || role === 'float_admin' || role === 'finance_admin';
 }
 
 // Whether MFA is mandated for this user under the current system policy.
@@ -395,11 +396,18 @@ async function get__api_profile(req, res) {
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     const row = result.rows[0];
+    // The Float Admin is the source of truth for captaincy: it is recorded as
+    // floats.captain_user_id. Surface it as `captain_of` so the profile page
+    // can display it read-only (a member cannot self-appoint as captain).
+    let captain_of = null;
+    const capRes = await pool.query('SELECT id, name, float_number FROM floats WHERE captain_user_id = $1', [req.user.userId]);
+    if (capRes.rowCount > 0) captain_of = { id: capRes.rows[0].id, name: capRes.rows[0].name, float_number: capRes.rows[0].float_number };
     // Older rows may have stored these JSON columns as an empty object `{}`
     // rather than an array; normalise so the client can always use .forEach().
     const asArray = (v) => (Array.isArray(v) ? v : []);
     res.json({
       ...row,
+      captain_of,
       mfa_mode: mode,
       mfa_available_methods: MFA_METHODS,
       mfa_registration_required: mode !== 'off',
@@ -412,6 +420,7 @@ async function get__api_profile(req, res) {
       kids_float_numbers: asArray(row.kids_float_numbers),
       rider_float_numbers: asArray(row.rider_float_numbers),
       rider_float_names: asArray(row.rider_float_names),
+      float_locked: (await getSiteSetting('float_admin_lock')) === 'true',
     });
   } catch (error) {
     console.error('Failed to fetch profile', error);
@@ -448,13 +457,41 @@ async function put__api_profile_details(req, res) {
 
   const ridersRaw = req.body.float_riders;
   if (!Array.isArray(ridersRaw)) return res.status(400).json({ error: 'float_riders must be an array' });
-  const float_riders = ridersRaw.map((r) => String(r).trim().slice(0, 100)).filter(Boolean);
+  // Each rider is { name, comment, float_id }; tolerate legacy string entries.
+  let float_riders = ridersRaw.map((r) => {
+    if (r && typeof r === 'object') {
+      const name = typeof r.name === 'string' ? r.name.trim().slice(0, 100) : '';
+      const comment = typeof r.comment === 'string' ? r.comment.trim().slice(0, 500) : '';
+      const rawFid = typeof r.float_id === 'string' ? parseInt(r.float_id, 10) : r.float_id;
+      const float_id = Number.isInteger(rawFid) && rawFid > 0 ? rawFid : null;
+      if (!name && !comment && !float_id) return null;
+      return { name, comment, float_id };
+    }
+    const name = String(r).trim().slice(0, 100);
+    return name ? { name, comment: '', float_id: null } : null;
+  }).filter(Boolean);
 
-  const riderFloatNamesRaw = Array.isArray(req.body.rider_float_names)   ? req.body.rider_float_names   : [];
-  const riderFloatNumsRaw  = Array.isArray(req.body.rider_float_numbers) ? req.body.rider_float_numbers : [];
-  const rider_float_names   = riderFloatNamesRaw.map((v) => String(v ?? '').trim().slice(0, 100));
-  const rider_float_numbers = riderFloatNumsRaw.map((v)  => String(v ?? '').trim().slice(0, 20));
+  // Legacy parallel-array fields are no longer edited; keep them in sync if
+  // supplied, otherwise reset to empty.
+  let rider_float_names = Array.isArray(req.body.rider_float_names)
+    ? req.body.rider_float_names.map((v) => String(v ?? '').trim().slice(0, 100))
+    : [];
+  let rider_float_numbers = Array.isArray(req.body.rider_float_numbers)
+    ? req.body.rider_float_numbers.map((v) => String(v ?? '').trim().slice(0, 20))
+    : [];
   const float_captain = Boolean(req.body.float_captain);
+  const memberFloatRaw = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim() : '';
+  let member_float_number = memberFloatRaw ? memberFloatRaw.slice(0, 20) : null;
+  // Link the member to a float when they supply a float number that matches an
+  // existing float. This makes them appear on that float's roster in the admin
+  // tool (the float admin lists members by float_id).
+  let floatIdForProfile = null;
+  if (member_float_number) {
+    try {
+      const fr = await pool.query('SELECT id FROM floats WHERE float_number = $1 LIMIT 1', [member_float_number]);
+      if (fr.rowCount > 0) floatIdForProfile = fr.rows[0].id;
+    } catch (_e) { /* leave unlinked if lookup fails */ }
+  }
 
   // MFA notification preference (email by default; SMS requires a phone)
   const mfa_method = req.body.mfa_method === 'sms' ? 'sms' : 'email';
@@ -483,14 +520,33 @@ async function put__api_profile_details(req, res) {
     prevPhone = '';
   }
 
+  // When floats are locked, only the Float Admin may change float assignments.
+  // Keep the member's existing float/riders data and ignore incoming changes.
+  const floatsLocked = (await getSiteSetting('float_admin_lock')) === 'true';
+  if (floatsLocked && req.user.role !== 'float_admin') {
+    try {
+      const cur = await pool.query(
+        'SELECT float_riders, rider_float_names, rider_float_numbers, member_float_number, float_id FROM user_profiles WHERE user_id = $1',
+        [userId]
+      );
+      const c = cur.rows.length ? cur.rows[0] : {};
+      const asArray = (v) => (Array.isArray(v) ? v : []);
+      float_riders = asArray(c.float_riders);
+      rider_float_names = asArray(c.rider_float_names);
+      rider_float_numbers = asArray(c.rider_float_numbers);
+      member_float_number = c.member_float_number != null ? c.member_float_number : null;
+      floatIdForProfile = c.float_id != null ? c.float_id : null;
+    } catch (_e) { /* keep computed values if lookup fails */ }
+  }
+
   try {
     await pool.query(
       `INSERT INTO user_profiles (
          user_id, phone, address, city, state, zip, birthdate, occupation, organizations,
          sponsor_name, spouse_name, kids_names, kids_birthdays,
          grandchildren_names, grandchildren_birthdays,
-         guest_name, float_riders, rider_float_names, rider_float_numbers, float_captain, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,$20,NOW())
+         guest_name, float_riders, rider_float_names, rider_float_numbers, float_captain, member_float_number, float_id, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -504,6 +560,7 @@ async function put__api_profile_details(req, res) {
          rider_float_names=EXCLUDED.rider_float_names,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          float_captain=EXCLUDED.float_captain,
+         member_float_number=EXCLUDED.member_float_number, float_id=EXCLUDED.float_id,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -513,6 +570,7 @@ async function put__api_profile_details(req, res) {
         JSON.stringify(grandchildren_names), JSON.stringify(grandchildren_birthdays),
         guest_name||null, JSON.stringify(float_riders),
         JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers), float_captain,
+        member_float_number||null, floatIdForProfile,
       ]
     );
     await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
