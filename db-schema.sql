@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict zzf4o6OIpP2HtsiPZibTQK39ewSIqMHwF6Ot8WYIZDFkatQeFLLKyJe4IZmf6bb
+\restrict ygVM0l9FNKfNkREM8PsiC46BLP5bBYwlj5qEMiNmWxM7YHjVygol8bg5Ritu11b
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -131,6 +131,45 @@ CREATE TABLE public.element_overrides (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer
 );
+
+
+--
+-- Name: floats; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.floats (
+    id integer NOT NULL,
+    name text NOT NULL,
+    float_number text,
+    captain_user_id integer,
+    description text,
+    riders jsonb DEFAULT '[]'::jsonb NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by integer,
+    capacity integer
+);
+
+
+--
+-- Name: floats_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.floats_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: floats_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.floats_id_seq OWNED BY public.floats.id;
 
 
 --
@@ -460,8 +499,8 @@ CREATE TABLE public.user_profiles (
     grandchildren_names jsonb DEFAULT '[]'::jsonb NOT NULL,
     grandchildren_birthdays jsonb DEFAULT '[]'::jsonb NOT NULL,
     float_captain boolean DEFAULT false NOT NULL,
-    float_captain_user_id integer,
     float_description text,
+    float_captain_user_id integer,
     float_id integer
 );
 
@@ -509,6 +548,13 @@ ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 --
 
 ALTER TABLE ONLY public.album_images ALTER COLUMN id SET DEFAULT nextval('public.album_images_id_seq'::regclass);
+
+
+--
+-- Name: floats id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.floats ALTER COLUMN id SET DEFAULT nextval('public.floats_id_seq'::regclass);
 
 
 --
@@ -597,6 +643,14 @@ ALTER TABLE ONLY public.content_blocks
 
 ALTER TABLE ONLY public.element_overrides
     ADD CONSTRAINT element_overrides_pkey PRIMARY KEY (page_path, element_key);
+
+
+--
+-- Name: floats floats_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.floats
+    ADD CONSTRAINT floats_pkey PRIMARY KEY (id);
 
 
 --
@@ -773,6 +827,22 @@ ALTER TABLE ONLY public.element_overrides
 
 
 --
+-- Name: floats floats_captain_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.floats
+    ADD CONSTRAINT floats_captain_user_id_fkey FOREIGN KEY (captain_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: floats floats_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.floats
+    ADD CONSTRAINT floats_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: mfa_challenges mfa_challenges_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -845,19 +915,32 @@ ALTER TABLE ONLY public.shop_products
 
 
 --
--- Name: user_profiles user_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: user_profiles user_profiles_float_captain_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
-
-ALTER TABLE ONLY public.user_profiles
-    ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.user_profiles
     ADD CONSTRAINT user_profiles_float_captain_user_id_fkey FOREIGN KEY (float_captain_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
+-- Name: user_profiles user_profiles_float_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_float_id_fkey FOREIGN KEY (float_id) REFERENCES public.floats(id) ON DELETE SET NULL;
+
+
+--
+-- Name: user_profiles user_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict zzf4o6OIpP2HtsiPZibTQK39ewSIqMHwF6Ot8WYIZDFkatQeFLLKyJe4IZmf6bb
+\unrestrict ygVM0l9FNKfNkREM8PsiC46BLP5bBYwlj5qEMiNmWxM7YHjVygol8bg5Ritu11b
 
