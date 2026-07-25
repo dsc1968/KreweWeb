@@ -370,6 +370,30 @@ async function ensureContentTable() {
     )
   `);
 
+  // Ensure floats.id is unique. Older deployments created the floats table
+  // without a primary key (CREATE TABLE IF NOT EXISTS and sync_schema.sh
+  // never add one to an existing table). A foreign key that references
+  // floats(id) requires floats(id) to be unique, so add a unique constraint
+  // if it is missing. The id column is known to exist (otherwise the FK would
+  // fail with a "column does not exist" error instead of 42830).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'floats' AND column_name = 'id'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_index i
+        WHERE i.indrelid = 'public.floats'::regclass
+          AND i.indisunique
+          AND i.indnatts = 1
+          AND (SELECT a.attname FROM pg_attribute a WHERE a.attrelid = i.indexrelid AND a.attnum = 1) = 'id'
+      ) THEN
+        ALTER TABLE public.floats ADD UNIQUE (id);
+      END IF;
+    END $$;
+  `);
+
   // Migrations for existing databases
   for (const col of [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_method TEXT NOT NULL DEFAULT 'none' CHECK (mfa_method IN ('none', 'email', 'sms'))",
