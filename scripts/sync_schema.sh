@@ -80,41 +80,48 @@ IDEMPOTENT_FILE="$(mktemp)"
   echo "--"
   awk '
     # Drop whole COMMENT ON statements.
-    /^COMMENT ON/ { while (getline && $0 !~ /;$/) {}; next }
+    /^COMMENT ON/ { if ($0 !~ /;$/) { while (getline && $0 !~ /;$/) {} } next }
 
     # Drop whole CREATE SEQUENCE blocks (the SERIAL column already created them).
-    /^CREATE SEQUENCE / { while (getline && $0 !~ /;$/) {}; next }
+    /^CREATE SEQUENCE / { if ($0 !~ /;$/) { while (getline && $0 !~ /;$/) {} } next }
 
     # CREATE FUNCTION: make it CREATE OR REPLACE, pass the body through verbatim.
     /^CREATE FUNCTION / || /^CREATE OR REPLACE FUNCTION / {
       sub(/^CREATE FUNCTION /, "CREATE OR REPLACE FUNCTION ")
       print
-      while (getline && $0 !~ /END[[:space:]]*\$\$;?$/) { print }
+      while (getline && $0 !~ /^[[:space:]]*\$\$/ && $0 !~ /^[[:space:]]*\$[A-Za-z_]*\$;?$/) { print }
       print
       next
     }
 
     # ALTER TABLE ONLY ... header (constraint or column default on following line).
     /^ALTER TABLE ONLY [^ ]+/ && !/ADD/ {
-      hdr = $0
-      getline nl
-      if (nl ~ /ADD CONSTRAINT [^ ]+ PRIMARY KEY/) { next }          # redundant PK
-      if (nl ~ /ADD CONSTRAINT [^ ]+ /) {                            # FK/UNIQUE/CHECK
-        rest = nl
+        # Buffer the header; emit an idempotent DO block when the following line
+        # is an ADD CONSTRAINT. A state variable (not getline) is used so we never
+        # consume or duplicate the statement that follows the constraint.
+        if (pendingAlter != "") { print pendingAlter }
+        pendingAlter = $0
+        next
+    }
+    pendingAlter != "" && /^[[:space:]]*ADD CONSTRAINT/ {
+        rest = $0
         sub(/^[[:space:]]*ADD CONSTRAINT /, "", rest)
         cname = rest; sub(/ .*$/, "", cname)
-        n = split(hdr, p, " "); tbl = p[4]
+        n = split(pendingAlter, p, " "); tbl = p[4]
+        if (rest ~ /PRIMARY KEY/) { pendingAlter = ""; next }   # redundant PK from CREATE TABLE
         print "DO $$"
         print "BEGIN"
         print "  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '"'"'" cname "'"'"' AND conrelid = '"'"'" tbl "'"'"'::regclass) THEN"
-        print "    " hdr " " rest
+        print "    " pendingAlter " ADD CONSTRAINT " rest
         print "  END IF;"
         print "END $$;"
+        pendingAlter = ""
         next
-      }
-      # Otherwise a self-contained ALTER (e.g. ALTER COLUMN ... SET DEFAULT).
-      print hdr; print nl
-      next
+    }
+    pendingAlter != "" {
+        # Header seen but the next line was not an ADD CONSTRAINT (defensive).
+        print pendingAlter
+        pendingAlter = ""
     }
 
     /^CREATE TABLE / { sub(/^CREATE TABLE /, "CREATE TABLE IF NOT EXISTS "); print; next }
@@ -122,6 +129,7 @@ IDEMPOTENT_FILE="$(mktemp)"
     /^CREATE UNIQUE INDEX / { sub(/^CREATE UNIQUE INDEX /, "CREATE UNIQUE INDEX IF NOT EXISTS "); print; next }
     /^CREATE INDEX CONCURRENTLY / { sub(/^CREATE INDEX CONCURRENTLY /, "CREATE INDEX CONCURRENTLY IF NOT EXISTS "); print; next }
     /ALTER TABLE [^ ]+ ADD COLUMN/ { sub(/ADD COLUMN /, "ADD COLUMN IF NOT EXISTS "); print; next }
+    END { if (pendingAlter != "") { print pendingAlter } }
     { print }
   ' "$SCHEMA_FILE"
 } > "$IDEMPOTENT_FILE"
