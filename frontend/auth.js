@@ -522,9 +522,10 @@ function updateAdminSummary(users) {
   const storeAdminCount = users.filter((user) => user.role === 'store_admin').length;
   const adminCount     = users.filter((user) => user.role === 'admin').length;
   const disabledCount  = users.filter((user) => user.role === 'disabled').length;
+  const guestCount     = users.filter((user) => user.role === 'guest').length;
   const totalCount     = users.length;
   const storeAdminPart = storeAdminCount > 0 ? `, ${storeAdminCount} store admin${storeAdminCount === 1 ? '' : 's'}` : '';
-  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}${storeAdminPart}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
+  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}${storeAdminPart}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${guestCount} guest${guestCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
 }
 
 async function openUserEditModal(user, currentUserId, onUpdate) {
@@ -583,6 +584,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
           <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Role</label>
             <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
               <option value="member" ${full.role==='member'?'selected':''}>Member</option>
+              <option value="guest" ${full.role==='guest'?'selected':''}>Guest</option>
               <option value="store_admin" ${full.role==='store_admin'?'selected':''}>Store Admin</option>
               <option value="float_admin" ${full.role==='float_admin'?'selected':''}>Float Admin</option>
               <option value="finance_admin" ${full.role==='finance_admin'?'selected':''}>Finance Admin</option>
@@ -1137,7 +1139,7 @@ function renderAdminUsers(users, currentUserId) {
     visibleUsers
       .slice()
       .sort((left, right) => {
-        const roleRank = { admin: 0, member: 1, disabled: 2 };
+        const roleRank = { admin: 0, member: 1, disabled: 2, guest: 3 };
         if (left.role !== right.role) return (roleRank[left.role] ?? 99) - (roleRank[right.role] ?? 99);
         return new Date(right.joined_at) - new Date(left.joined_at);
       })
@@ -1661,7 +1663,7 @@ async function initDashboard() {
     .join('');
 
   const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : 'db-badge--member';
-  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : 'Member';
+  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : profile.role === 'guest' ? 'Guest' : 'Member';
 
   function payBadgeHtml(paid, label) {
     const c = paid ? '#4ade80' : '#f87171';
@@ -1712,6 +1714,16 @@ async function initDashboard() {
     myAdminLinks.forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.style.display = '';
+    });
+  }
+
+  // Guests may only maintain their own personal/contact details. Hide the
+  // family (children / grandchildren) and float-roster sections so they
+  // cannot see or add them.
+  if (profile.role === 'guest') {
+    ['pd-children-section', 'pd-grandchildren-section', 'pd-float-riders-section'].forEach((id) => {
+      const sec = document.getElementById(id);
+      if (sec) sec.style.display = 'none';
     });
   }
 

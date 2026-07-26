@@ -202,7 +202,7 @@ async function post__api_auth_register_verify_code(req, res) {
       `INSERT INTO users (email, full_name, role, password_hash)
        VALUES ($1, $2, $3, $4)
        RETURNING id, email, full_name, role, joined_at`,
-      [pending.email, pending.full_name, 'member', pending.password_hash]
+      [pending.email, pending.full_name, 'guest', pending.password_hash]
     );
     const user = insertResult.rows[0];
 
@@ -285,7 +285,7 @@ async function post__api_auth_register(req, res) {
     const hash = bcrypt.hashSync(password, salt);
     const insertResult = await client.query(
       `INSERT INTO users (email, full_name, role, password_hash)
-       VALUES ($1, $2, 'member', $3)
+       VALUES ($1, $2, 'guest', $3)
        RETURNING id, email, full_name, role, joined_at`,
       [email, fullName, hash]
     );
@@ -537,6 +537,16 @@ async function put__api_profile_details(req, res) {
       member_float_number = c.member_float_number != null ? c.member_float_number : null;
       floatIdForProfile = c.float_id != null ? c.float_id : null;
     } catch (_e) { /* keep computed values if lookup fails */ }
+  }
+
+  // Guests may only maintain their own personal/contact details. Ignore any
+  // family or float-roster fields they submit so they can never appear on a
+  // float or in another member's family tree via the API.
+  if (req.user.role === 'guest') {
+    kids_names = []; kids_birthdays = [];
+    grandchildren_names = []; grandchildren_birthdays = [];
+    float_riders = []; rider_float_names = []; rider_float_numbers = [];
+    float_captain = false; member_float_number = null; floatIdForProfile = null;
   }
 
   try {

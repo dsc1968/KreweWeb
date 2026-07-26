@@ -128,11 +128,11 @@ async function put__api_admin_users__userId_details(req, res) {
 
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const email = normalizeEmailAddress(req.body.email);
-  const role = ['admin', 'store_admin', 'member', 'disabled', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : null;
+  const role = ['admin', 'store_admin', 'member', 'disabled', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : null;
 
   if (!fullName) return res.status(400).json({ error: 'Full name is required' });
   if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
-  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, finance_admin, or disabled' });
+  if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, finance_admin, guest, or disabled' });
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
@@ -274,7 +274,7 @@ async function post__api_admin_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -314,7 +314,7 @@ async function post__api_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin', 'float_admin', 'finance_admin'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : 'member';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -358,7 +358,7 @@ async function put__api_admin_users__userId_role(req, res) {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(role)) {
+  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin', 'guest'].includes(role)) {
     return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, or finance_admin' });
   }
 
@@ -393,7 +393,7 @@ async function put__api_users__userId_role(req, res) {
     return res.status(400).json({ error: 'Valid user id is required' });
   }
 
-  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(role)) {
+  if (!['member', 'store_admin', 'admin', 'float_admin', 'finance_admin', 'guest'].includes(role)) {
     return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, or finance_admin' });
   }
 
@@ -424,7 +424,7 @@ async function put__api_admin_users__userId_disable(req, res) {
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
   // When re-enabling, caller may pass restore_role so a store_admin comes back as store_admin
-  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(req.body && req.body.restore_role)
+  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin', 'guest'].includes(req.body && req.body.restore_role)
     ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -462,7 +462,7 @@ async function put__api_users__userId_disable(req, res) {
 
   const userId = Number.parseInt(req.params.userId, 10);
   const disabled = req.body && typeof req.body.disabled === 'boolean' ? req.body.disabled : null;
-  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin'].includes(req.body && req.body.restore_role)
+  const restoreRole = ['member', 'store_admin', 'admin', 'float_admin', 'finance_admin', 'guest'].includes(req.body && req.body.restore_role)
     ? req.body.restore_role : 'member';
 
   if (!Number.isInteger(userId) || userId <= 0) {
