@@ -371,8 +371,13 @@
                   <option value="database">Database only</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label for="br-sched-retention">Keep last (retention)</label>
+                <input type="number" id="br-sched-retention" min="0" max="9999" step="1" value="0" />
+              </div>
             </div>
             <p id="br-sched-next" style="font-size:0.82rem; color:var(--muted); margin:0.4rem 0 0;"></p>
+            <p style="font-size:0.78rem; color:var(--muted); margin:0.3rem 0 0;">Set <strong>Keep last</strong> to the maximum number of scheduled backups to retain (older scheduled backups are deleted automatically). <strong>0</strong> keeps everything.</p>
           </div>
 
           <div id="br-sched-feedback" class="db-feedback" style="margin-top:0.9rem;" aria-live="polite"></div>

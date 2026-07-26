@@ -2530,6 +2530,7 @@ async function initBackupRestorePage() {
   const schedDow      = document.getElementById('br-sched-dow');
   const schedDom      = document.getElementById('br-sched-dom');
   const schedType     = document.getElementById('br-sched-type');
+  const schedRetention = document.getElementById('br-sched-retention');
   const schedDowGroup = document.getElementById('br-sched-dow-group');
   const schedDomGroup = document.getElementById('br-sched-dom-group');
   const schedNext     = document.getElementById('br-sched-next');
@@ -2589,7 +2590,8 @@ async function initBackupRestorePage() {
         type: schedType ? schedType.value : 'full',
       };
       const next = computeNextScheduledBackupClient(sched);
-      schedNext.textContent = 'Next run: ' + next.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) + ' (server local time)';
+      const keepNote = (schedRetention && Number(schedRetention.value) > 0) ? ' · keeping last ' + Number(schedRetention.value) : '';
+      schedNext.textContent = 'Next run: ' + next.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) + keepNote + ' (server local time)';
     } catch {
       schedNext.textContent = '';
     }
@@ -2616,6 +2618,7 @@ async function initBackupRestorePage() {
       if (schedDow) schedDow.value = c.BACKUP_SCHEDULE_DOW || '0';
       if (schedDom) schedDom.value = c.BACKUP_SCHEDULE_DOM || '1';
       if (schedType) schedType.value = c.BACKUP_SCHEDULE_TYPE || 'full';
+      if (schedRetention) schedRetention.value = c.BACKUP_SCHEDULE_RETENTION || '0';
       updateSchedFields();
       renderSchedNext();
     } catch { /* ignore */ }
@@ -2634,6 +2637,7 @@ async function initBackupRestorePage() {
         BACKUP_SCHEDULE_DOW: schedDow ? String(Number(schedDow.value) || 0) : '0',
         BACKUP_SCHEDULE_DOM: schedDom ? String(Number(schedDom.value) || 1) : '1',
         BACKUP_SCHEDULE_TYPE: schedType ? schedType.value : 'full',
+        BACKUP_SCHEDULE_RETENTION: schedRetention ? String(Number(schedRetention.value) || 0) : '0',
       };
       try {
         const res = await fetch('/api/admin/backup-schedule', {

@@ -1318,7 +1318,9 @@ body.admin-edit-mode .album-tools {
 .db-form input[type="tel"],
 .db-form input[type="date"],
 .db-form input[type="email"],
-.db-form input[type="number"] {
+.db-form input[type="number"],
+.db-form input[type="time"],
+.db-input {
   width: 100%;
   padding: 0.7rem 0.95rem;
   border-radius: 10px;

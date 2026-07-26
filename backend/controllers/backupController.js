@@ -139,7 +139,7 @@ async function put__api_admin_backup_schedule(req, res) {
   if (freq && !['daily', 'weekly', 'monthly'].includes(freq)) return res.status(400).json({ error: 'BACKUP_SCHEDULE_FREQUENCY must be daily, weekly, or monthly' });
   const type = safe.BACKUP_SCHEDULE_TYPE || '';
   if (type && !['full', 'files', 'database'].includes(type)) return res.status(400).json({ error: 'BACKUP_SCHEDULE_TYPE must be full, files, or database' });
-  const bounds = { BACKUP_SCHEDULE_HOUR: [0, 23], BACKUP_SCHEDULE_MINUTE: [0, 59], BACKUP_SCHEDULE_DOW: [0, 6], BACKUP_SCHEDULE_DOM: [1, 31] };
+  const bounds = { BACKUP_SCHEDULE_HOUR: [0, 23], BACKUP_SCHEDULE_MINUTE: [0, 59], BACKUP_SCHEDULE_DOW: [0, 6], BACKUP_SCHEDULE_DOM: [1, 31], BACKUP_SCHEDULE_RETENTION: [0, 9999] };
   for (const [k, [lo, hi]] of Object.entries(bounds)) {
     if (safe[k] && (!/^\d+$/.test(safe[k]) || Number(safe[k]) < lo || Number(safe[k]) > hi)) {
       return res.status(400).json({ error: `${k} must be an integer between ${lo} and ${hi}` });

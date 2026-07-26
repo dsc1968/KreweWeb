@@ -236,6 +236,7 @@ const BACKUP_SCHEDULE_KEYS = [
   'BACKUP_SCHEDULE_DOW',
   'BACKUP_SCHEDULE_DOM',
   'BACKUP_SCHEDULE_TYPE',
+  'BACKUP_SCHEDULE_RETENTION',
 ];
 
 // Create a backup archive (files and/or database) and store it using the
@@ -357,6 +358,7 @@ function readBackupSchedule() {
     dow: between(env.BACKUP_SCHEDULE_DOW, 0, 0, 6),
     dom: between(env.BACKUP_SCHEDULE_DOM, 1, 1, 31),
     type: ['full', 'files', 'database'].includes(env.BACKUP_SCHEDULE_TYPE) ? env.BACKUP_SCHEDULE_TYPE : 'full',
+    retention: between(env.BACKUP_SCHEDULE_RETENTION, 0, 0, 9999),
   };
 }
 
@@ -420,6 +422,58 @@ function mostRecentOccurrence(sched, from) {
   return c;
 }
 
+
+// Delete a single backup's manifest + zip artifacts from the configured
+// provider. Reused by both the API delete route helpers and retention pruning.
+async function deleteBackupArtifact(cfg, id) {
+  if (!backupIdSafe(id)) return;
+  if (cfg.provider === 's3') {
+    if (!cfg.s3Bucket) return;
+    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    const s3 = makeS3Client(cfg);
+    await s3.send(new DeleteObjectCommand({ Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.zip' })).catch(() => {});
+    await s3.send(new DeleteObjectCommand({ Bucket: cfg.s3Bucket, Key: cfg.s3Prefix + id + '.json' })).catch(() => {});
+  } else if (cfg.provider === 'rclone') {
+    if (!cfg.rcloneRemote) return;
+    await rcloneDeleteFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.zip');
+    await rcloneDeleteFile(cfg.rcloneRemote, cfg.rcloneFolder, id + '.json');
+  } else {
+    if (!cfg.localPath) return;
+    const localZip = path.join(cfg.localPath, id + '.zip');
+    const localJson = path.join(cfg.localPath, id + '.json');
+    if (fs.existsSync(localZip)) fs.unlinkSync(localZip);
+    if (fs.existsSync(localJson)) fs.unlinkSync(localJson);
+  }
+}
+
+// Enforce a retention policy: keep the most recent `retention` scheduled
+// backups and delete the older ones. `retention` <= 0 keeps everything.
+// Only backups created by the scheduler are pruned, so manually created
+// backups are never auto-deleted. Returns the number of backups removed.
+async function pruneScheduledBackups(cfg, retention) {
+  const keep = Number.parseInt(retention, 10);
+  if (!Number.isFinite(keep) || keep < 1) return 0;
+  let all;
+  if (cfg.provider === 's3') all = await listS3BackupManifests(cfg);
+  else if (cfg.provider === 'rclone') all = await listRcloneBackupManifests(cfg);
+  else all = await listLocalBackupsFromDir(cfg.localPath);
+  // Lists are sorted newest-first; scheduled ones only.
+  const scheduled = all.filter((m) => m && m.created_by === 'scheduled');
+  if (scheduled.length <= keep) return 0;
+  const toDelete = scheduled.slice(keep);
+  let removed = 0;
+  for (const m of toDelete) {
+    if (!m.id || !backupIdSafe(m.id)) continue;
+    try {
+      await deleteBackupArtifact(cfg, m.id);
+      removed++;
+    } catch (err) {
+      console.error('[Scheduled Backup] Prune failed for', m.id, err);
+    }
+  }
+  return removed;
+}
+
 // Drives automatic backups. Invoked on a timer from server.js. Finds the most
 // recent scheduled occurrence that has not yet executed and is recent enough
 // to count as a missed window (jitter / short outage / restart) rather than a
@@ -445,9 +499,11 @@ async function runScheduledBackupTick() {
     const last = await getSiteSetting('last_scheduled_backup');
     if (last === occKey) return;
     scheduledBackupInFlight = true;
+    const cfg = readBackupConfig();
     const manifest = await createBackup({ type: sched.type, label: 'Scheduled backup', createdBy: 'scheduled' });
     await setSiteSetting('last_scheduled_backup', occKey);
-    console.log(`[Scheduled Backup] Created ${manifest.id} (${sched.frequency} @ ${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')})`);
+    const removed = await pruneScheduledBackups(cfg, sched.retention);
+    console.log(`[Scheduled Backup] Created ${manifest.id} (${sched.frequency} @ ${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')})` + (removed > 0 ? ' — pruned ' + removed + ' old backup(s) to retain ' + sched.retention : ''));
   } catch (err) {
     console.error('[Scheduled Backup] Failed:', err);
   } finally {
@@ -462,4 +518,4 @@ async function listZipEntries(zipPath) {
   return directory.files.map((f) => f.path);
 }
 
-module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,createBackup,DB_TABLES_INSERT_ORDER,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,removeDir,runScheduledBackupTick,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };
+module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,createBackup,DB_TABLES_INSERT_ORDER,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,removeDir,runScheduledBackupTick,pruneScheduledBackups,deleteBackupArtifact,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };
