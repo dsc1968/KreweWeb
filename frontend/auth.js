@@ -108,7 +108,7 @@ if (registerForm) {
     const phone = (document.getElementById('reg-phone')?.value || '').trim();
 
     submitButton.disabled = true;
-    setRegisterFeedback('', false);
+    setRegisterFeedback('Working…', false);
     try {
       if (registerForm.dataset.phase === 'mfa') {
         const code = mfaCodeInput.value.trim();
@@ -154,6 +154,7 @@ if (registerForm) {
         return;
       }
 
+      setRegisterFeedback('Sending verification code…', false);
       const resp = await postJSON('/api/auth/register/request-code', {
         full_name,
         email,

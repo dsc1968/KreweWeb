@@ -12,6 +12,11 @@ const smtpTransport = SMTP_HOST && SMTP_PORT && SMTP_FROM
       port: SMTP_PORT,
       secure: SMTP_SECURE,
       auth: SMTP_USER || SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+      // Fail fast instead of hanging for ~60s when the SMTP server is
+      // unreachable or slow.
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     })
   : null;
 function normalizeEmailAddress(value) {
@@ -69,6 +74,14 @@ async function dispatchVerificationCode(target, code) {
     </div>
   `;
 
+  // In development, never block registration on a real network send — just log
+  // the code so the caller's dev fallback can surface it. This keeps
+  // registration instant even when the configured SMTP server is unreachable.
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[registration-verification] email code for ${target}: ${code}`);
+    return;
+  }
+
   if (smtpTransport) {
     await sendVerificationMail({
       to: target,
@@ -76,11 +89,6 @@ async function dispatchVerificationCode(target, code) {
       text: emailText,
       html: emailHtml,
     });
-    return;
-  }
-
-  if (process.env.NODE_ENV !== 'production') {
-    console.info(`[registration-verification] email code for ${target}: ${code}`);
     return;
   }
 
@@ -181,14 +189,14 @@ async function dispatchMfaCode(method, target, code) {
     </div>
   `;
 
-  if (smtpTransport) {
-    await sendVerificationMail({ to: target, subject: emailSubject, text: emailText, html: emailHtml });
-    return { delivered: true, method: 'email' };
-  }
-
   if (process.env.NODE_ENV !== 'production') {
     console.info(`[mfa] email code for ${target}: ${code}`);
     return { delivered: false, method: 'email', devCode: code };
+  }
+
+  if (smtpTransport) {
+    await sendVerificationMail({ to: target, subject: emailSubject, text: emailText, html: emailHtml });
+    return { delivered: true, method: 'email' };
   }
 
   const error = new Error('Email delivery is not configured. Set SMTP_HOST, SMTP_PORT, and SMTP_FROM.');
