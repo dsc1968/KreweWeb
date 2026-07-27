@@ -122,11 +122,41 @@ async function dispatchMfaCode(method, target, code) {
     const phoneNumber = normalizePhoneToE164(target);
     const plivoAuthId = process.env.PLIVO_AUTH_ID;
     const plivoAuthToken = process.env.PLIVO_AUTH_TOKEN;
+    const plivoSource = process.env.PLIVO_SOURCE_NUMBER;
     const plivoAppId = process.env.PLIVO_VERIFY_APP_ID;
     const masked = String(phoneNumber || '').replace(/\D/g, '').slice(-4).padStart(4, '*');
 
-    // Use the Plivo Verify API (app-based OTP) instead of the Messaging API.
-    // Plivo generates and validates the code; we only store the request_uuid.
+    // Prefer the simple Plivo Messaging API when a source number is configured.
+    // It is the most reliable method and what MFA used before the Verify-API
+    // switch. We generate and return the code so the caller can persist it for
+    // verification.
+    if (plivoAuthId && plivoAuthToken && plivoSource) {
+      try {
+        const smsCode = typeof code === 'string' && code ? code : generateVerificationCode();
+        const client = new plivo.Client(plivoAuthId, plivoAuthToken);
+        const resp = await client.messages.create({
+          src: plivoSource,
+          dst: phoneNumber,
+          text: `Your Krewe Mystique login code is ${smsCode}. It expires in ${REGISTRATION_CODE_TTL_MINUTES} minutes.`,
+        });
+        if (!resp || resp.error) {
+          throw new Error((resp && (resp.error || resp.message)) || 'Plivo Messaging API error');
+        }
+        console.log(`[mfa] Plivo SMS sent -> ${masked}`);
+        return { delivered: true, method: 'sms', code: smsCode };
+      } catch (err) {
+        const detail = (err && (err.message || err.toString())) || 'unknown error';
+        if (process.env.NODE_ENV === 'production') {
+          const error = new Error('SMS delivery failed: ' + detail);
+          error.statusCode = 502;
+          throw error;
+        }
+        console.warn(`[mfa] Plivo Messaging error (${detail}); using development fallback for ${masked}`);
+      }
+    }
+
+    // Fall back to the Plivo Verify API (app-based OTP) when only a Verify App is
+    // configured. Plivo generates/holds the code; we store the request_uuid.
     if (plivoAuthId && plivoAuthToken && plivoAppId) {
       try {
         const basic = Buffer.from(`${plivoAuthId}:${plivoAuthToken}`).toString('base64');
@@ -153,9 +183,9 @@ async function dispatchMfaCode(method, target, code) {
       }
     }
 
-    // Verify API not configured -> development fallback (we generate the code locally).
+    // Neither Plivo method is configured -> development fallback (log the code).
     if (process.env.NODE_ENV === 'production') {
-      const error = new Error('SMS delivery is not configured. Set PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_VERIFY_APP_ID in Admin → Site Configuration → SMS Gateway (Plivo), then restart the server.');
+      const error = new Error('SMS delivery is not configured. Set PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN and PLIVO_SOURCE_NUMBER (Messaging) or PLIVO_VERIFY_APP_ID (Verify) in Admin → Site Configuration → SMS Gateway (Plivo), then restart the server.');
       error.statusCode = 503;
       throw error;
     }

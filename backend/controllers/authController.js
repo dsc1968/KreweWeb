@@ -72,10 +72,11 @@ async function startMfaChallenge(userId, method, target) {
     code = generateVerificationCode();
     delivery = await dispatchMfaCode('email', target, code);
   } else {
-    // SMS uses the Plivo Verify API; Plivo generates/holds the code and we
-    // store the request_uuid (a dev fallback code is stored when unconfigured).
+    // SMS: Plivo generates the code (Verify API) or we generate it locally
+    // (Messaging API / dev fallback). Store whichever applies.
     delivery = await dispatchMfaCode('sms', target, null);
     if (delivery && delivery.requestUuid) requestUuid = delivery.requestUuid;
+    if (delivery && delivery.code) code = delivery.code;
     else if (delivery && delivery.devCode) code = delivery.devCode;
   }
   await pool.query(
