@@ -111,6 +111,25 @@ async function post__api_auth_register_request_code(req, res) {
       return res.status(409).json({ error: 'Email already in use' });
     }
 
+    // A phone number is optional at registration, but when supplied it must be
+    // unique - just like the email. Reject duplicates against existing profiles
+    // and any other in-flight (non-expired) pending registration. Exclude the
+    // caller's own pending row (matched by email) so re-requesting a code does
+    // not flag their own number as taken.
+    if (phone) {
+      const existingPhone = await pool.query('SELECT 1 FROM user_profiles WHERE phone = $1 LIMIT 1', [phone]);
+      if (existingPhone.rowCount > 0) {
+        return res.status(409).json({ error: 'Phone number already in use' });
+      }
+      const pendingPhone = await pool.query(
+        'SELECT 1 FROM pending_registrations WHERE phone = $1 AND email <> $2 AND expires_at > NOW() LIMIT 1',
+        [phone, email]
+      );
+      if (pendingPhone.rowCount > 0) {
+        return res.status(409).json({ error: 'Phone number already in use' });
+      }
+    }
+
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
     const verificationCode = generateVerificationCode();
@@ -198,6 +217,14 @@ async function post__api_auth_register_verify_code(req, res) {
       return res.status(400).json({ error: 'Invalid verification code' });
     }
 
+    if (pending.phone) {
+      const dupPhone = await client.query('SELECT 1 FROM user_profiles WHERE phone = $1 LIMIT 1', [pending.phone]);
+      if (dupPhone.rowCount > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Phone number already in use' });
+      }
+    }
+
     const insertResult = await client.query(
       `INSERT INTO users (email, full_name, role, password_hash)
        VALUES ($1, $2, $3, $4)
@@ -258,12 +285,20 @@ async function post__api_auth_register(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Email, full name and password are required' });
   }
   if (!isValidEmailAddress(email)) {
     return res.status(400).json({ error: 'Enter a valid email address' });
+  }
+
+  if (phone) {
+    const existingPhone = await pool.query('SELECT 1 FROM user_profiles WHERE phone = $1 LIMIT 1', [phone]);
+    if (existingPhone.rowCount > 0) {
+      return res.status(409).json({ error: 'Phone number already in use' });
+    }
   }
 
   const mode = await getMfaMode();

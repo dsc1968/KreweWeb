@@ -105,6 +105,7 @@ if (registerForm) {
     const full_name = document.getElementById('full_name').value.trim();
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
+    const phone = (document.getElementById('reg-phone')?.value || '').trim();
 
     submitButton.disabled = true;
     setRegisterFeedback('', false);
@@ -142,7 +143,7 @@ if (registerForm) {
       }
 
       if (!registrationRequiresMfa) {
-        const resp = await postJSON('/api/auth/register', { full_name, email, password });
+        const resp = await postJSON('/api/auth/register', { full_name, email, password, phone });
         if (resp.token) {
           sessionStorage.setItem('krewe_token', resp.token);
           await saveRegistrationProfile(resp.token);
@@ -157,6 +158,7 @@ if (registerForm) {
         full_name,
         email,
         password,
+        phone,
       });
 
       if (!resp.verificationRequired) {
@@ -182,10 +184,11 @@ if (registerForm) {
       const full_name = document.getElementById('full_name').value.trim();
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      const phone = (document.getElementById('reg-phone')?.value || '').trim();
       resendButton.disabled = true;
       setRegisterFeedback('Sending new code…', false);
       try {
-        const resp = await postJSON('/api/auth/register/request-code', { full_name, email, password });
+        const resp = await postJSON('/api/auth/register/request-code', { full_name, email, password, phone });
         verificationCodeInput.value = '';
         verificationCodeInput.focus();
         setRegisterFeedback(resp.error ? (resp.error) : (resp.message || 'New verification code sent.'), Boolean(resp.error));
