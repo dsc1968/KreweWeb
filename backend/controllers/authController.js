@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
 const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
-const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp } = require('../utils/email');
+const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp, isSmsConfigured } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
@@ -13,6 +13,15 @@ const { appDir: _bAppDir, getSiteSetting, setSiteSetting, BACKUP_CONFIG_KEYS, ba
 // ── MFA configuration & helpers ──────────────────────────────────────────────
 const MFA_MODES = ['off', 'registration', 'registration_and_login'];
 const MFA_METHODS = ['email', 'sms'];
+
+// The MFA methods the site can actually offer right now. SMS is only included
+// when the SMS gateway (Plivo) is configured — the same condition
+// dispatchMfaCode() uses — so dropping it here hides the SMS option in the UI.
+function getAvailableMfaMethods() {
+  const methods = ['email'];
+  if (isSmsConfigured()) methods.push('sms');
+  return methods;
+}
 const MFA_CODE_TTL_MINUTES = REGISTRATION_CODE_TTL_MINUTES; // reuse verification TTL
 const MFA_MAX_ATTEMPTS = 5;
 
@@ -377,17 +386,21 @@ async function post__api_auth_login(req, res) {
         return res.json({
           mfaEnrollmentRequired: true,
           mfaToken: issueMfaToken(user.id),
-          availableMethods: MFA_METHODS,
+          availableMethods: getAvailableMfaMethods(),
           message: 'Multi-factor authentication is required for your account. Choose a sign-in method to continue.',
         });
       }
       let method = user.mfa_method;
       let target = method === 'sms' ? (user.profile_phone || user.email) : user.email;
       let notice = null;
-      if (method === 'sms' && !user.profile_phone) {
+      const smsBlockedNoPhone = method === 'sms' && !user.profile_phone;
+      const smsBlockedNoGateway = method === 'sms' && !isSmsConfigured();
+      if (smsBlockedNoPhone || smsBlockedNoGateway) {
         method = 'email';
         target = user.email;
-        notice = 'SMS was selected but no phone number is on file, so email was used instead.';
+        notice = smsBlockedNoPhone
+          ? 'SMS was selected but no phone number is on file, so email was used instead.'
+          : 'SMS is not configured on this site, so email was used instead.';
       }
       const delivery = await startMfaChallenge(user.id, method, target);
       return res.json({
@@ -445,7 +458,7 @@ async function get__api_profile(req, res) {
       ...row,
       captain_of,
       mfa_mode: mode,
-      mfa_available_methods: MFA_METHODS,
+      mfa_available_methods: getAvailableMfaMethods(),
       mfa_registration_required: mode !== 'off',
       mfa_elevated_forced: true,
       kids_names: asArray(row.kids_names),
@@ -669,7 +682,7 @@ async function get__api_mfa_policy(req, res) {
       mfaMode: mode,
       registrationRequiresMfa: mode !== 'off',
       elevatedForcedMfa: true,
-      availableMethods: MFA_METHODS,
+      availableMethods: getAvailableMfaMethods(),
     });
   } catch (error) {
     console.error('Failed to read MFA policy', error);

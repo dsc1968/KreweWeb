@@ -240,6 +240,22 @@ if (loginForm) {
     window.location.href = '/dashboard.html';
   }
 
+  // Whether the SMS sign-in option is offered depends on the SMS gateway
+  // being configured. Read it from the public MFA policy so we can hide
+  // the "Text me a code" button when SMS is unavailable.
+  let smsAvailable = true;
+  (async () => {
+    try {
+      const policyRes = await fetch('/api/mfa-policy');
+      if (policyRes.ok) {
+        const policy = await policyRes.json();
+        smsAvailable = Array.isArray(policy.availableMethods)
+          ? policy.availableMethods.includes('sms')
+          : true;
+      }
+    } catch (_policyErr) { /* assume SMS available; backend corrects if not */ }
+  })();
+
   const mfaCodeGroup = document.getElementById('mfa-code-group');
   const mfaCodeInput = document.getElementById('mfa_code');
   const mfaPrompt = document.getElementById('mfa-prompt');
@@ -256,12 +272,19 @@ if (loginForm) {
     setMfaPrompt(mfaPrompt, info);
     if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
     if (mfaResendButton) mfaResendButton.hidden = false;
-    if (mfaMethodSwitch) mfaMethodSwitch.hidden = false;
+    if (mfaMethodSwitch) {
+      mfaMethodSwitch.hidden = false;
+      // Hide the SMS choice entirely when the gateway isn't configured.
+      const smsBtn = mfaMethodSwitch.querySelector('button[data-mfa-method="sms"]');
+      if (smsBtn) smsBtn.style.display = smsAvailable ? '' : 'none';
+    }
     if (loginSubmitButton) loginSubmitButton.textContent = 'Verify code';
     loginForm.dataset.phase = 'mfa';
   }
 
   async function sendLoginMfa(method) {
+    // Never attempt SMS when it isn't offered by the site.
+    if (method === 'sms' && !smsAvailable) method = 'email';
     if (mfaResendButton) mfaResendButton.disabled = true;
     if (mfaPrompt) mfaPrompt.textContent = 'Sending a new code…';
     try {
@@ -1382,6 +1405,31 @@ async function initProfileDetailsForm(profile) {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   set('pd-phone',         profile.phone);
   set('pd-mfa-method',    profile.mfa_method === 'sms' ? 'sms' : 'email');
+
+  // Only show the "Text message (SMS)" option when the SMS gateway is actually
+  // configured. The backend drops 'sms' from mfa_available_methods when it is
+  // not, so we remove the option here and fall back to email. This also covers
+  // a user who enrolled in SMS earlier but whose gateway was later removed.
+  const mfaMethodSelect = document.getElementById('pd-mfa-method');
+  if (mfaMethodSelect) {
+    const smsAvailable = Array.isArray(profile.mfa_available_methods)
+      ? profile.mfa_available_methods.includes('sms')
+      : true;
+    if (!smsAvailable) {
+      const smsOption = mfaMethodSelect.querySelector('option[value="sms"]');
+      if (smsOption) smsOption.remove();
+      // If the saved preference was SMS but it is no longer offered, switch to
+      // email so the stored value can't point at an unavailable method.
+      if (profile.mfa_method === 'sms') mfaMethodSelect.value = 'email';
+      const mfaHint = mfaMethodSelect.closest('.form-group')?.querySelector('.field-hint');
+      if (mfaHint) {
+        const extra = profile.mfa_method === 'sms'
+          ? ' SMS sign-in is unavailable because the SMS gateway is not configured, so codes are now sent by email.'
+          : ' (SMS is currently unavailable - the SMS gateway is not configured.)';
+        mfaHint.textContent += extra;
+      }
+    }
+  }
   set('pd-address',       profile.address);
   set('pd-city',          profile.city);
   set('pd-state',         profile.state);
@@ -1631,10 +1679,11 @@ function showProfileMfaVerify(challenge) {
   const onResend = async () => {
     try {
       const phone = (document.getElementById('pd-phone') || {}).value;
+      const resendMethod = (document.getElementById('pd-mfa-method')?.value || 'sms');
       const r = await fetch('/api/profile/mfa', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
-        body: JSON.stringify({ method: 'sms', phone: phone ? phone.trim() : '' }),
+        body: JSON.stringify({ method: resendMethod, phone: phone ? phone.trim() : '' }),
       });
       const j = await parseJSONResponse(r);
       if (j.mfaChallengeSent) {

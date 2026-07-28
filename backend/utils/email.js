@@ -255,6 +255,20 @@ async function verifyPlivoOtp(authId, authToken, appId, requestUuid, otp) {
   }
 }
 
+// True when the SMS gateway is actually able to send a code. This mirrors the
+// condition dispatchMfaCode() uses to decide whether it can deliver an SMS:
+// either the Plivo Messaging API (auth id + token + source number) OR the
+// Plivo Verify API (auth id + token + verify app id) must be configured.
+// It is the authoritative "is SMS available?" check used to hide the SMS MFA
+// option from users when the gateway is not set up.
+function isSmsConfigured() {
+  const authId = process.env.PLIVO_AUTH_ID;
+  const authToken = process.env.PLIVO_AUTH_TOKEN;
+  const source = process.env.PLIVO_SOURCE_NUMBER;
+  const verifyApp = process.env.PLIVO_VERIFY_APP_ID;
+  return Boolean(authId && authToken && (source || verifyApp));
+}
+
 
 module.exports = {
   smtpTransport,
@@ -264,6 +278,6 @@ module.exports = {
   maskVerificationTarget,
   sendVerificationMail,
   dispatchVerificationCode,
-  dispatchMfaCode, verifyPlivoOtp,
+  dispatchMfaCode, verifyPlivoOtp, isSmsConfigured,
 };
 
