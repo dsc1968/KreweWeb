@@ -41,7 +41,7 @@ ensureContentTable()
     startScheduledBackupTicker(runScheduledBackupTick, 30 * 1000);
 
     app.listen(port, () => {
-      console.log(`Server running on port ${port}`);
+      console.log('Server running on port ' + port + ' (NODE_ENV=' + (process.env.NODE_ENV || 'development') + ')');
     });
   })
   .catch((err) => {
