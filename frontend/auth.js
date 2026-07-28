@@ -1505,16 +1505,18 @@ async function initProfileDetailsForm(profile) {
   ridersList.insertBefore(memberRow, ridersList.firstChild);
 
   const feedback = document.getElementById('profile-details-feedback');
-  function setFeedback(msg, isError) {
+  function setFeedback(msg, isError, isInfo) {
     feedback.textContent = msg;
-    feedback.style.color = isError ? '#b42318' : 'var(--muted)';
+    feedback.classList.toggle('is-error', Boolean(isError));
+    feedback.classList.toggle('is-info', Boolean(isInfo) && !isError);
+    feedback.classList.toggle('is-success', Boolean(msg) && !isError && !isInfo);
   }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
-    setFeedback('Saving…', false);
+    setFeedback('Saving…', false, true);
 
     const token = getToken();
     try {
@@ -2010,7 +2012,7 @@ async function initSiteConfig() {
     e.preventDefault();
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
-    setFeedback('Saving…', false);
+    setFeedback('Saving…', false, true);
 
     const config = {};
     form.querySelectorAll('input[name], select[name]').forEach((el) => {

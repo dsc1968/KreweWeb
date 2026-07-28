@@ -1371,9 +1371,30 @@ body.admin-edit-mode .album-tools {
 
 .db-feedback {
   min-height: 1.2em;
-  font-size: 0.88rem;
-  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.9rem;
   color: var(--muted);
+}
+
+.db-feedback.is-success {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+}
+
+.db-feedback.is-error {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+}
+
+.db-feedback.is-info {
+  color: #93c5fd;
 }
 
 .db-save-btn {
