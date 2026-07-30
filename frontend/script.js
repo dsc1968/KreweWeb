@@ -808,7 +808,26 @@ if (countdownElements.days) {
     return data;
   }
 
+  const NAV_HTML =
+    '<nav class="site-nav" aria-label="Primary navigation">' +
+    '<a href="/">Home</a>' +
+    '<a href="/history.html">History</a>' +
+    '<a href="/royal-court.html">Royal Court</a>' +
+    '<a href="/photos.html">Photos</a>' +
+    '<a href="/events.html">Events</a>' +
+    '<a href="/contact.html">Contact</a>' +
+    '<a href="/register.html" style="display: none;">Join</a>' +
+    '<a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>' +
+    '</nav>';
+
   function initHeaderState() {
+    // Inject the single-source navigation markup into the placeholder.
+    const navMount = document.getElementById('nav-mount');
+    if (navMount && !navMount.dataset.navInjected) {
+      navMount.innerHTML = NAV_HTML;
+      navMount.dataset.navInjected = 'true';
+    }
+
     const token = getStoredToken();
     const isLoggedIn = Boolean(token);
     const headerButton = document.querySelector('.header-button');
@@ -829,6 +848,12 @@ if (countdownElements.days) {
 
     if (joinLink) {
       joinLink.style.display = isLoggedIn ? 'none' : '';
+    }
+
+    // Shop link is available to any logged-in user.
+    const shopLink = document.getElementById('nav-shop-link');
+    if (shopLink) {
+      shopLink.style.display = isLoggedIn ? '' : 'none';
     }
 
     const existingAuthLink = document.getElementById('nav-auth-link');

@@ -54,8 +54,8 @@ body {
 
 .brand {
   font-weight: 700;
-  font-size: clamp(0.8rem, 1.3vw, 1.1rem);
-  letter-spacing: 0.06em;
+  font-size: clamp(0.78rem, 1.2vw, 1.0rem);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
@@ -64,20 +64,18 @@ body {
 .site-nav {
   display: flex;
   flex-wrap: nowrap;
-  gap: clamp(0.25rem, 0.9vw, 0.85rem);
+  gap: clamp(0.2rem, 0.6vw, 0.55rem);
   align-items: center;
   flex: 1 1 auto;
-  justify-content: space-evenly;
+  justify-content: flex-start;
   margin: 0 clamp(0.25rem, 0.8vw, 0.75rem);
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
   white-space: nowrap;
 }
 
-.site-nav::-webkit-scrollbar {
-  display: none;
+#nav-mount {
+  display: contents;
 }
 
 .site-nav a {
@@ -85,12 +83,12 @@ body {
   align-items: center;
   justify-content: center;
   min-height: clamp(1.8rem, 2.5vw, 2.4rem);
-  padding: 0 clamp(0.45rem, 1vw, 0.95rem);
+  padding: 0 clamp(0.3rem, 0.7vw, 0.55rem);
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
-  font-size: clamp(0.72rem, 1.1vw, 0.95rem);
+  font-size: clamp(0.68rem, 0.95vw, 0.82rem);
   opacity: 0.95;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
