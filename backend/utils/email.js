@@ -74,14 +74,12 @@ async function dispatchVerificationCode(target, code) {
     </div>
   `;
 
-  // In development, never block registration on a real network send — just log
-  // the code so the caller's dev fallback can surface it. This keeps
-  // registration instant even when the configured SMTP server is unreachable.
-  if (process.env.NODE_ENV !== 'production') {
-    console.info(`[registration-verification] email code for ${target}: ${code}`);
-    return;
-  }
-
+  // Send a real email whenever an SMTP transport is configured, regardless of
+  // NODE_ENV. Checking NODE_ENV first here meant verification emails were
+  // silently never sent unless the server ran as NODE_ENV=production, even when
+  // SMTP was fully configured. Only when SMTP is unavailable do we fall back to
+  // a logged dev code (development) or a hard error (production) — this keeps
+  // registration working when the SMTP server is genuinely unreachable.
   if (smtpTransport) {
     await sendVerificationMail({
       to: target,
@@ -89,6 +87,11 @@ async function dispatchVerificationCode(target, code) {
       text: emailText,
       html: emailHtml,
     });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[registration-verification] email code for ${target}: ${code}`);
     return;
   }
 
@@ -219,14 +222,20 @@ async function dispatchMfaCode(method, target, code) {
     </div>
   `;
 
-  if (process.env.NODE_ENV !== 'production') {
-    console.info(`[mfa] email code for ${target}: ${code}`);
-    return { delivered: false, method: 'email', devCode: code };
-  }
-
+  // Send a real email whenever an SMTP transport is configured, regardless of
+  // NODE_ENV. Checking NODE_ENV first here meant MFA emails were silently
+  // never sent unless the server ran as NODE_ENV=production — even when SMTP
+  // was fully configured — which is the "no email is being sent" symptom. Only
+  // when SMTP is unavailable do we fall back to a logged dev code (development)
+  // or a hard error (production).
   if (smtpTransport) {
     await sendVerificationMail({ to: target, subject: emailSubject, text: emailText, html: emailHtml });
     return { delivered: true, method: 'email' };
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[mfa] email code for ${target}: ${code}`);
+    return { delivered: false, method: 'email', devCode: code };
   }
 
   const error = new Error('Email delivery is not configured. Set SMTP_HOST, SMTP_PORT, and SMTP_FROM.');

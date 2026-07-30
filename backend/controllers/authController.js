@@ -493,16 +493,16 @@ async function put__api_profile_details(req, res) {
 
   const kidsRaw = req.body.kids_names;
   if (!Array.isArray(kidsRaw)) return res.status(400).json({ error: 'kids_names must be an array' });
-  const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+  let kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
 
   const kidsBdRaw = Array.isArray(req.body.kids_birthdays) ? req.body.kids_birthdays : [];
-  const kids_birthdays = kidsBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
+  let kids_birthdays = kidsBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
 
   const gcNamesRaw = Array.isArray(req.body.grandchildren_names) ? req.body.grandchildren_names : [];
-  const grandchildren_names = gcNamesRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
+  let grandchildren_names = gcNamesRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
 
   const gcBdRaw = Array.isArray(req.body.grandchildren_birthdays) ? req.body.grandchildren_birthdays : [];
-  const grandchildren_birthdays = gcBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
+  let grandchildren_birthdays = gcBdRaw.map((v) => (typeof v === 'string' && v ? v : null));
 
   const ridersRaw = req.body.float_riders;
   if (!Array.isArray(ridersRaw)) return res.status(400).json({ error: 'float_riders must be an array' });
@@ -528,7 +528,7 @@ async function put__api_profile_details(req, res) {
   let rider_float_numbers = Array.isArray(req.body.rider_float_numbers)
     ? req.body.rider_float_numbers.map((v) => String(v ?? '').trim().slice(0, 20))
     : [];
-  const float_captain = Boolean(req.body.float_captain);
+  let float_captain = Boolean(req.body.float_captain);
   const memberFloatRaw = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim() : '';
   let member_float_number = memberFloatRaw ? memberFloatRaw.slice(0, 20) : null;
   // Link the member to a float when they supply a float number that matches an
