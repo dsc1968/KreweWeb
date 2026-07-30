@@ -1742,10 +1742,10 @@ async function initDashboard() {
         <li><strong>Email:</strong> ${profile.email}</li>
         <li><strong>Member since:</strong> ${new Date(profile.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</li>
         <li><span class="db-badge ${badgeClass}">${badgeLabel}</span></li>
-        <li id="db-payment-status-li" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
-          ${payBadgeHtml(Boolean(profile.dues_paid), 'Dues')}
-          ${payBadgeHtml(Boolean(profile.guest_fee_paid), 'Guest Fee')}
-          ${payBadgeHtml(Boolean(profile.costume_paid), 'Costume')}
+        <li id="db-payment-status-li" style="display:${profile.role !== 'guest' ? 'flex' : 'none'};gap:0.75rem;flex-wrap:wrap;align-items:center;">
+          ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.dues_paid), 'Dues') : ''}
+          ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.guest_fee_paid), 'Guest Fee') : ''}
+          ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.costume_paid), 'Costume') : ''}
         </li>
       </ul>
     </div>
@@ -1836,6 +1836,7 @@ async function initDashboard() {
   async function refreshPaymentStatus() {
     const li = document.getElementById('db-payment-status-li');
     if (!li) return;
+    if (profile.role === 'guest') { li.innerHTML = ''; return; }
     try {
       const res = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + getToken() } });
       if (!res.ok) return;
