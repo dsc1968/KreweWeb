@@ -1048,6 +1048,13 @@ function initProfileDetailsForm(profile) {
   set('pd-spouse',        profile.spouse_name);
   set('pd-guest',         profile.guest_name);
 
+  // Guests may only maintain their own personal/contact details. Hide the
+  // "Krewe Guest" section so a guest cannot record a guest of their own.
+  if (profile.role === 'guest') {
+    const guestSec = document.getElementById('pd-guest-section');
+    if (guestSec) guestSec.style.display = 'none';
+  }
+
   // Float Captain checkbox
   const floatCaptainEl = document.getElementById('pd-float-captain');
   if (floatCaptainEl) floatCaptainEl.checked = Boolean(profile.float_captain);

@@ -1775,7 +1775,7 @@ async function initDashboard() {
   // family (children / grandchildren) and float-roster sections so they
   // cannot see or add them.
   if (profile.role === 'guest') {
-    ['pd-children-section', 'pd-grandchildren-section', 'pd-float-riders-section'].forEach((id) => {
+    ['pd-children-section', 'pd-grandchildren-section', 'pd-float-riders-section', 'pd-guest-section'].forEach((id) => {
       const sec = document.getElementById(id);
       if (sec) sec.style.display = 'none';
     });
