@@ -172,6 +172,32 @@
             </form>
           </div>
 
+          <!-- Change Password card: self-service for every profile type -->
+          <div class="db-card" id="change-password-section">
+            <div class="db-card-header">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-1 0H7V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+              <h3>Change Password</h3>
+            </div>
+            <form id="change-password-form" class="db-form" novalidate>
+              <div class="form-group">
+                <label for="cp-current">Current Password</label>
+                <input type="password" id="cp-current" name="current_password" autocomplete="current-password" />
+              </div>
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="cp-new">New Password</label>
+                  <input type="password" id="cp-new" name="new_password" autocomplete="new-password" />
+                </div>
+                <div class="form-group">
+                  <label for="cp-confirm">Confirm New Password</label>
+                  <input type="password" id="cp-confirm" name="confirm_password" autocomplete="new-password" />
+                </div>
+              </div>
+              <div id="change-password-feedback" class="db-feedback" aria-live="polite"></div>
+              <button type="submit" id="change-password-btn" class="button primary">Update Password</button>
+            </form>
+          </div>
+
         </div><!-- /.db-cards-grid -->
       </div><!-- /#db-panel-info -->
 

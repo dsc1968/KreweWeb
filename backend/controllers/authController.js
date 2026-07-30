@@ -812,7 +812,49 @@ async function put__api_profile_mfa(req, res) {
   }
 }
 
+
+// -- Self-service change password --
+// Lets any authenticated user change their own password. The current password
+// is verified before the new one is stored, so a stolen session token cannot be
+// used to silently reset the password. Available to every role/profile type
+// (member, guest, admin, store_admin, etc.) since it only ever touches the
+// caller's own account.
+async function put__api_profile_password(req, res) {
+  const userId = req.user.userId;
+  const currentPassword = typeof req.body.current_password === 'string' ? req.body.current_password : '';
+  const newPassword = typeof req.body.new_password === 'string' ? req.body.new_password : '';
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  // Reject reusing the current password to encourage a distinct new password.
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ error: 'New password must be different from your current password' });
+  }
+
+  try {
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+    const user = result.rows[0];
+
+    const ok = bcrypt.compareSync(currentPassword, user.password_hash || '');
+    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(newPassword, salt);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, userId]);
+
+    res.json({ ok: true, passwordChanged: true });
+  } catch (error) {
+    console.error('Failed to change password', error);
+    res.status(500).json({ error: 'Unable to change password' });
+  }
+}
+
 function generateToken(user) {
   return jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
-module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa };
+module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa, put__api_profile_password };

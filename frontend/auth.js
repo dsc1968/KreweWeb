@@ -1850,6 +1850,74 @@ async function initDashboard() {
   setTimeout(refreshPaymentStatus, 1000);
 
   initProfileDetailsForm(profile);
+  initChangePasswordForm();
+}
+
+// ── Change Password (self-service, all profile types) ───────────────
+function initChangePasswordForm() {
+  const section = document.getElementById('change-password-section');
+  const form = document.getElementById('change-password-form');
+  if (!section || !form) return;
+
+  const feedback = document.getElementById('change-password-feedback');
+  function setFeedback(msg, isError, isInfo) {
+    feedback.textContent = msg;
+    feedback.classList.toggle('is-error', Boolean(isError));
+    feedback.classList.toggle('is-info', Boolean(isInfo) && !isError);
+    feedback.classList.toggle('is-success', Boolean(msg) && !isError && !isInfo);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const currentEl = document.getElementById('cp-current');
+    const newEl = document.getElementById('cp-new');
+    const confirmEl = document.getElementById('cp-confirm');
+
+    const current = currentEl.value;
+    const next = newEl.value;
+    const confirm = confirmEl.value;
+
+    if (!current || !next || !confirm) {
+      setFeedback('All three fields are required.', true);
+      return;
+    }
+    if (next.length < 8) {
+      setFeedback('New password must be at least 8 characters.', true);
+      return;
+    }
+    if (next !== confirm) {
+      setFeedback('New password and confirmation do not match.', true);
+      return;
+    }
+
+    submitBtn.disabled = true;
+    setFeedback('Updating…', false, true);
+
+    const token = getToken();
+    try {
+      const res = await fetch('/api/profile/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          current_password: current,
+          new_password: next,
+          confirm_password: confirm,
+        }),
+      });
+      const data = await parseJSONResponse(res);
+      if (res.ok) {
+        form.reset();
+        setFeedback('Password updated.', false);
+      } else {
+        setFeedback(data.error || 'Unable to update password.', true);
+      }
+    } catch (_err) {
+      setFeedback('Network error. Please try again.', true);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
 }
 
 // ── Season end-date UI ────────────────────────────────────────────────────
