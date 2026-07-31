@@ -1261,6 +1261,120 @@ async function get__api_admin_floats_report(req, res) {
   }
 }
 
+async function get__api_admin_users_report(req, res) {
+  // Full admins or finance admins may view the users report (it is
+  // payment-focused, so finance admins need access too).
+  if (!isAdmin(req) && !isFinanceAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const format = (req.query.format || 'json').toLowerCase();
+
+    // Display order for role groups — most privileged first, disabled last.
+    const ROLE_ORDER = ['admin', 'float_admin', 'finance_admin', 'store_admin', 'member', 'guest', 'disabled'];
+    const ROLE_LABELS = {
+      admin: 'Admins',
+      float_admin: 'Float Admins',
+      finance_admin: 'Finance Admins',
+      store_admin: 'Store Admins',
+      member: 'Members',
+      guest: 'Guests',
+      disabled: 'Disabled',
+    };
+
+    const usersRes = await pool.query(
+      `SELECT u.id, u.full_name, u.email, u.phone AS user_phone, u.role, u.joined_at,
+              p.phone AS profile_phone, p.sponsor_name, p.address, p.city, p.state, p.zip,
+              p.member_float_number, p.birthdate, p.occupation, p.organizations,
+              p.float_captain,
+              COALESCE(p.dues_paid,      false) AS dues_paid,
+              COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
+              COALESCE(p.beads_paid,     false) AS beads_paid,
+              COALESCE(p.costume_paid,   false) AS costume_paid
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       ORDER BY u.full_name ASC, u.id ASC`
+    );
+
+    const normPhone = (u) =>
+      (u.profile_phone && String(u.profile_phone).trim()) ||
+      (u.user_phone && String(u.user_phone).trim()) || '';
+
+    // Group users by role; each group is already name-sorted by the query.
+    const byRole = {};
+    usersRes.rows.forEach((u) => {
+      const role = u.role || 'member';
+      if (!byRole[role]) byRole[role] = [];
+      byRole[role].push({
+        id: u.id,
+        full_name: u.full_name || '',
+        email: u.email || '',
+        phone: normPhone(u),
+        role: role,
+        status: role === 'disabled' ? 'Disabled' : 'Active',
+        joined_at: u.joined_at ? new Date(u.joined_at).toISOString() : '',
+        dues_paid: Boolean(u.dues_paid),
+        guest_fee_paid: Boolean(u.guest_fee_paid),
+        beads_paid: Boolean(u.beads_paid),
+        costume_paid: Boolean(u.costume_paid),
+        float_captain: Boolean(u.float_captain),
+        sponsor_name: u.sponsor_name || '',
+        address: u.address || '',
+        city: u.city || '',
+        state: u.state || '',
+        zip: u.zip || '',
+        member_float_number: u.member_float_number || '',
+        birthdate: u.birthdate ? String(u.birthdate) : '',
+        occupation: u.occupation || '',
+        organizations: u.organizations || '',
+      });
+    });
+
+    const roles = ROLE_ORDER
+      .filter((r) => byRole[r] && byRole[r].length)
+      .map((r) => ({ role: r, label: ROLE_LABELS[r] || r, users: byRole[r] }));
+    // Defensive: surface any role not in the known ordering.
+    Object.keys(byRole).forEach((r) => {
+      if (ROLE_ORDER.indexOf(r) === -1) {
+        roles.push({ role: r, label: ROLE_LABELS[r] || r, users: byRole[r] });
+      }
+    });
+
+    if (format === 'csv') {
+      const header = [
+        'Role', 'Name', 'Email', 'Phone', 'Status', 'Joined',
+        'Dues', 'Guest Fee', 'Beads', 'Costume', 'Captain',
+        'Sponsor', 'Address', 'City', 'State', 'Zip', 'Member #', 'Occupation', 'Organizations',
+      ];
+      const rows = [];
+      roles.forEach((group) => {
+        group.users.forEach((u) => {
+          rows.push([
+            group.label,
+            u.full_name, u.email, u.phone, u.status,
+            u.joined_at ? u.joined_at.slice(0, 10) : '',
+            u.dues_paid ? 'Paid' : 'Unpaid',
+            u.guest_fee_paid ? 'Paid' : 'Unpaid',
+            u.beads_paid ? 'Paid' : 'Unpaid',
+            u.costume_paid ? 'Paid' : 'Unpaid',
+            u.float_captain ? 'Yes' : 'No',
+            u.sponsor_name, u.address, u.city, u.state, u.zip,
+            u.member_float_number, u.occupation, u.organizations,
+          ]);
+        });
+      });
+      const csv = [header].concat(rows).map((row) => row.map(csvCell).join(',')).join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="users-report.csv"');
+      return res.status(200).send('\uFEFF' + csv);
+    }
+
+    res.json({ generatedAt: new Date().toISOString(), roles: roles });
+  } catch (error) {
+    console.error('Failed to generate users report', error);
+    res.status(500).json({ error: 'Unable to generate users report' });
+  }
+}
+
 module.exports = {
  get__api_admin_floats_report,
+ get__api_admin_users_report,
  delete__api_admin_users__userId,delete__api_users__userId,get__api_floats,get__api_admin_floats,get__api_admin_payments,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role,post__api_admin_floats,put__api_admin_floats__floatId,delete__api_admin_floats__floatId,delete__api_admin_floats__floatId_riders,put__api_admin_floats_lock,patch__api_admin_users__userId_payments, };

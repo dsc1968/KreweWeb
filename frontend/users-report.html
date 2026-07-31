@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Users Report - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .ur-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 0.5rem 0 1.25rem;
+      }
+      .ur-select-tools { display: flex; gap: 0.5rem; align-items: center; }
+      .ur-selected-count { color: #b8c4e0; font-size: 0.85rem; }
+      .ur-generated { color: #b8c4e0; font-size: 0.85rem; margin-left: auto; }
+      .ur-summary { color: #b8c4e0; font-size: 0.9rem; margin: 0 0 1rem; }
+
+      .user-report-block {
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        padding: 1rem 1.1rem 1.25rem;
+        margin-bottom: 1.25rem;
+        background: rgba(255,255,255,0.02);
+        break-before: page;
+        page-break-before: always;
+      }
+      .user-report-block:first-of-type { break-before: auto; page-break-before: auto; }
+      .ur-role-select-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #b8c4e0;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        user-select: none;
+      }
+      .ur-role-select-wrap input { width: auto; }
+      .ur-role-title {
+        margin: 0 0 0.15rem;
+        font-size: 1.15rem;
+      }
+      .ur-role-meta {
+        margin: 0 0 0.85rem;
+        color: #b8c4e0;
+        font-size: 0.85rem;
+      }
+      .ur-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 0.8rem;
+        white-space: nowrap;
+      }
+      .ur-table th, .ur-table td {
+        text-align: left;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        vertical-align: top;
+      }
+      .ur-table thead th {
+        background: rgba(94,234,212,0.08);
+        color: #d7fff5;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+      }
+      .ur-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+      .ur-table tbody tr.ur-disabled-row { opacity: 0.65; }
+      .ur-pay {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        padding: 0.1rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+      }
+      .ur-pay-paid {
+        color: #4ade80;
+        border-color: rgba(74,222,128,0.45);
+        background: rgba(74,222,128,0.12);
+      }
+      .ur-pay-unpaid {
+        color: #f87171;
+        border-color: rgba(248,113,113,0.45);
+        background: rgba(248,113,113,0.12);
+      }
+      .ur-status-pill {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 0.18rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid rgba(74,222,128,0.45);
+        background: rgba(74,222,128,0.12);
+        color: #4ade80;
+      }
+      .ur-status-pill.ur-disabled {
+        border-color: rgba(248,113,113,0.45);
+        background: rgba(248,113,113,0.12);
+        color: #f87171;
+      }
+      .ur-empty {
+        color: #b8c4e0;
+        font-style: italic;
+        padding: 0.6rem 0;
+      }
+
+      @media print {
+
+        @page { size: landscape; margin: 8mm; }
+
+        header.site-header,
+        .ur-toolbar,
+        .ur-back,
+        .ur-summary,
+        .ur-generated,
+        .ur-role-select-wrap { display: none !important; }
+
+        body { background: #fff !important; color: #000 !important; }
+        .container { max-width: none; padding: 0; }
+        .user-report-block {
+          border: none;
+          border-radius: 0;
+          padding: 0 0 0.5rem;
+          margin: 0 0 1rem;
+          background: none;
+          break-before: page;
+          page-break-before: always;
+        }
+        .user-report-block:first-of-type { break-before: auto; page-break-before: auto; }
+        .user-report-block.ur-first-print { break-before: auto !important; page-break-before: auto !important; }
+        .user-report-block.ur-hidden-print { display: none !important; }
+        .ur-role-title { color: #000 !important; }
+        .ur-table { table-layout: fixed; width: 100%; font-size: 7pt; white-space: normal; }
+        .ur-table thead th { background: #eee !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .ur-table th, .ur-table td {
+          border-bottom: 1px solid #ccc;
+          padding: 0.1rem 0.22rem;
+          vertical-align: top;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+        /* Fixed column widths so all 16 columns fit the landscape page. */
+        .ur-table thead th:nth-child(1),  .ur-table tbody td:nth-child(1)  { width: 9%; }   /* Name */
+        .ur-table thead th:nth-child(2),  .ur-table tbody td:nth-child(2)  { width: 12%; }  /* Email */
+        .ur-table thead th:nth-child(3),  .ur-table tbody td:nth-child(3)  { width: 7%; }   /* Phone */
+        .ur-table thead th:nth-child(4),  .ur-table tbody td:nth-child(4)  { width: 6%; }   /* Role */
+        .ur-table thead th:nth-child(5),  .ur-table tbody td:nth-child(5)  { width: 6%; }   /* Status */
+        .ur-table thead th:nth-child(6),  .ur-table tbody td:nth-child(6)  { width: 6%; }   /* Joined */
+        .ur-table thead th:nth-child(7),  .ur-table tbody td:nth-child(7)  { width: 5%; }   /* Dues */
+        .ur-table thead th:nth-child(8),  .ur-table tbody td:nth-child(8)  { width: 5%; }   /* Guest Fee */
+        .ur-table thead th:nth-child(9),  .ur-table tbody td:nth-child(9)  { width: 5%; }   /* Beads */
+        .ur-table thead th:nth-child(10), .ur-table tbody td:nth-child(10) { width: 5%; }   /* Costume */
+        .ur-table thead th:nth-child(11), .ur-table tbody td:nth-child(11) { width: 4%; }   /* Captain */
+        .ur-table thead th:nth-child(12), .ur-table tbody td:nth-child(12) { width: 7%; }   /* Sponsor */
+        .ur-table thead th:nth-child(13), .ur-table tbody td:nth-child(13) { width: 6%; }   /* Location */
+        .ur-table thead th:nth-child(14), .ur-table tbody td:nth-child(14) { width: 4%; }   /* Member # */
+        .ur-table thead th:nth-child(15), .ur-table tbody td:nth-child(15) { width: 6%; }   /* Occupation */
+        .ur-table thead th:nth-child(16), .ur-table tbody td:nth-child(16) { width: 7%; }   /* Organizations */
+        .ur-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .ur-pay, .ur-status-pill {
+          border: none !important;
+          background: none !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .ur-pay-paid { color: #046c3b !important; }
+        .ur-pay-unpaid { color: #b00020 !important; }
+        .ur-status-pill { color: #046c3b !important; }
+        .ur-status-pill.ur-disabled { color: #b00020 !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <div id="nav-mount"></div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="users-report-page" class="section" style="display:none;">
+        <h2>Users Report</h2>
+        <p>
+          All users grouped by role, one line per user (landscape). Each role starts on
+          its own page when printed or saved to PDF. Tick individual roles and export
+          just those, or leave all selected to export everything.
+        </p>
+
+        <div class="ur-toolbar" id="ur-toolbar">
+          <div class="ur-select-tools">
+            <button type="button" id="ur-select-all" class="button secondary">Select all</button>
+            <button type="button" id="ur-select-none" class="button secondary">Clear</button>
+          </div>
+          <span class="ur-selected-count" id="ur-selected-count"></span>
+          <button type="button" id="ur-export-pdf" class="button">Export PDF</button>
+          <button type="button" id="ur-export-excel" class="button secondary">Export Excel</button>
+          <a class="button secondary ur-back" href="/user-management.html">Back to User Management</a>
+          <span class="ur-generated" id="ur-generated"></span>
+        </div>
+
+        <p class="ur-summary" id="ur-summary"></p>
+        <div id="users-report-list"></div>
+        <div id="users-report-feedback" aria-live="polite"></div>
+      </section>
+
+      <section id="users-report-denied" class="section" style="display:none;">
+        <h2>Users Report</h2>
+        <p>You do not have permission to view this report. Please contact an administrator.</p>
+        <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+      </section>
+    </main>
+
+    <script src="script.js?v=20250720c"></script>
+    <script src="auth.js?v=20250722c"></script>
+    <script src="users-report.js?v=20250801a"></script>
+  </body>
+</html>
