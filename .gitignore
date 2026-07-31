@@ -5,3 +5,6 @@
 node_modules/plivo/dist/rest/request-test.js
 tmp/
 .gitignore
+# Editor/generated file backups (not source)
+_file_backups/
+backend/_file_backups/
