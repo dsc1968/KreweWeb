@@ -1140,5 +1140,127 @@ async function put__api_admin_floats_lock(req, res) {
   res.json({ locked });
 }
 
+
+function csvCell(value) {
+  const s = value == null ? '' : String(value);
+  if (/[",\r\n]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+async function get__api_admin_floats_report(req, res) {
+  if (!isFloatAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const format = (req.query.format || 'json').toLowerCase();
+    const floatIdRaw = req.query.floatId;
+    const floatId = floatIdRaw != null ? parseInt(floatIdRaw, 10) : null;
+    if (floatId != null && Number.isNaN(floatId)) {
+      return res.status(400).json({ error: 'Invalid floatId' });
+    }
+
+    const floatsRes = await pool.query(
+      `SELECT f.id, f.name, f.float_number, f.description, f.capacity
+       FROM floats f
+       ${floatId != null ? 'WHERE f.id = $1' : ''}
+       ORDER BY f.position ASC, f.name ASC`,
+      floatId != null ? [floatId] : []
+    );
+    const floats = floatsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name || '',
+      float_number: r.float_number || '',
+      description: r.description || '',
+      capacity: (typeof r.capacity === 'number') ? r.capacity : (r.capacity != null ? parseInt(r.capacity, 10) : null),
+    }));
+
+    const membersRes = await pool.query(
+      `SELECT p.float_id AS float_id, u.id AS user_id, u.full_name, u.email, u.phone,
+              p.sponsor_name, p.member_float_number, p.address, p.city, p.state, p.zip,
+              p.float_riders
+       FROM user_profiles p
+       JOIN users u ON u.id = p.user_id
+       ORDER BY u.full_name ASC`
+    );
+
+    const memberById = {};
+    const ridersByFloat = {};
+    membersRes.rows.forEach((r) => {
+      memberById[r.user_id] = {
+        user_id: r.user_id,
+        full_name: r.full_name || '',
+        email: r.email || '',
+        phone: r.phone || '',
+        sponsor_name: r.sponsor_name || '',
+        member_float_number: r.member_float_number || '',
+        address: r.address || '',
+        city: r.city || '',
+        state: r.state || '',
+        zip: r.zip || '',
+      };
+      const memberFid = r.float_id;
+      const riders = Array.isArray(r.float_riders) ? r.float_riders : [];
+      const pushRider = (name, comment, fid) => {
+        if (!ridersByFloat[fid]) ridersByFloat[fid] = [];
+        ridersByFloat[fid].push({ name, comment, user_id: r.user_id });
+      };
+      if (riders.length === 0) {
+        if (memberFid) pushRider('', '', memberFid);
+        return;
+      }
+      riders.forEach((rider) => {
+        const name = (rider && typeof rider === 'object') ? (rider.name || '') : String(rider || '');
+        const comment = (rider && typeof rider === 'object') ? (rider.comment || '') : '';
+        const fid = (rider && typeof rider === 'object' && rider.float_id) ? rider.float_id : memberFid;
+        if (!fid) return;
+        if (name || comment) pushRider(name, comment, fid);
+      });
+    });
+
+    const reportFloats = floats.map((f) => ({
+      id: f.id,
+      name: f.name,
+      float_number: f.float_number,
+      description: f.description,
+      capacity: f.capacity,
+      riders: (ridersByFloat[f.id] || []).map((r) => ({
+        name: r.name,
+        comment: r.comment,
+        member: memberById[r.user_id] || null,
+      })),
+    }));
+
+    if (format === 'csv') {
+      const header = ['Float', 'Float #', 'Rider Name', 'Comment', 'Sponsoring Member', 'Sponsor Name', 'Email', 'Phone', 'Member #', 'Address', 'City', 'State', 'Zip'];
+      const rows = [];
+      reportFloats.forEach((f) => {
+        if (!f.riders.length) {
+          rows.push([f.name, f.float_number, '', '', '', '', '', '', '', '', '', '', '']);
+          return;
+        }
+        f.riders.forEach((r) => {
+          const m = r.member || {};
+          rows.push([
+            f.name, f.float_number, r.name, r.comment,
+            m.full_name || '', m.sponsor_name || '', m.email || '', m.phone || '',
+            m.member_float_number || '', m.address || '', m.city || '', m.state || '', m.zip || '',
+          ]);
+        });
+      });
+      const csv = [header].concat(rows).map((row) => row.map(csvCell).join(',')).join('\r\n');
+      const filename = (floatId != null ? 'float-' + floatId : 'floats') + '-report.csv';
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+      return res.status(200).send('\uFEFF' + csv);
+    }
+
+    res.json({ generatedAt: new Date().toISOString(), floats: reportFloats });
+  } catch (error) {
+    console.error('Failed to generate float report', error);
+    res.status(500).json({ error: 'Unable to generate float report' });
+  }
+}
+
 module.exports = {
+ get__api_admin_floats_report,
  delete__api_admin_users__userId,delete__api_users__userId,get__api_floats,get__api_admin_floats,get__api_admin_payments,get__api_admin_users,get__api_admin_users__userId,get__api_admin_users__userId_orders,get__api_current_season,get__api_users,post__api_admin_users,post__api_users,put__api_admin_users__userId_details,put__api_admin_users__userId_disable,put__api_admin_users__userId_password,put__api_admin_users__userId_role,put__api_users__userId_disable,put__api_users__userId_password,put__api_users__userId_role,post__api_admin_floats,put__api_admin_floats__floatId,delete__api_admin_floats__floatId,delete__api_admin_floats__floatId_riders,put__api_admin_floats_lock,patch__api_admin_users__userId_payments, };

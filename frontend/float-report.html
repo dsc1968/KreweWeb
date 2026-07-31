@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Float Riders Report - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .fr-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        margin: 0.5rem 0 1.25rem;
+      }
+      .fr-select-tools { display: flex; gap: 0.5rem; align-items: center; }
+      .fr-selected-count { color: #b8c4e0; font-size: 0.85rem; }
+      .fr-generated { color: #b8c4e0; font-size: 0.85rem; margin-left: auto; }
+      .fr-summary { color: #b8c4e0; font-size: 0.9rem; margin: 0 0 1rem; }
+
+      .float-report-block {
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        padding: 1rem 1.1rem 1.25rem;
+        margin-bottom: 1.25rem;
+        background: rgba(255,255,255,0.02);
+        break-before: page;
+        page-break-before: always;
+      }
+      .float-report-block:first-of-type { break-before: auto; page-break-before: auto; }
+      .fr-float-select-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #b8c4e0;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        user-select: none;
+      }
+      .fr-float-select-wrap input { width: auto; }
+      .fr-float-title {
+        margin: 0 0 0.15rem;
+        font-size: 1.15rem;
+      }
+      .fr-float-meta {
+        margin: 0 0 0.85rem;
+        color: #b8c4e0;
+        font-size: 0.85rem;
+      }
+      .fr-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 0.88rem;
+      }
+      .fr-table th, .fr-table td {
+        text-align: left;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        vertical-align: top;
+      }
+      .fr-table thead th {
+        background: rgba(94,234,212,0.08);
+        color: #d7fff5;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+      }
+      .fr-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+      .fr-empty {
+        color: #b8c4e0;
+        font-style: italic;
+        padding: 0.6rem 0;
+      }
+
+      @media print {
+        header.site-header,
+        .fr-toolbar,
+        .fr-back,
+        .fr-summary,
+        .fr-generated,
+        .fr-float-select-wrap { display: none !important; }
+
+        body { background: #fff !important; color: #000 !important; }
+        .container { max-width: none; padding: 0; }
+        .float-report-block {
+          border: none;
+          border-radius: 0;
+          padding: 0 0 0.5rem;
+          margin: 0 0 1rem;
+          background: none;
+          break-before: page;
+          page-break-before: always;
+        }
+        .float-report-block:first-of-type { break-before: auto; page-break-before: auto; }
+        .float-report-block.fr-first-print { break-before: auto !important; page-break-before: auto !important; }
+        .float-report-block.fr-hidden-print { display: none !important; }
+        .fr-float-title { color: #000 !important; }
+        .fr-float-meta { color: #333 !important; }
+        .fr-table { font-size: 10pt; }
+        .fr-table thead th { background: #eee !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .fr-table th, .fr-table td { border-bottom: 1px solid #ccc; }
+        .fr-table tr { break-inside: avoid; page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <div id="nav-mount"></div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="float-report-page" class="section" style="display:none;">
+        <h2>Float Riders Report</h2>
+        <p>
+          All riders grouped by float. Each float starts on its own page when printed
+          or saved to PDF. Tick individual floats and export just those, or leave all
+          selected to export everything.
+        </p>
+
+        <div class="fr-toolbar" id="fr-toolbar">
+          <div class="fr-select-tools">
+            <button type="button" id="fr-select-all" class="button secondary">Select all</button>
+            <button type="button" id="fr-select-none" class="button secondary">Clear</button>
+          </div>
+          <span class="fr-selected-count" id="fr-selected-count"></span>
+          <button type="button" id="fr-export-pdf" class="button">Export PDF</button>
+          <button type="button" id="fr-export-excel" class="button secondary">Export Excel</button>
+          <a class="button secondary fr-back" href="/float-admin.html">Back to Float Management</a>
+          <span class="fr-generated" id="fr-generated"></span>
+        </div>
+
+        <p class="fr-summary" id="fr-summary"></p>
+        <div id="float-report-list"></div>
+        <div id="float-report-feedback" aria-live="polite"></div>
+      </section>
+
+      <section id="float-report-denied" class="section" style="display:none;">
+        <h2>Float Riders Report</h2>
+        <p>You do not have permission to view this report. Please contact an administrator.</p>
+        <a class="button secondary" href="/dashboard.html">Back to Dashboard</a>
+      </section>
+    </main>
+
+    <script src="script.js?v=20250720c"></script>
+    <script src="auth.js?v=20250722c"></script>
+    <script src="float-report.js?v=20250722c"></script>
+  </body>
+</html>

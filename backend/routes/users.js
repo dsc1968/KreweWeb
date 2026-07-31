@@ -4,7 +4,7 @@ const { authenticateToken } = require('../middlewares/auth');
 const { upload } = require('../utils/files');
 const { isFloatAdmin, isFinanceAdmin } = require('../utils/validation');
 const { requireFloatChange } = require('../utils/floatsLock');
-const { get__api_users, get__api_current_season, get__api_admin_users, get__api_admin_users__userId, put__api_admin_users__userId_details, post__api_admin_users, post__api_users, put__api_admin_users__userId_role, put__api_users__userId_role, put__api_admin_users__userId_disable, put__api_users__userId_disable, delete__api_admin_users__userId, delete__api_users__userId, put__api_admin_users__userId_password, put__api_users__userId_password, get__api_admin_users__userId_orders, patch__api_admin_users__userId_payments, get__api_admin_floats, post__api_admin_floats, put__api_admin_floats__floatId, delete__api_admin_floats__floatId, delete__api_admin_floats__floatId_riders, get__api_floats, get__api_admin_payments, put__api_admin_floats_lock } = require('../controllers/usersController');
+const { get__api_users, get__api_current_season, get__api_admin_users, get__api_admin_users__userId, put__api_admin_users__userId_details, post__api_admin_users, post__api_users, put__api_admin_users__userId_role, put__api_users__userId_role, put__api_admin_users__userId_disable, put__api_users__userId_disable, delete__api_admin_users__userId, delete__api_users__userId, put__api_admin_users__userId_password, put__api_users__userId_password, get__api_admin_users__userId_orders, patch__api_admin_users__userId_payments, get__api_admin_floats, get__api_admin_floats_report, post__api_admin_floats, put__api_admin_floats__floatId, delete__api_admin_floats__floatId, delete__api_admin_floats__floatId_riders, get__api_floats, get__api_admin_payments, put__api_admin_floats_lock } = require('../controllers/usersController');
 
 function requireFloatAdmin(req, res, next) {
   if (!isFloatAdmin(req)) {
@@ -39,6 +39,7 @@ router.get('/api/admin/users/:userId/orders', authenticateToken, get__api_admin_
 router.patch('/api/admin/users/:userId/payments', authenticateToken, requireFinanceAdmin, patch__api_admin_users__userId_payments);
 router.get('/api/floats', authenticateToken, get__api_floats);
 router.get('/api/admin/floats', authenticateToken, requireFloatAdmin, get__api_admin_floats);
+router.get('/api/admin/floats/report', authenticateToken, requireFloatAdmin, get__api_admin_floats_report);
 router.post('/api/admin/floats', authenticateToken, requireFloatChange, post__api_admin_floats);
 router.put('/api/admin/floats/lock', authenticateToken, requireFloatChange, put__api_admin_floats_lock);
 router.put('/api/admin/floats/:floatId', authenticateToken, requireFloatChange, put__api_admin_floats__floatId);
