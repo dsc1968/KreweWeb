@@ -1,17 +1,22 @@
 // ── EDITOR BUILD MARKER ─────────────────────────────────────────────────────────
 // Open the browser console and run:  window.KREWE_EDITOR_VERSION
-// If it does NOT show "20250719b-editor-fixes", your browser is serving a STALE
+// If it does NOT show "20250720d", your browser is serving a STALE
 // cached script.js. Hard-refresh (Ctrl/Cmd+Shift+R) or restart the dev server.
-window.KREWE_EDITOR_VERSION = '20250719b-editor-fixes';
+window.KREWE_EDITOR_VERSION = '20250720d';
 console.log('[KreweEditor] loaded version', window.KREWE_EDITOR_VERSION);
 
 const countdownTarget = new Date('2027-03-01T12:00:00').getTime();
 
 // ── Mobile hamburger nav ──────────────────────────────────────
-(function () {
-  const nav = document.querySelector('.site-nav');
+function initHamburgerNav() {
   const headerInner = document.querySelector('.header-inner');
+  // Nav is injected into #nav-mount by initHeaderState(); if it isn't
+  // present yet, bail and let a later call (after injection) create it.
+  const nav = document.querySelector('.site-nav');
   if (!nav || !headerInner) return;
+
+  // Don't create duplicate toggles on repeated init calls.
+  if (headerInner.querySelector('.nav-toggle')) return;
 
   const btn = document.createElement('button');
   btn.className = 'nav-toggle';
@@ -21,20 +26,26 @@ const countdownTarget = new Date('2027-03-01T12:00:00').getTime();
   headerInner.appendChild(btn);
 
   btn.addEventListener('click', () => {
-    const open = nav.classList.toggle('is-open');
+    // Re-query in case the nav element was replaced (e.g. admin reorder).
+    const currentNav = document.querySelector('.site-nav');
+    if (!currentNav) return;
+    const open = currentNav.classList.toggle('is-open');
     btn.setAttribute('aria-expanded', String(open));
     btn.innerHTML = open ? '&times;' : '&#9776;';
   });
 
-  // Close nav when a link is clicked
-  nav.addEventListener('click', (e) => {
-    if (e.target.tagName === 'A') {
-      nav.classList.remove('is-open');
+  // Close the nav when a nav link is tapped (mobile). Delegated so it
+  // keeps working even if the nav markup is rebuilt.
+  document.addEventListener('click', (e) => {
+    const currentNav = document.querySelector('.site-nav');
+    if (currentNav && currentNav.contains(e.target) && e.target.closest('a')) {
+      currentNav.classList.remove('is-open');
       btn.setAttribute('aria-expanded', 'false');
       btn.innerHTML = '&#9776;';
     }
   });
-})();
+}
+
 
 const countdownElements = {
   days: document.getElementById('days'),
@@ -930,6 +941,9 @@ if (countdownElements.days) {
       actions.appendChild(logoutLink);
       headerInner.appendChild(actions);
     }
+
+    // Build the mobile hamburger toggle now that #nav-mount is populated.
+    initHamburgerNav();
   }
 
   async function fetchCurrentProfile() {
