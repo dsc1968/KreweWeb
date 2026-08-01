@@ -9,7 +9,7 @@ const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerif
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
-const { appDir: _bAppDir, BACKUP_CONFIG_KEYS, BACKUP_SCHEDULE_KEYS, backupIdSafe, collectBackupAppFiles, computeNextScheduledBackup, createBackup, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, listZipEntries, makeS3Client, readBackupConfig, readBackupSchedule, removeDir, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, zipDirectory } = require('../utils/backup');
+const { appDir: _bAppDir, BACKUP_CONFIG_KEYS, BACKUP_SCHEDULE_KEYS, backupIdSafe, collectBackupAppFiles, computeNextScheduledBackup, computeRestoreInsertOrder, createBackup, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, listZipEntries, makeS3Client, readBackupConfig, readBackupSchedule, removeDir, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, zipDirectory } = require('../utils/backup');
 
 async function get__api_admin_backup_location(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
@@ -339,6 +339,7 @@ async function post__api_admin_backups__id_restore(req, res) {
       );
       const existing = new Set(existingRes.rows.map((r) => r.table_name));
       const tables = Object.keys(dump).filter((t) => existing.has(t) && isSafeColumnName(t));
+      const insertOrder = await computeRestoreInsertOrder(pool, tables);
       if (tables.length === 0) return res.status(400).json({ error: 'Backup contains no restorable tables' });
 
       const pgClient = await pool.connect();
@@ -348,7 +349,7 @@ async function post__api_admin_backups__id_restore(req, res) {
         // does NOT cascade to tables outside this list, so no unrelated data is
         // wiped. (We back up every application table, so this set is complete.)
         await pgClient.query(`TRUNCATE ${tables.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY`);
-        for (const table of tables) {
+        for (const table of insertOrder) {
           const rows = dump[table];
           if (!Array.isArray(rows) || rows.length === 0) continue;
           for (const row of rows) {

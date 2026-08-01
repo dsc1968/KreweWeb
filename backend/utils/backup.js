@@ -197,6 +197,71 @@ async function listAppTables(pool) {
     .filter((t) => !BACKUP_EXCLUDED_TABLES.has(t) && /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(t));
 }
 
+
+
+
+// Order the given tables so that parent tables (those referenced by foreign
+// keys) are restored before the child tables that depend on them. This keeps
+// INSERTs from violating foreign-key constraints when a database backup is
+// restored.
+//
+// The ordering is computed from the live foreign-key graph in information_schema
+// rather than a hard-coded list, so it (a) needs no special privileges, (b)
+// adapts automatically when tables are added/removed, and (c) tolerates a
+// table being absent from the backup (edges to tables outside `tables` are
+// ignored, since those rows are never truncated and therefore still exist).
+//
+// `client` must be an active pg client/connection. Returns `tables` sorted so
+// that dependencies come first; any tables left over from a cycle are appended
+// at the end so the restore still proceeds rather than silently skipping data.
+async function computeRestoreInsertOrder(client, tables) {
+  if (!Array.isArray(tables) || tables.length === 0) return [];
+  const tableSet = new Set(tables);
+
+  const depsRes = await client.query(
+    `SELECT tc.table_name AS child, ccu.table_name AS parent
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.constraint_column_usage ccu
+       ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+     WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+       AND tc.table_name = ANY($1::text[]) AND ccu.table_name = ANY($1::text[])`,
+    [tables]
+  );
+
+  // dependents: parent -> children that must come after it.
+  // indegree: how many parents each table still needs before it can be emitted.
+  const dependents = new Map();
+  const indegree = new Map();
+  for (const t of tables) { dependents.set(t, new Set()); indegree.set(t, 0); }
+  for (const row of depsRes.rows) {
+    const { child, parent } = row;
+    if (child === parent) continue;
+    if (!tableSet.has(child) || !tableSet.has(parent)) continue;
+    if (!dependents.get(parent).has(child)) {
+      dependents.get(parent).add(child);
+      indegree.set(child, indegree.get(child) + 1);
+    }
+  }
+
+  // Kahn's algorithm: emit tables with no outstanding dependencies first.
+  const queue = tables.filter((t) => indegree.get(t) === 0);
+  const order = [];
+  const seen = new Set();
+  while (queue.length) {
+    const t = queue.shift();
+    if (seen.has(t)) continue;
+    seen.add(t);
+    order.push(t);
+    for (const child of dependents.get(t)) {
+      indegree.set(child, indegree.get(child) - 1);
+      if (indegree.get(child) === 0) queue.push(child);
+    }
+  }
+  // Append anything left behind by a cycle so no data is silently dropped.
+  for (const t of tables) if (!seen.has(t)) order.push(t);
+  return order;
+}
+
 async function listLocalBackupsFromDir(localPath) {
   if (!fs.existsSync(localPath)) return [];
   return fs.readdirSync(localPath)
@@ -518,4 +583,4 @@ async function listZipEntries(zipPath) {
   return directory.files.map((f) => f.path);
 }
 
-module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,createBackup,DB_TABLES_INSERT_ORDER,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,removeDir,runScheduledBackupTick,pruneScheduledBackups,deleteBackupArtifact,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };
+module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,computeRestoreInsertOrder,createBackup,DB_TABLES_INSERT_ORDER,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,removeDir,runScheduledBackupTick,pruneScheduledBackups,deleteBackupArtifact,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };
