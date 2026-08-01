@@ -2169,7 +2169,7 @@ if (countdownElements.days) {
         });
       }
 
-      if (state.isAdmin && state.editMode) {
+      if (state.isAdmin) {
         const tools = document.createElement('div');
         tools.style.display = 'flex';
         tools.style.gap = '0.35rem';
@@ -2218,7 +2218,7 @@ if (countdownElements.days) {
       grid.appendChild(item);
     });
 
-    uploadButton.style.display = state.isAdmin && state.editMode ? 'inline-flex' : 'none';
+    uploadButton.style.display = state.isAdmin ? 'inline-flex' : 'none';
     uploadButton.onclick = () => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -2300,7 +2300,11 @@ if (countdownElements.days) {
     const root = getAlbumsRoot();
     if (!root) return;
 
-    const isAdminEdit = state.isAdmin && state.editMode;
+    // Album management is an admin capability, independent of the page-level
+    // "edit mode" toggle (which only controls text/section editing). Gate the
+    // album tools on admin status so they appear whenever an admin is viewing the
+    // page, not only while global edit mode is active.
+    const isAdminEdit = state.isAdmin;
 
     const cards = state.albums.map((album) => {
       const cover = album.cover_image_path
@@ -2308,7 +2312,7 @@ if (countdownElements.days) {
         : '<div class="album-cover-empty">No cover image</div>';
       const description = album.description ? `<p>${escapeHtml(album.description)}</p>` : '';
       const adminTools = isAdminEdit ? `
-          <div class="album-tools">
+          <div class="album-tools" style="display:flex">
             <button type="button" data-album-action="move-up" data-album-id="${album.id}">Up</button>
             <button type="button" data-album-action="move-down" data-album-id="${album.id}">Down</button>
             <button type="button" data-album-action="add-photo" data-album-id="${album.id}">Add Photo</button>
@@ -2333,7 +2337,7 @@ if (countdownElements.days) {
     }).join('');
 
     const adminToolbar = isAdminEdit
-      ? '<div class="album-admin-toolbar"><button type="button" data-album-action="create">Create Album</button></div>'
+      ? '<div class="album-admin-toolbar" style="display:flex"><button type="button" data-album-action="create">Create Album</button></div>'
       : '';
     const emptyMsg = isAdminEdit ? '<p class="section-intro">No albums yet.</p>' : '';
 
@@ -2377,7 +2381,7 @@ if (countdownElements.days) {
           return;
         }
 
-        if (!state.isAdmin || !state.editMode) {
+        if (!state.isAdmin) {
           return;
         }
 
