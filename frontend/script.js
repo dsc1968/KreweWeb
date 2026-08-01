@@ -2172,11 +2172,13 @@ if (countdownElements.days) {
       if (state.isAdmin) {
         const tools = document.createElement('div');
         tools.style.display = 'flex';
-        tools.style.gap = '0.35rem';
+        tools.style.flexWrap = 'wrap';
+        tools.style.gap = '0.3rem';
         tools.style.padding = '0 0.5rem 0.6rem';
 
         const captionButton = document.createElement('button');
         captionButton.type = 'button';
+        captionButton.className = 'album-photo-action';
         captionButton.textContent = 'Caption';
         captionButton.addEventListener('click', async () => {
           const nextCaption = window.prompt('Photo caption:', image.caption || '');
@@ -2188,6 +2190,7 @@ if (countdownElements.days) {
 
         const coverButton = document.createElement('button');
         coverButton.type = 'button';
+        coverButton.className = 'album-photo-action';
         coverButton.textContent = 'Set Cover';
         coverButton.addEventListener('click', async () => {
           await updateAlbum(albumId, {
@@ -2202,6 +2205,7 @@ if (countdownElements.days) {
 
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
+        deleteButton.className = 'album-photo-action danger';
         deleteButton.textContent = 'Delete';
         deleteButton.style.color = '#ff9b9b';
         deleteButton.addEventListener('click', async () => {

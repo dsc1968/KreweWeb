@@ -634,6 +634,28 @@ body.admin-edit-mode .album-tools {
   padding: 0.45rem 0.5rem 0.55rem;
 }
 
+/* Per-picture management actions (Caption / Set Cover / Delete) inside the
+   album editor. Small, wrapping pills so every control stays visible even in
+   the narrow album grid cells. */
+.album-photo-action {
+  flex: 1 1 auto;
+  min-width: max-content;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f7ff;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.album-photo-action.danger {
+  color: #ff9b9b;
+}
+
 /* Album/editor modal backdrop — fixed full-screen overlay so the modal
    opens centered in the viewport instead of at the bottom of the page. */
 .admin-editor-backdrop {
