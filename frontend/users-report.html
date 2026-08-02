@@ -53,7 +53,11 @@
         border-collapse: collapse;
         margin: 0;
         font-size: 0.8rem;
-        white-space: nowrap;
+        /* Allow cells to wrap so long values (name/email/sponsor/orgs) fit
+           instead of being clipped to a single line. */
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .ur-table th, .ur-table td {
         text-align: left;
@@ -68,7 +72,7 @@
         position: sticky;
         top: 0;
       }
-      .ur-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+      .ur-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.05); }
       .ur-table tbody tr.ur-disabled-row { opacity: 0.65; }
       .ur-pay {
         display: inline-block;
@@ -166,6 +170,13 @@
         .ur-table thead th:nth-child(15), .ur-table tbody td:nth-child(15) { width: 6%; }   /* Occupation */
         .ur-table thead th:nth-child(16), .ur-table tbody td:nth-child(16) { width: 7%; }   /* Organizations */
         .ur-table tr { break-inside: avoid; page-break-inside: avoid; }
+        /* Keep a clearly visible alternating tint on every other record so rows
+           are easy to separate in the PDF (force the color to print). */
+        .ur-table tbody tr:nth-child(even) {
+          background: #eaf0f7 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
         .ur-pay, .ur-status-pill {
           border: none !important;
           background: none !important;
