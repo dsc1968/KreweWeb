@@ -107,12 +107,14 @@
             </div>
 
             <p class="db-config-section-label" style="margin-top:1rem;">Multi-Factor Authentication (MFA)</p>
-            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Require members to verify their identity with a one-time code (email or SMS) when they register and/or sign in. Admin and store-admin accounts always require MFA. Changes apply immediately.</p>
+
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Require members to verify their identity with a one-time code (email, SMS, or an authenticator app) when they register and/or sign in. Choose <strong>Disabled</strong> to turn MFA off for everyone &mdash; including administrators. Choose <strong>Admins only</strong> to exempt members from MFA while still requiring it for all administrators (admin, store, float, and finance).</p>
             <div class="db-form-grid">
               <div class="form-group" style="grid-column:1/-1;">
                 <label for="cfg-mfa-mode">MFA Requirement</label>
                 <select id="cfg-mfa-mode" name="mfa_mode">
-                  <option value="off">Disabled — no MFA for members</option>
+                  <option value="off">Disabled — no MFA for anyone (including admins)</option>
+                  <option value="admins_only">Admins only — members can skip MFA, admins required</option>
                   <option value="registration">Required at registration only</option>
                   <option value="registration_and_login">Required at registration and login (recommended)</option>
                 </select>

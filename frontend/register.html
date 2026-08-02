@@ -78,7 +78,13 @@
             <p id="mfa-prompt" class="field-hint"></p>
             <label for="mfa_code">Verification code</label>
             <input id="mfa_code" name="mfa_code" inputmode="numeric" autocomplete="one-time-code" />
+            <div id="mfa-method-switch" hidden style="margin-top:0.5rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+              <button type="button" class="button" data-mfa-method="email">Email me a code</button>
+              <button type="button" class="button" data-mfa-method="sms">Text me a code</button>
+              <button type="button" class="button" data-mfa-method="authenticator">Use authenticator app</button>
+            </div>
             <button type="button" id="mfa-resend-button" hidden style="margin-top:0.5rem; background:none; border:none; color:var(--accent); text-decoration:underline; cursor:pointer; padding:0; font:inherit;">Resend code</button>
+            <div id="mfa-otp-setup" hidden style="margin-top:0.75rem;"></div>
           </div>
 
           <p id="register-feedback" aria-live="polite"></p>

@@ -5,20 +5,48 @@ const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
 const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp, isSmsConfigured } = require('../utils/email');
+const { randomBase32Secret, verifyTotp, buildOtpauthUri } = require('../utils/totp');
+
+// Optional QR-code rendering for authenticator-app provisioning. When the
+// `qrcode` package is installed we return a PNG data URI so the client can
+// show a scannable code; otherwise we fall back to a copyable secret + URI.
+let QRCode = null;
+try { QRCode = require('qrcode'); } catch (_qrErr) { QRCode = null; }
+
+// Builds the provisioning details an authenticator app needs to enroll: the
+// otpauth:// URI (for QR scanning) plus the raw base32 secret (for manual
+// entry) and, when available, a scannable QR image data URI.
+async function buildAuthenticatorProvisioning(email, secret, issuer = 'Krewe Mystique') {
+  const otpauthUri = buildOtpauthUri({ issuer, account: email, secretBase32: secret });
+  let qr = null;
+  if (QRCode && QRCode.toDataURL) {
+    try {
+      qr = await QRCode.toDataURL(otpauthUri, { margin: 2, width: 240 });
+    } catch (_qrErr) {
+      qr = null;
+    }
+  }
+  return { method: 'authenticator', otpauthUri, secret, qr, issuer };
+}
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
 const { appDir: _bAppDir, getSiteSetting, setSiteSetting, BACKUP_CONFIG_KEYS, backupIdSafe, collectBackupAppFiles, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, makeS3Client, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, readBackupConfig, removeDir, zipDirectory } = require('../utils/backup');
 
 // ── MFA configuration & helpers ──────────────────────────────────────────────
-const MFA_MODES = ['off', 'registration', 'registration_and_login'];
-const MFA_METHODS = ['email', 'sms'];
+
+const MFA_MODES = ['off', 'admins_only', 'registration', 'registration_and_login'];
+
+const MFA_METHODS = ['email', 'sms', 'authenticator'];
 
 // The MFA methods the site can actually offer right now. SMS is only included
 // when the SMS gateway (Plivo) is configured — the same condition
 // dispatchMfaCode() uses — so dropping it here hides the SMS option in the UI.
+// The TOTP "authenticator" method needs no gateway, so it is always offered.
+// Email remains the default/primary method (see policy + UI defaults).
 function getAvailableMfaMethods() {
-  const methods = ['email'];
+
+  const methods = ['email', 'authenticator'];
   if (isSmsConfigured()) methods.push('sms');
   return methods;
 }
@@ -45,10 +73,14 @@ function mfaPolicyRequires(role, mode, email) {
   // The bootstrap admin (admin@krewe.local) is exempt from MFA so the initial
   // login works before email/SMS delivery is configured.
   if (email && email.toLowerCase() === 'admin@krewe.local') return false;
-  // Admins and store-admins always require MFA regardless of the site setting.
-  // For members, MFA at login is only required under "registration_and_login";
-  // the "registration" mode enforces MFA at sign-up only, and "off" enforces none.
-  return isElevatedRole(role) || mode === 'registration_and_login';
+  if (mode === 'off') return false;
+  if (mode === 'admins_only') return isElevatedRole(role);
+  return true;
+}
+
+// Whether a plain member must enroll MFA during registration (sign-up).
+function registrationRequiresMfa(mode) {
+  return mode === 'registration' || mode === 'registration_and_login';
 }
 
 
@@ -71,13 +103,25 @@ function maskMfaTarget(method, target) {
   return maskVerificationTarget(target);
 }
 
-async function startMfaChallenge(userId, method, target) {
+async function startMfaChallenge(userId, method, target, secret) {
   const expiresAt = new Date(Date.now() + MFA_CODE_TTL_MINUTES * 60 * 1000);
   await pool.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
   let code = null;
   let requestUuid = null;
   let delivery;
-  if (method === 'email') {
+  if (method === 'authenticator') {
+    // TOTP: there is no code to "send". The shared secret is either one
+    // we just generated (enrollment) or the user's stored secret (login).
+    // We stash it in the `code` column so mfa/verify can recompute the TOTP.
+    let sec = secret || null;
+    if (!sec) {
+      const r = await pool.query('SELECT mfa_secret FROM users WHERE id = $1', [userId]);
+      sec = (r.rows[0] && r.rows[0].mfa_secret) || null;
+    }
+    code = sec;
+    target = target || '';
+    delivery = undefined;
+  } else if (method === 'email') {
     code = generateVerificationCode();
     delivery = await dispatchMfaCode('email', target, code);
   } else {
@@ -244,20 +288,30 @@ async function post__api_auth_register_verify_code(req, res) {
     const user = insertResult.rows[0];
 
     const mode = await getMfaMode();
-    // When MFA is required at registration the email verification code the user
-    // just entered already proves ownership of the address, which is the member
-    // MFA factor (email). So we enroll email MFA here and finish sign-up in one
-    // step — we deliberately do NOT prompt for a second MFA code.
-    if (mode !== 'off') {
+    await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
+
+    // When MFA is required at registration we seed email as the default method
+    // (the email verification code just entered already proves ownership of the
+    // address) but do NOT log the user in yet. Instead we hand back an MFA
+    // challenge token so the client can finish enrollment (email / SMS /
+    // authenticator) via the /api/auth/mfa/send + /verify flow, which completes
+    // sign-in. This is what lets a member choose the authenticator app during
+    // registration.
+    if (registrationRequiresMfa(mode)) {
       await client.query(
         "UPDATE users SET mfa_method = 'email', mfa_enrolled = TRUE WHERE id = $1",
         [user.id]
       );
+      await client.query('COMMIT');
+      return res.status(201).json({
+        mfaEnrollmentRequired: true,
+        mfaToken: issueMfaToken(user.id),
+        availableMethods: getAvailableMfaMethods(),
+        message: 'Finish enabling two-factor sign-in to complete registration.',
+      });
     }
 
-    await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
     await client.query('COMMIT');
-
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.status(201).json({
@@ -269,10 +323,8 @@ async function post__api_auth_register_verify_code(req, res) {
         role: user.role,
       },
       token,
-      mfaEnrolled: mode !== 'off',
-      message: mode !== 'off'
-        ? 'Account created. Two-factor sign-in (email) is now enabled for your account.'
-        : 'Account created.',
+      mfaEnrolled: false,
+      message: 'Account created.',
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -312,7 +364,7 @@ async function post__api_auth_register(req, res) {
   }
 
   const mode = await getMfaMode();
-  if (mode !== 'off') {
+  if (registrationRequiresMfa(mode)) {
     // MFA is required at registration, so a verification code flow is mandatory.
     return res.status(400).json({ error: 'Registration requires verification. Please request a verification code.' });
   }
@@ -391,16 +443,21 @@ async function post__api_auth_login(req, res) {
         });
       }
       let method = user.mfa_method;
-      let target = method === 'sms' ? (user.profile_phone || user.email) : user.email;
+      let target = user.email;
       let notice = null;
-      const smsBlockedNoPhone = method === 'sms' && !user.profile_phone;
-      const smsBlockedNoGateway = method === 'sms' && !isSmsConfigured();
-      if (smsBlockedNoPhone || smsBlockedNoGateway) {
-        method = 'email';
+      if (method === 'authenticator') {
         target = user.email;
-        notice = smsBlockedNoPhone
-          ? 'SMS was selected but no phone number is on file, so email was used instead.'
-          : 'SMS is not configured on this site, so email was used instead.';
+      } else if (method === 'sms') {
+        target = user.profile_phone || user.email;
+        const smsBlockedNoPhone = !user.profile_phone;
+        const smsBlockedNoGateway = !isSmsConfigured();
+        if (smsBlockedNoPhone || smsBlockedNoGateway) {
+          method = 'email';
+          target = user.email;
+          notice = smsBlockedNoPhone
+            ? 'SMS was selected but no phone number is on file, so email was used instead.'
+            : 'SMS is not configured on this site, so email was used instead.';
+        }
       }
       const delivery = await startMfaChallenge(user.id, method, target);
       return res.json({
@@ -459,8 +516,9 @@ async function get__api_profile(req, res) {
       captain_of,
       mfa_mode: mode,
       mfa_available_methods: getAvailableMfaMethods(),
-      mfa_registration_required: mode !== 'off',
-      mfa_elevated_forced: true,
+      mfa_registration_required: registrationRequiresMfa(mode),
+
+      mfa_elevated_forced: mode !== 'off',
       kids_names: asArray(row.kids_names),
       kids_birthdays: asArray(row.kids_birthdays),
       grandchildren_names: asArray(row.grandchildren_names),
@@ -490,6 +548,11 @@ async function put__api_profile_details(req, res) {
   const sponsor_name  = typeof req.body.sponsor_name  === 'string' ? req.body.sponsor_name.trim().slice(0, 100)  : null;
   const spouse_name   = typeof req.body.spouse_name   === 'string' ? req.body.spouse_name.trim().slice(0, 100)   : null;
   const guest_name    = typeof req.body.guest_name    === 'string' ? req.body.guest_name.trim().slice(0, 100)    : null;
+  // The member's chosen MFA method (from the profile form). Accept the values
+  // the UI offers; coerce anything unexpected back to the default 'email'.
+  const mfa_method = (typeof req.body.mfa_method === 'string' && ['none', 'email', 'sms', 'authenticator'].includes(req.body.mfa_method))
+    ? req.body.mfa_method
+    : 'email';
 
   const kidsRaw = req.body.kids_names;
   if (!Array.isArray(kidsRaw)) return res.status(400).json({ error: 'kids_names must be an array' });
@@ -530,6 +593,7 @@ async function put__api_profile_details(req, res) {
     : [];
   let float_captain = Boolean(req.body.float_captain);
   const memberFloatRaw = typeof req.body.member_float_number === 'string' ? req.body.member_float_number.trim() : '';
+  
   let member_float_number = memberFloatRaw ? memberFloatRaw.slice(0, 20) : null;
   // Link the member to a float when they supply a float number that matches an
   // existing float. This makes them appear on that float's roster in the admin
@@ -542,8 +606,6 @@ async function put__api_profile_details(req, res) {
     } catch (_e) { /* leave unlinked if lookup fails */ }
   }
 
-  // MFA notification preference (email by default; SMS requires a phone)
-  const mfa_method = req.body.mfa_method === 'sms' ? 'sms' : 'email';
   if (mfa_method === 'sms' && !phone) {
     return res.status(400).json({ error: 'A phone number is required to use SMS for MFA.' });
   }
@@ -632,19 +694,35 @@ async function put__api_profile_details(req, res) {
         member_float_number||null, floatIdForProfile,
       ]
     );
-    await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
+    // For the authenticator app we defer committing mfa_method until the
+    // TOTP code is verified (enrollment), so we don't update it here.
+    if (mfa_method !== 'authenticator') {
+      await pool.query('UPDATE users SET mfa_method = $1 WHERE id = $2', [mfa_method, userId]);
+    }
 
-    // Start an SMS MFA challenge only when the member is actually (re)enrolling
-    // SMS — i.e. they just switched their MFA method TO "sms", or they changed
-    // the phone number the code is texted to. This keeps the profile
-    // "Text message (SMS)" option working without re-prompting on every save
-    // of unrelated fields.
+    // Start an MFA challenge only when the member is actually (re)enrolling a
+    // method. For SMS that means they switched TO "sms" or changed the phone
+    // number; for the authenticator app it means they switched TO it. This
+    // keeps re-prompting off for saves of unrelated profile fields.
     const switchedToSms = mfa_method === 'sms' && prevMfaMethod !== 'sms';
+    const switchedToAuth = mfa_method === 'authenticator' && prevMfaMethod !== 'authenticator';
     const phoneChanged = (phone || '').trim() !== prevPhone;
     const needSmsChallenge = mfa_method === 'sms' && !!phone && (switchedToSms || phoneChanged);
 
     let mfaChallenge = null;
-    if (needSmsChallenge) {
+    if (mfa_method === 'authenticator' && switchedToAuth) {
+      // Begin authenticator enrollment: generate a secret, stash it on the
+      // challenge, and return the provisioning details (QR + secret).
+      try {
+        const u = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+        const secret = randomBase32Secret();
+        await startMfaChallenge(userId, 'authenticator', u.rows[0].email, secret);
+        const info = await buildAuthenticatorProvisioning(u.rows[0].email, secret);
+        mfaChallenge = { ...info, mfaChallengeSent: true, mfaToken: issueMfaToken(userId) };
+      } catch (authErr) {
+        mfaChallenge = { mfaChallengeSent: false, error: 'Unable to start authenticator setup: ' + (authErr.message || authErr) };
+      }
+    } else if (needSmsChallenge) {
       try {
         const delivery = await startMfaChallenge(userId, 'sms', phone);
         mfaChallenge = {
@@ -680,8 +758,8 @@ async function get__api_mfa_policy(req, res) {
     const mode = await getMfaMode();
     res.json({
       mfaMode: mode,
-      registrationRequiresMfa: mode !== 'off',
-      elevatedForcedMfa: true,
+      registrationRequiresMfa: registrationRequiresMfa(mode),
+      elevatedForcedMfa: mode !== 'off',
       availableMethods: getAvailableMfaMethods(),
     });
   } catch (error) {
@@ -699,6 +777,33 @@ async function post__api_auth_mfa_send(req, res) {
   try {
     const u = await pool.query('SELECT u.email, p.phone FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.id = $1', [userId]);
     const user = u.rows[0];
+    if (method === 'authenticator') {
+      // Surface the provisioning details (QR + secret) for the client to scan.
+      // Prefer a secret already staged on an in-flight challenge; otherwise fall
+      // back to the user's stored secret (re-scanning an already-enrolled app).
+      let secret = null;
+      const ch = await pool.query(
+        'SELECT code FROM mfa_challenges WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [userId]
+      );
+      if (ch.rowCount > 0 && ch.rows[0].code) secret = ch.rows[0].code;
+      if (!secret) {
+        const ur = await pool.query('SELECT mfa_secret, email FROM users WHERE id = $1', [userId]);
+        if (ur.rows[0] && ur.rows[0].mfa_secret) {
+          secret = ur.rows[0].mfa_secret;
+          await startMfaChallenge(userId, 'authenticator', ur.rows[0].email, secret);
+        }
+      }
+      if (!secret) {
+        // First-time enrollment: generate a fresh secret and stage it on the
+        // challenge. It is committed to users.mfa_secret only after the TOTP
+        // code is verified, so an aborted enrollment leaves the account as-is.
+        secret = randomBase32Secret();
+        await startMfaChallenge(userId, 'authenticator', user.email, secret);
+      }
+      const info = await buildAuthenticatorProvisioning(user.email, secret);
+      return res.json({ ...info, mfaChallengeSent: true, mfaToken: issueMfaToken(userId) });
+    }
     let target;
     if (method === 'sms') {
       target = (req.body.phone && String(req.body.phone).trim()) || user.phone || null;
@@ -740,7 +845,12 @@ async function post__api_auth_mfa_verify(req, res) {
       return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
     }
     let verified = false;
-    if (c.request_uuid) {
+
+    if (c.method === 'authenticator') {
+      // TOTP: validate the submitted code against the shared secret
+      // (stored in the challenge's `code` column) with a ±1 step window.
+      verified = verifyTotp(c.code, code, { window: 1 });
+    } else if (c.request_uuid) {
       // SMS delivered via the Plivo Verify API: let Plivo validate the OTP.
       try {
         verified = await verifyPlivoOtp(
@@ -761,7 +871,19 @@ async function post__api_auth_mfa_verify(req, res) {
       return res.status(400).json({ error: 'Invalid code' });
     }
     await client.query('DELETE FROM mfa_challenges WHERE user_id = $1', [userId]);
-    await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = TRUE WHERE id = $2', [c.method, userId]);
+    // For the authenticator (TOTP) method the shared secret is staged on the
+    // challenge (in the `code` column) only until it is verified. Persist it to
+    // users.mfa_secret here so future logins can recompute the rolling code —
+    // otherwise deleting the challenge would lose the secret and lock the user
+    // out of their account. Email/SMS have no secret to store.
+    if (c.method === 'authenticator') {
+      await client.query(
+        'UPDATE users SET mfa_method = $1, mfa_enrolled = TRUE, mfa_secret = $3 WHERE id = $2',
+        [c.method, userId, c.code]
+      );
+    } else {
+      await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = TRUE WHERE id = $2', [c.method, userId]);
+    }
     const userRes = await client.query('SELECT id, email, full_name, role FROM users WHERE id = $1', [userId]);
     const user = userRes.rows[0];
     const token = generateToken(user);
@@ -784,6 +906,13 @@ async function put__api_profile_mfa(req, res) {
   const method = req.body.method;
   if (!MFA_METHODS.includes(method)) return res.status(400).json({ error: 'Invalid MFA method' });
   try {
+    if (method === 'authenticator') {
+      const u = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
+      const secret = randomBase32Secret();
+      await startMfaChallenge(userId, 'authenticator', u.rows[0].email, secret);
+      const info = await buildAuthenticatorProvisioning(u.rows[0].email, secret);
+      return res.json({ ...info, mfaChallengeSent: true, mfaToken: issueMfaToken(userId) });
+    }
     let phone = null;
     if (method === 'sms') {
       phone = (req.body.phone && String(req.body.phone).trim()) || null;

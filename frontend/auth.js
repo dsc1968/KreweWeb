@@ -52,11 +52,32 @@ async function saveRegistrationProfile(token) {
 // devCode (surfaced by the server only in non-production environments).
 function setMfaPrompt(promptEl, info) {
   if (!promptEl || !info) return;
+  // For the authenticator-app method there is nothing to "send" — the user
+  // simply opens their app and reads the rolling code.
+  if (info.method === 'authenticator') {
+    promptEl.textContent = 'Enter the 6-digit code from your authenticator app.';
+    return;
+  }
   const parts = [];
   if (info.maskedTarget) parts.push(`We sent a two-factor (MFA) sign-in code to ${info.maskedTarget}.`);
   if (info.notice) parts.push(info.notice);
   if (info.devCode) parts.push(`Dev code: ${info.devCode}`);
   promptEl.textContent = parts.join(' ').trim() || 'Enter the verification code.';
+}
+
+// Renders the authenticator-app provisioning UI (QR + manual key) into a
+// container element. Falls back to a copyable key when no QR image is returned.
+function renderOtpSetup(container, info) {
+  if (!container) return;
+  const qr = info && info.qr
+    ? `<img src="${info.qr}" alt="Authenticator QR code" style="width:200px;height:200px;border:1px solid #ddd;border-radius:8px;" />`
+    : '';
+  const secret = (info && info.secret) || '';
+  container.innerHTML = `
+    <p class="field-hint">Scan this QR code with your authenticator app (Google or Microsoft Authenticator), then enter the 6-digit code below.</p>
+    <div style="margin:0.5rem 0;">${qr}</div>
+    <p class="field-hint">Or enter this setup key manually: <code>${secret}</code></p>
+  `;
 }
 
 // Register form
@@ -74,6 +95,7 @@ if (registerForm) {
   const mfaCodeInput = document.getElementById('mfa_code');
   const mfaPrompt = document.getElementById('mfa-prompt');
   const mfaResendButton = document.getElementById('mfa-resend-button');
+  const mfaMethodSwitch = document.getElementById('mfa-method-switch');
   let registerMfaToken = null;
   let registerMfaMethod = 'email';
   let registrationRequiresMfa = true; // default to the verification flow until policy is known
@@ -205,10 +227,11 @@ if (registerForm) {
     if (mfaCodeGroup) mfaCodeGroup.hidden = false;
     setMfaPrompt(mfaPrompt, info);
     if (mfaCodeInput) { mfaCodeInput.required = true; mfaCodeInput.value = ''; mfaCodeInput.focus(); }
-    if (mfaResendButton) mfaResendButton.hidden = false;
+    if (mfaResendButton) mfaResendButton.hidden = (registerMfaMethod === 'authenticator');
     registerForm.dataset.phase = 'mfa';
     submitButton.textContent = 'Verify and finish';
     setRegisterFeedback(info.notice || 'A separate two-factor (MFA) code was just emailed to confirm your sign-in method. This is different from the email verification code you entered above \u2014 enter the new MFA code below.', false);
+    if (registerMfaMethod === 'authenticator') showRegisterAuthenticatorSetup();
   }
 
   if (mfaResendButton) {
@@ -229,6 +252,48 @@ if (registerForm) {
       } finally {
         mfaResendButton.disabled = false;
       }
+    });
+  }
+
+  async function sendRegisterMfa(method) {
+    if (mfaResendButton) mfaResendButton.disabled = true;
+    setRegisterFeedback('Sending new code…', false);
+    try {
+      const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method });
+      if (resp.mfaChallengeSent) {
+        registerMfaToken = resp.mfaToken;
+        registerMfaMethod = resp.method || method;
+        setMfaPrompt(mfaPrompt, resp);
+        if (registerMfaMethod === 'authenticator') {
+          const setupEl = document.getElementById('mfa-otp-setup');
+          if (setupEl) { renderOtpSetup(setupEl, resp); setupEl.hidden = false; }
+        }
+        if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+      } else {
+        setRegisterFeedback(resp.error || 'Unable to send code', true);
+      }
+    } catch (_e) {
+      setRegisterFeedback('Network error sending code.', true);
+    } finally {
+      if (mfaResendButton) mfaResendButton.disabled = false;
+    }
+  }
+
+  async function showRegisterAuthenticatorSetup() {
+    const setupEl = document.getElementById('mfa-otp-setup');
+    if (!setupEl) return;
+    setupEl.hidden = false;
+    try {
+      const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method: 'authenticator' });
+      renderOtpSetup(setupEl, resp);
+    } catch (_e) {
+      setupEl.innerHTML = '<p class="field-hint">Could not load the authenticator setup code. Please try again.</p>';
+    }
+  }
+
+  if (mfaMethodSwitch) {
+    mfaMethodSwitch.querySelectorAll('button[data-mfa-method]').forEach((btn) => {
+      btn.addEventListener('click', () => sendRegisterMfa(btn.dataset.mfaMethod));
     });
   }
 }
@@ -271,7 +336,7 @@ if (loginForm) {
     if (mfaCodeGroup) mfaCodeGroup.hidden = false;
     setMfaPrompt(mfaPrompt, info);
     if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
-    if (mfaResendButton) mfaResendButton.hidden = false;
+    if (mfaResendButton) mfaResendButton.hidden = (loginMfaMethod === 'authenticator');
     if (mfaMethodSwitch) {
       mfaMethodSwitch.hidden = false;
       // Hide the SMS choice entirely when the gateway isn't configured.
@@ -1410,7 +1475,7 @@ async function initProfileDetailsForm(profile) {
   // Populate simple fields
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   set('pd-phone',         profile.phone);
-  set('pd-mfa-method',    profile.mfa_method === 'sms' ? 'sms' : 'email');
+  set('pd-mfa-method',    ['sms', 'authenticator'].includes(profile.mfa_method) ? profile.mfa_method : 'email');
 
   // Only show the "Text message (SMS)" option when the SMS gateway is actually
   // configured. The backend drops 'sms' from mfa_available_methods when it is
@@ -1659,13 +1724,25 @@ function showProfileMfaVerify(challenge) {
   const codeInput = document.getElementById('pd-mfa-code');
   const verifyBtn = document.getElementById('pd-mfa-verify-btn');
   const resendBtn = document.getElementById('pd-mfa-resend-btn');
+  const setupEl = document.getElementById('pd-mfa-otp-setup');
   const feedback = document.getElementById('profile-details-feedback');
   if (!block) return;
   block.hidden = false;
-  let msg = 'Enter the code we sent to ' + (challenge.maskedTarget || 'your device') + '.';
-  if (challenge.deliveryNotice) msg += ' ' + challenge.deliveryNotice;
-  if (challenge.devCode) msg += ' (dev code: ' + challenge.devCode + ')';
-  if (promptEl) promptEl.textContent = msg;
+
+  if (challenge.method === 'authenticator') {
+    // Enrolling an authenticator app: show the QR / manual key and ask
+    // for the rolling code (nothing was sent by email/SMS).
+    if (setupEl) { renderOtpSetup(setupEl, challenge); setupEl.hidden = false; }
+    if (promptEl) promptEl.textContent = 'Scan the QR code with your authenticator app, then enter the 6-digit code below to finish enabling it.';
+    if (resendBtn) resendBtn.hidden = true;
+  } else {
+    if (setupEl) setupEl.hidden = true;
+    if (resendBtn) resendBtn.hidden = false;
+    let msg = 'Enter the code we sent to ' + (challenge.maskedTarget || 'your device') + '.';
+    if (challenge.deliveryNotice) msg += ' ' + challenge.deliveryNotice;
+    if (challenge.devCode) msg += ' (dev code: ' + challenge.devCode + ')';
+    if (promptEl) promptEl.textContent = msg;
+  }
   if (codeInput) { codeInput.value = ''; codeInput.focus(); }
 
   const onVerify = async () => {
@@ -1674,7 +1751,12 @@ function showProfileMfaVerify(challenge) {
       const v = await postJSON('/api/auth/mfa/verify', { mfaToken: challenge.mfaToken, code });
       if (v.token || v.mfaEnrolled) {
         block.hidden = true;
-        if (feedback) { feedback.textContent = 'Two-factor authentication enabled via SMS.'; feedback.style.color = 'var(--muted)'; }
+        if (feedback) {
+          feedback.textContent = challenge.method === 'authenticator'
+            ? 'Two-factor authentication enabled via your authenticator app.'
+            : 'Two-factor authentication enabled via SMS.';
+          feedback.style.color = 'var(--muted)';
+        }
       } else {
         if (promptEl) promptEl.textContent = v.error || 'Invalid code. Try again.';
       }
@@ -1693,8 +1775,11 @@ function showProfileMfaVerify(challenge) {
       });
       const j = await parseJSONResponse(r);
       if (j.mfaChallengeSent) {
+        if (resendMethod === 'authenticator' && setupEl) { renderOtpSetup(setupEl, j); setupEl.hidden = false; }
         challenge.mfaToken = j.mfaToken;
-        if (promptEl) promptEl.textContent = 'A new code was sent to ' + (j.maskedTarget || 'your device') + '.' + (j.devCode ? ' (dev code: ' + j.devCode + ')' : '');
+        if (promptEl) promptEl.textContent = resendMethod === 'authenticator'
+          ? 'A new setup code was generated. Scan the QR code or use the key below.'
+          : 'A new code was sent to ' + (j.maskedTarget || 'your device') + '.' + (j.devCode ? ' (dev code: ' + j.devCode + ')' : '');
       } else {
         if (promptEl) promptEl.textContent = j.error || 'Unable to resend code.';
       }
@@ -3917,3 +4002,4 @@ function initAuthPages() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAuthPages);
 else initAuthPages();
+

@@ -105,8 +105,8 @@ async function get__api_admin_mfa_config(req, res) {
     const { getSiteSetting } = require('../utils/backup');
     const mode = await getSiteSetting('mfa_mode');
     res.json({
-      mfaMode: ['off', 'registration', 'registration_and_login'].includes(mode) ? mode : 'off',
-      availableModes: ['off', 'registration', 'registration_and_login'],
+      mfaMode: ['off', 'admins_only', 'registration', 'registration_and_login'].includes(mode) ? mode : 'off',
+      availableModes: ['off', 'admins_only', 'registration', 'registration_and_login'],
     });
   } catch (err) {
     console.error('Failed to read MFA config', err);
@@ -117,7 +117,7 @@ async function get__api_admin_mfa_config(req, res) {
 async function put__api_admin_mfa_config(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
   const mode = req.body.mfaMode;
-  if (!['off', 'registration', 'registration_and_login'].includes(mode)) {
+  if (!['off', 'admins_only', 'registration', 'registration_and_login'].includes(mode)) {
     return res.status(400).json({ error: 'Invalid MFA mode' });
   }
   try {

@@ -75,6 +75,7 @@
                   <select id="pd-mfa-method" name="mfa_method">
                     <option value="email">Email</option>
                     <option value="sms">Text message (SMS)</option>
+                    <option value="authenticator">Authenticator app (Google / Microsoft)</option>
                   </select>
                   <p class="field-hint" style="margin:0.35rem 0 0;font-size:0.78rem;">Used to send your sign-in verification code. SMS requires the phone number above.</p>
                   <div id="pd-mfa-verify" hidden style="margin-top:0.6rem;">
@@ -86,6 +87,7 @@
                       <button type="button" id="pd-mfa-resend-btn" class="button db-resend-btn">Resend code</button>
                     </div>
                   </div>
+                  <div id="pd-mfa-otp-setup" hidden style="margin-top:0.75rem;"></div>
                 </div>
                 <div class="form-group">
                   <label for="pd-spouse">Spouse / Partner</label>

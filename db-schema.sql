@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict UjLCFK0GUt87cmfIlHUnvieV7EBoYqDQKasXs5Wekprcj0rVLhLePooGpMKeu7b
+\restrict MNqg4jjEx8Za8lvu6ahtauDiPHob44n41NJ9gaYqaXLpMB347lHycKyeyJg58qT
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -186,7 +186,7 @@ CREATE TABLE public.mfa_challenges (
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     request_uuid text,
-    CONSTRAINT mfa_challenges_method_check CHECK ((method = ANY (ARRAY['email'::text, 'sms'::text])))
+    CONSTRAINT mfa_challenges_method_check CHECK ((method = ANY (ARRAY['email'::text, 'sms'::text, 'authenticator'::text])))
 );
 
 
@@ -519,7 +519,8 @@ CREATE TABLE public.users (
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
     mfa_method text DEFAULT 'none'::text NOT NULL,
     mfa_enrolled boolean DEFAULT false NOT NULL,
-    CONSTRAINT users_mfa_method_check CHECK ((mfa_method = ANY (ARRAY['none'::text, 'email'::text, 'sms'::text])))
+    mfa_secret text,
+    CONSTRAINT users_mfa_method_check CHECK ((mfa_method = ANY (ARRAY['none'::text, 'email'::text, 'sms'::text, 'authenticator'::text])))
 );
 
 
@@ -942,5 +943,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict UjLCFK0GUt87cmfIlHUnvieV7EBoYqDQKasXs5Wekprcj0rVLhLePooGpMKeu7b
+\unrestrict MNqg4jjEx8Za8lvu6ahtauDiPHob44n41NJ9gaYqaXLpMB347lHycKyeyJg58qT
 
