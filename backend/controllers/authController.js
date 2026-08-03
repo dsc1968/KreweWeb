@@ -291,24 +291,16 @@ async function post__api_auth_register_verify_code(req, res) {
     await client.query('DELETE FROM pending_registrations WHERE email = $1', [email]);
 
     // When MFA is required at registration we seed email as the default method
-    // (the email verification code just entered already proves ownership of the
-    // address) but do NOT log the user in yet. Instead we hand back an MFA
-    // challenge token so the client can finish enrollment (email / SMS /
-    // authenticator) via the /api/auth/mfa/send + /verify flow, which completes
-    // sign-in. This is what lets a member choose the authenticator app during
-    // registration.
+    // and treat the email verification code just entered as the single required
+    // MFA step (it already proves ownership of the address). We enroll email MFA
+    // and log the user straight in below - there is no need to send a second,
+    // separate MFA code to the same address. Members who prefer SMS or an
+    // authenticator app can switch from their profile later.
     if (registrationRequiresMfa(mode)) {
       await client.query(
         "UPDATE users SET mfa_method = 'email', mfa_enrolled = TRUE WHERE id = $1",
         [user.id]
       );
-      await client.query('COMMIT');
-      return res.status(201).json({
-        mfaEnrollmentRequired: true,
-        mfaToken: issueMfaToken(user.id),
-        availableMethods: getAvailableMfaMethods(),
-        message: 'Finish enabling two-factor sign-in to complete registration.',
-      });
     }
 
     await client.query('COMMIT');
@@ -323,7 +315,7 @@ async function post__api_auth_register_verify_code(req, res) {
         role: user.role,
       },
       token,
-      mfaEnrolled: false,
+      mfaEnrolled: registrationRequiresMfa(mode),
       message: 'Account created.',
     });
   } catch (error) {

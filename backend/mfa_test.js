@@ -27,15 +27,9 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   check('request-code 202', r.status === 202 && j.verificationRequired);
   const ec1 = (await pool.query('SELECT verification_code FROM pending_registrations WHERE email=$1', [e1])).rows[0].verification_code;
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e1, code: ec1 }) }); j = await r.json();
-  check('verify-code mfaEnrollmentRequired', r.status === 201 && j.mfaEnrollmentRequired === true);
-  // Finish the required enrollment the same way the UI does: request the email
-  // code (which stages the MFA challenge), then verify it. Registration does
-  // not pre-create a challenge.
-  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, method: 'email' }) }); j = await r.json();
-  check('enrollment mfa/send', r.status === 200 && j.mfaChallengeSent === true);
-  const mc1 = await getCode(e1);
-  r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: mc1 }) }); j = await r.json();
-  check('mfa/verify enroll', r.status === 200 && j.token && j.mfaEnrolled === true); const mem1 = j.token;
+  // Registration now completes with a single email verification code, which
+  // doubles as the email MFA enrollment - no second MFA code is sent.
+  check('verify-code enrolls MFA and logs in', r.status === 201 && j.token && j.mfaEnrolled === true); const mem1 = j.token;
   r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e1, password: pw }) }); j = await r.json();
   check('login mfaRequired', j.mfaRequired === true && !!j.mfaToken);
   r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: await getCode(e1) }) }); j = await r.json();
@@ -65,16 +59,12 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   r = await fetch(base + '/api/auth/register/request-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full_name: 'M2', email: e2, password: pw, mfa_method: 'sms', phone: '5551234567' }) });
   const ec2 = (await pool.query('SELECT verification_code FROM pending_registrations WHERE email=$1', [e2])).rows[0].verification_code;
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e2, code: ec2 }) }); j = await r.json();
-  // Registration now always defaults new members to email MFA, ignoring any client-sent mfa_method.
+  // Registration now completes with a single email verification code, which
+  // doubles as email MFA enrollment - no second MFA code is sent.
+  check('register logs in with email MFA', r.status === 201 && j.token && j.mfaEnrolled === true);
+  // New members always default to email MFA, ignoring any client-sent mfa_method.
   const su = (await pool.query('SELECT mfa_method FROM users WHERE email=$1', [e2])).rows[0];
   check('user.mfa_method=email', su && su.mfa_method === 'email', 'got=' + (su && su.mfa_method));
-  // Finish required enrollment via email first (stages a challenge), then the
-  // supported path is to switch to SMS later from the profile.
-  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, method: 'email' }) }); j = await r.json();
-  check('enrollment mfa/send', r.status === 200 && j.mfaChallengeSent === true);
-  const mc2 = await getCode(e2);
-  r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: mc2 }) }); j = await r.json();
-  check('register mfa/verify email', r.status === 200 && j.token);
   const e2Token = j.token;
   // Switching to SMS later from the profile is the supported path.
   r = await fetch(base + '/api/profile/mfa', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + e2Token }, body: JSON.stringify({ method: 'sms', phone: '+15551234567' }) }); j = await r.json();
@@ -100,14 +90,15 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e3, code: ec3 }) }); j = await r.json();
   // Registration under an MFA-required policy does NOT log the user in yet; it
   // returns an enrollment mfaToken the client uses to finish 2FA setup.
-  check('authenticator: registration requires enrollment', r.status === 201 && j.mfaEnrollmentRequired === true && !!j.mfaToken);
-  // Enroll the authenticator app using the enrollment mfaToken (not a login token).
-  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, method: 'authenticator' }) }); j = await r.json();
+  // Registration now completes with the single email verification code (email MFA
+  // enrolled). The member can still enroll an authenticator app afterward.
+  check('authenticator: registration logs in with MFA', r.status === 201 && j.token && j.mfaEnrolled === true); const mem3 = j.token;
+  // Enroll the authenticator app via the profile MFA endpoint (auth required).
+  r = await fetch(base + '/api/profile/mfa', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mem3 }, body: JSON.stringify({ method: 'authenticator' }) }); j = await r.json();
   check('authenticator: enrollment provisioning', r.status === 200 && j.method === 'authenticator' && !!j.secret, 'method=' + j.method);
   const secret3 = j.secret;
   r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: totpForTest(secret3) }) }); j = await r.json();
-  check('authenticator: verify enroll', r.status === 200 && (j.token || j.mfaEnrolled), JSON.stringify(j).slice(0, 80));
-  const mem3 = j.token;
+  check('authenticator: verify enroll', r.status === 200 && j.token && j.mfaEnrolled === true, JSON.stringify(j).slice(0, 80));
   // Login should now require the authenticator method and a fresh TOTP.
   r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e3, password: pw }) }); j = await r.json();
   check('authenticator: login mfaRequired', j.mfaRequired === true && j.method === 'authenticator', 'method=' + j.method);
