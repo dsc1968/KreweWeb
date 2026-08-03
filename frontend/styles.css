@@ -8,10 +8,31 @@
   --accent-dark: #ffb248;
   --border: rgba(255, 210, 98, 0.18);
   --shadow: 0 35px 90px rgba(0, 0, 0, 0.28);
+  /* Custom dropdown caret for <select>. Required because appearance:none
+     removes the native arrow on Safari/iOS. Muted blue reads on dark themes. */
+  --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23b8c4e0'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E");
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* iOS / Safari form-control normalization ----------------
+   Safari (iPhone/iPad) keeps its own native styling on form controls -
+   rounded corners, an inner shadow, a different base font and a vertical
+   text offset - so fields render misaligned / inconsistent with the design.
+   Resetting appearance + line-height makes them render as the CSS intends.
+   Checkboxes/radios/file/range/color are intentionally left native. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
+select,
+textarea,
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: normal;
+  font: inherit;
+  vertical-align: middle;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -396,9 +417,16 @@ p {
 }
 
 .contact-form select {
+  -webkit-appearance: none;
+  appearance: none;
   background-color: #12203f;
   color: #f5f7ff;
   color-scheme: dark;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.6rem;
 }
 
 .contact-form select option {
@@ -946,8 +974,10 @@ body.admin-edit-mode .album-tools {
   }
 }
 
-/* iOS input zoom prevention – font-size must be ≥ 16px */
-@media (max-width: 900px) {
+/* iOS input zoom prevention - font-size must be >= 16px on touch devices
+   (iPhone, iPad in any orientation) and on small viewports. pointer:coarse
+   keeps large iPads (landscape > 900px) from zooming on focus. */
+@media (max-width: 900px), (pointer: coarse) {
   input,
   select,
   textarea {
@@ -1009,6 +1039,18 @@ body.admin-edit-mode .album-tools {
   color: var(--text);
   margin-top: 0.5rem;
   color-scheme: dark;
+}
+
+/* Strip the native Safari/Chrome arrow (appearance:none) and draw our own
+   caret so the select stays usable on iPhone/iPad and matches the dark theme. */
+.auth-card select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.6rem;
 }
 
 .auth-card .button { 
@@ -1436,7 +1478,7 @@ body.admin-edit-mode .album-tools {
 
 .db-form select {
   width: 100%;
-  padding: 0.7rem 0.95rem;
+  padding: 0.7rem 2.4rem 0.7rem 0.95rem;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04);
@@ -1445,8 +1487,13 @@ body.admin-edit-mode .album-tools {
   font-size: 0.92rem;
   transition: border-color 0.15s;
   box-sizing: border-box;
+  -webkit-appearance: none;
   appearance: none;
   color-scheme: dark;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 0.95rem center;
+  background-size: 1rem 1rem;
 }
 
 .db-form select:focus {
@@ -1603,11 +1650,17 @@ body.admin-edit-mode .album-tools {
 #profile.db-hero { background: unset; padding: unset; border-radius: unset; border: unset; }
 
 .admin-user-select {
-  padding: 0.5rem 0.75rem;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0.5rem 2.2rem 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: #12203f;
   color: #f5f7ff;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 1rem 1rem;
 }
 
 .admin-user-select option {
@@ -1704,13 +1757,18 @@ body.admin-edit-mode .album-tools {
 }
 
 .event-calendar-controls select {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #12203f;
   color: var(--text);
-  padding: 0.45rem 0.6rem;
+  padding: 0.45rem 2.2rem 0.45rem 0.6rem;
   font: inherit;
+  background-image: var(--select-caret);
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1rem 1rem;
 }
 
 .event-calendar {
