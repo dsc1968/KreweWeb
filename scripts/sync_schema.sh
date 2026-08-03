@@ -6,9 +6,17 @@ set -euo pipefail
 # Brings a DEPLOYED site's database schema up to date with the committed
 # snapshot (db-schema.sql) - WITHOUT touching or deleting any data.
 #
-# Idempotent: rewrites the snapshot so existing objects are skipped
-# (IF NOT EXISTS / CREATE OR REPLACE / guarded constraint adds). Never
-# issues DROP. Safe to re-run after every code pull.
+# Idempotent and SELF-UPDATING: the rewrites are driven generically by
+# statement keyword - CREATE TABLE / SEQUENCE / INDEX / FUNCTION /
+# PROCEDURE / VIEW / EXTENSION become IF NOT EXISTS or CREATE OR REPLACE;
+# ALTER TABLE ... ADD CONSTRAINT becomes a guarded DO block. There are NO
+# hard-coded assumptions about how the schema is laid out, so adding
+# tables, columns, constraints, sequences, indexes, functions, views, or
+# extensions NEVER requires editing this script. It behaves identically on
+# an empty, partially-migrated, or fully-synced target, then VERIFIES the
+# result (every snapshot table and default-referenced sequence must exist).
+#
+# Never issues DROP. Safe to re-run after every code pull.
 #
 # Does NOT: drop missing objects, rename, or alter column types.
 # (Those need a one-off manual migration.)
@@ -79,39 +87,66 @@ IDEMPOTENT_FILE="$(mktemp)"
   echo "-- Source: db-schema.sql (data-free snapshot). No DROP, no data changes."
   echo "--"
   awk '
+    # psql backslash meta-commands (e.g. \restrict, \unrestrict, \connect).
+    # pg_dump (v16+) emits \restrict / \unrestrict; they are client-only and
+    # would error on older psql. Strip ANY line that is a psql backslash
+    # command so the dump is portable and applies cleanly everywhere. This is
+    # generic - it does not name specific commands, so new pg_dump output is
+    # handled automatically.
+    /^\\[[:alpha:]]/ { next }
+
     # Drop whole COMMENT ON statements.
     /^COMMENT ON/ { if ($0 !~ /;$/) { while (getline && $0 !~ /;$/) {} } next }
 
-    # Drop whole CREATE SEQUENCE blocks (the SERIAL column already created them).
-    /^CREATE SEQUENCE / { if ($0 !~ /;$/) { while (getline && $0 !~ /;$/) {} } next }
+    # CREATE SEQUENCE: keep and make idempotent. The id columns are plain
+    # `integer NOT NULL` with a SEPARATE sequence that is wired up via
+    # ALTER COLUMN ... SET DEFAULT nextval(...). pg_dump never inlines these,
+    # so the sequence MUST be created. (Dropping this block - the original
+    # bug - broke the SET DEFAULT statements with "relation ..._id_seq does
+    # not exist".) Handled generically for ANY sequence, so adding new
+    # serial/id columns never requires touching this script.
+    /^CREATE SEQUENCE / {
+      sub(/^CREATE SEQUENCE /, "CREATE SEQUENCE IF NOT EXISTS ")
+      print
+      next
+    }
 
-    # CREATE FUNCTION: make it CREATE OR REPLACE, pass the body through verbatim.
-    /^CREATE FUNCTION / || /^CREATE OR REPLACE FUNCTION / {
+    # CREATE FUNCTION / PROCEDURE: make it CREATE OR REPLACE, pass the body
+    # through verbatim. Idempotent for any function/procedure.
+    /^CREATE( OR REPLACE)? (FUNCTION|PROCEDURE) / {
       sub(/^CREATE FUNCTION /, "CREATE OR REPLACE FUNCTION ")
+      sub(/^CREATE PROCEDURE /, "CREATE OR REPLACE PROCEDURE ")
       print
       while (getline && $0 !~ /^[[:space:]]*\$\$/ && $0 !~ /^[[:space:]]*\$[A-Za-z_]*\$;?$/) { print }
       print
       next
     }
 
-    # ALTER TABLE ONLY ... header (constraint or column default on following line).
-    /^ALTER TABLE ONLY [^ ]+/ && !/ADD/ {
-        # Buffer the header; emit an idempotent DO block when the following line
-        # is an ADD CONSTRAINT. A state variable (not getline) is used so we never
-        # consume or duplicate the statement that follows the constraint.
+    # CREATE VIEW / MATERIALIZED VIEW: idempotent replace. Covers views that
+    # may be added to the schema later without editing this script.
+    /^CREATE VIEW / { sub(/^CREATE VIEW /, "CREATE OR REPLACE VIEW "); print; next }
+    /^CREATE MATERIALIZED VIEW / { sub(/^CREATE MATERIALIZED VIEW /, "CREATE OR REPLACE MATERIALIZED VIEW "); print; next }
+
+    # ALTER TABLE ... header (a constraint or a column default on the next
+    # line). Buffer it; if the following line is ADD CONSTRAINT, emit an
+    # idempotent guarded DO block. Otherwise (e.g. ALTER COLUMN ... SET
+    # DEFAULT) emit the line unchanged. Handles BOTH "ALTER TABLE ONLY x"
+    # and "ALTER TABLE x" so it is robust to pg_dump output format and
+    # needs no edits when the schema changes.
+    /^ALTER TABLE( ONLY)? [^ ]+/ && !/ADD/ {
         if (pendingAlter != "") { print pendingAlter }
         pendingAlter = $0
+        n = split(pendingAlter, p, " ")
+        curTbl = (p[3] == "ONLY") ? p[4] : p[3]
         next
     }
     pendingAlter != "" && /^[[:space:]]*ADD CONSTRAINT/ {
         rest = $0
         sub(/^[[:space:]]*ADD CONSTRAINT /, "", rest)
         cname = rest; sub(/ .*$/, "", cname)
-        n = split(pendingAlter, p, " "); tbl = p[4]
-        if (rest ~ /PRIMARY KEY/) { pendingAlter = ""; next }   # redundant PK from CREATE TABLE
         print "DO $$"
         print "BEGIN"
-        print "  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '"'"'" cname "'"'"' AND conrelid = '"'"'" tbl "'"'"'::regclass) THEN"
+        print "  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '"'"'" cname "'"'"' AND conrelid = '"'"'" curTbl "'"'"'::regclass) THEN"
         print "    " pendingAlter " ADD CONSTRAINT " rest
         print "  END IF;"
         print "END $$;"
@@ -124,26 +159,38 @@ IDEMPOTENT_FILE="$(mktemp)"
         pendingAlter = ""
     }
 
-    /^CREATE TABLE / { sub(/^CREATE TABLE /, "CREATE TABLE IF NOT EXISTS "); print; next }
-    /^CREATE INDEX / { sub(/^CREATE INDEX /, "CREATE INDEX IF NOT EXISTS "); print; next }
-    /^CREATE UNIQUE INDEX / { sub(/^CREATE UNIQUE INDEX /, "CREATE UNIQUE INDEX IF NOT EXISTS "); print; next }
+    # Simple, generic keyword idempotency swaps (first line of each statement).
+    # Covers every statement type pg_dump emits for typical schema objects;
+    # new tables / columns / indexes / extensions added later are handled
+    # automatically (no script edits needed). CREATE INDEX CONCURRENTLY is
+    # checked before plain CREATE INDEX so the word CONCURRENTLY is preserved.
+    /^CREATE TABLE /              { sub(/^CREATE TABLE /,              "CREATE TABLE IF NOT EXISTS ");              print; next }
+    /^CREATE UNIQUE INDEX /      { sub(/^CREATE UNIQUE INDEX /,      "CREATE UNIQUE INDEX IF NOT EXISTS ");      print; next }
     /^CREATE INDEX CONCURRENTLY / { sub(/^CREATE INDEX CONCURRENTLY /, "CREATE INDEX CONCURRENTLY IF NOT EXISTS "); print; next }
+    /^CREATE INDEX /             { sub(/^CREATE INDEX /,             "CREATE INDEX IF NOT EXISTS ");             print; next }
+    /^CREATE EXTENSION /          { sub(/^CREATE EXTENSION /,          "CREATE EXTENSION IF NOT EXISTS ");          print; next }
     /ALTER TABLE [^ ]+ ADD COLUMN/ { sub(/ADD COLUMN /, "ADD COLUMN IF NOT EXISTS "); print; next }
     END { if (pendingAlter != "") { print pendingAlter } }
     { print }
   ' "$SCHEMA_FILE"
 } > "$IDEMPOTENT_FILE"
 
-# Apply. ON_ERROR_STOP=0 so benign "already exists" errors are skipped.
+# Apply. ON_ERROR_STOP=0 lets benign "already exists" errors pass; we
+# classify them afterwards and verify the result, so real problems are
+# never hidden regardless of the target database's starting state.
 PSQL_OUT="$(mktemp)"
 if ! PGPASSWORD="$PGPASSWORD" psql -v ON_ERROR_STOP=0 --no-psqlrc \
      -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
      -f "$IDEMPOTENT_FILE" 2>&1 | tee "$PSQL_OUT"; then
   echo "Error: schema apply reported a failure." >&2; rm -f "$IDEMPOTENT_FILE" "$PSQL_OUT"; exit 1
 fi
+rm -f "$IDEMPOTENT_FILE"
 
 echo
-UNEXPECTED=$(grep -iE 'ERROR' "$PSQL_OUT" | grep -viE 'already exists|does not exist' || true)
+# This script never issues DROP, so any "does not exist" error means a real
+# missing dependency. Only "already exists" is benign (idempotent re-run on a
+# database that already matches the snapshot).
+UNEXPECTED=$(grep -iE 'ERROR' "$PSQL_OUT" | grep -viE 'already exists' || true)
 if [ -n "$UNEXPECTED" ]; then
   echo "WARNING: unexpected errors during apply (review above):"
   echo "$UNEXPECTED"
@@ -151,7 +198,45 @@ else
   echo "No unexpected errors. (Any 'already exists' lines are expected on a"
   echo "database that already matches the snapshot - they are safely ignored.)"
 fi
-rm -f "$IDEMPOTENT_FILE" "$PSQL_OUT"
+
+# ---------------------------------------------------------------------------
+# Verification: confirm the snapshot's objects actually exist in the target now.
+# This catches the class of bug where a transform silently fails (e.g. a
+# sequence referenced by a column default was never created). The script never
+# reports success unless the schema is genuinely in place - on an empty,
+# partially migrated, or already-synced database alike.
+# ---------------------------------------------------------------------------
+echo "== Verifying applied schema against snapshot =="
+verify_failed=0
+
+# Every table declared in the snapshot must now exist in the target.
+while IFS= read -r t; do
+  [ -z "$t" ] && continue
+  if ! PGPASSWORD="$PGPASSWORD" psql -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'r' AND (n.nspname || '.' || c.relname) = '$t'" \
+       -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" | grep -q 1; then
+    echo "ERROR: expected table '$t' is missing after sync." >&2
+    verify_failed=1
+  fi
+done < <(grep -oE '^CREATE TABLE [a-zA-Z_]+\.[a-zA-Z_]+' "$SCHEMA_FILE" | awk '{print $3}')
+
+# Every sequence referenced by a column default must now exist.
+while IFS= read -r s; do
+  [ -z "$s" ] && continue
+  if ! PGPASSWORD="$PGPASSWORD" psql -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'S' AND (n.nspname || '.' || c.relname) = '$s'" \
+       -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" | grep -q 1; then
+    echo "ERROR: expected sequence '$s' (referenced by a column default) is missing after sync." >&2
+    verify_failed=1
+  fi
+done < <(grep -oE "nextval\('[a-zA-Z_]+\.[a-zA-Z_]+'::regclass\)" "$SCHEMA_FILE" | sed -E "s/^nextval\('//; s/'::regclass\)$//" | sort -u)
+
+if [ "$verify_failed" -eq 1 ]; then
+  echo "Schema verification FAILED - the target database is incomplete." >&2
+  rm -f "$PSQL_OUT"; exit 1
+fi
+echo "Verification passed: all snapshot tables and referenced sequences exist."
+rm -f "$PSQL_OUT"
 
 echo; echo "Done. Schema is now in sync with db-schema.sql."
 echo "No data was modified. Re-run any time after pulling code changes."
