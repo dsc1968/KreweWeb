@@ -74,8 +74,12 @@ function mfaPolicyRequires(role, mode, email) {
   // login works before email/SMS delivery is configured.
   if (email && email.toLowerCase() === 'admin@krewe.local') return false;
   if (mode === 'off') return false;
-  if (mode === 'admins_only') return isElevatedRole(role);
-  return true;
+  // Only 'registration_and_login' forces MFA for every role at login. The other
+  // enforced modes ('admins_only' and 'registration') require MFA at login
+  // for elevated roles only - regular members and guests are not prompted.
+  // ('registration' still requires MFA during sign-up via registrationRequiresMfa().)
+  if (mode === 'registration_and_login') return true;
+  return isElevatedRole(role);
 }
 
 // Whether a plain member must enroll MFA during registration (sign-up).

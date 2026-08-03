@@ -674,6 +674,16 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
           <button type="button" id="uem-reset-pw" class="button secondary">Reset Password</button>
         </div>
         <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);">
+          <p style="margin:0 0 0.5rem;font-size:0.85rem;color:#b8c4e0;">Multi-factor authentication (MFA) method:</p>
+          <select id="uem-mfa-method" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
+            <option value="email" ${full.mfa_method==='email'?'selected':''}>Email</option>
+            <option value="sms" ${full.mfa_method==='sms'?'selected':''}>Text message (SMS)</option>
+            <option value="authenticator" ${full.mfa_method==='authenticator'?'selected':''}>Authenticator app</option>
+            <option value="none" ${(!full.mfa_method || full.mfa_method==='none')?'selected':''}>None (MFA disabled)</option>
+          </select>
+          <p id="uem-mfa-note" style="font-size:0.78rem;color:#b8c4e0;margin:0.4rem 0 0;"></p>
+        </div>
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);">
           <p style="margin:0 0 0.65rem;font-size:0.85rem;color:#b8c4e0;">Account status:</p>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
             <button type="button" id="uem-toggle-disable" class="button secondary" ${user.id===currentUserId?'disabled':''}>${full.role==='disabled'?'Enable Account':'Disable Account'}</button>
@@ -971,6 +981,8 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       }).filter((r) => r.name || r.comment || r.float_id),
       float_captain: !!full.captain_of,
       member_float_number: full.member_float_number || '',
+      mfa_method: (backdrop.querySelector('#uem-mfa-method')?.value) || 'email',
+      mfa_enrolled: backdrop.querySelector('#uem-mfa-method')?.value !== 'none',
     };
     // Read current payment state from checkboxes (managed exclusively by PATCH /payments)
     const currentPayments = {
@@ -986,7 +998,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       });
       const d = await parseJSONResponse(r);
       if (r.ok) {
-        setFeedback('Saved successfully.', false);
+        setFeedback(d.mfa_note ? ('Saved. ' + d.mfa_note) : 'Saved successfully.', false);
         onUpdate({ ...d.user, ...currentPayments });
       } else { setFeedback(d.error || 'Unable to save', true); }
     } catch { setFeedback('Network error.', true); }

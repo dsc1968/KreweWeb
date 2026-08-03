@@ -42,7 +42,7 @@ async function get__api_admin_users(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
               COALESCE(p.dues_paid,      false) AS dues_paid,
               COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
               COALESCE(p.beads_paid,     false) AS beads_paid,
@@ -65,7 +65,7 @@ async function get__api_admin_users__userId(req, res) {
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at,
+      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
               p.phone, p.address, p.city, p.state, p.zip,
               p.birthdate, p.occupation, p.organizations, p.sponsor_name,
               p.spouse_name, p.kids_names, p.kids_birthdays,
@@ -180,6 +180,52 @@ async function put__api_admin_users__userId_details(req, res) {
   const spouse_float_number = typeof req.body.spouse_float_number === 'string' ? req.body.spouse_float_number.trim().slice(0, 20) : null;
   const guest_float_number = typeof req.body.guest_float_number === 'string' ? req.body.guest_float_number.trim().slice(0, 20) : null;
   const float_captain = Boolean(req.body.float_captain);
+
+  // Admin-managed MFA preference (Security tab of the user admin tool). Lets an
+  // administrator set the user's MFA method directly, mirroring what a user can
+  // choose in their own profile but with the authority to disable MFA or pick a
+  // method. Methods must stay in sync with authController's allowed set.
+  let mfaMethod = null;
+  let mfaEnrolled = false;
+  let mfaNote = null;
+  let mfaSetCols = '';
+  let mfaSetVals = [];
+  if (typeof req.body.mfa_method === 'string') {
+    const allowedMfa = ['none', 'email', 'sms', 'authenticator'];
+    if (!allowedMfa.includes(req.body.mfa_method)) {
+      return res.status(400).json({ error: 'Invalid MFA method' });
+    }
+    mfaMethod = req.body.mfa_method;
+    mfaEnrolled = req.body.mfa_enrolled === true || req.body.mfa_enrolled === 'true' || req.body.mfa_enrolled === 1;
+    // SMS requires a phone number on the user's profile.
+    if (mfaMethod === 'sms') {
+      let phoneForMfa = phone;
+      if (!phoneForMfa) {
+        try {
+          const pr = await pool.query('SELECT phone FROM user_profiles WHERE user_id = $1', [userId]);
+          phoneForMfa = (pr.rows[0] && pr.rows[0].phone) || '';
+        } catch (_e) { /* fall through to the phone check below */ }
+      }
+      if (!phoneForMfa) return res.status(400).json({ error: 'A phone number is required to use SMS for MFA.' });
+    }
+    // Authenticator: if enabling but the user has no secret yet, force
+    // re-enrollment on next sign-in instead of locking them out.
+    if (mfaMethod === 'authenticator' && mfaEnrolled) {
+      try {
+        const sr = await pool.query('SELECT mfa_secret FROM users WHERE id = $1', [userId]);
+        if (!(sr.rows[0] && sr.rows[0].mfa_secret)) {
+          mfaEnrolled = false;
+          mfaNote = 'User has no authenticator secret yet and must enroll from their profile on next sign-in.';
+        }
+      } catch (_e) { /* fall through */ }
+    }
+    const mfaCols = ['mfa_method = $5', 'mfa_enrolled = $6'];
+    const mfaValues = [mfaMethod, mfaEnrolled];
+    if (mfaMethod === 'none') mfaCols.push('mfa_secret = NULL');
+    mfaSetCols = mfaCols.join(', ');
+    mfaSetVals = mfaValues;
+  }
+
   // Link the member to a float when their float number matches an existing
   // float. This keeps the float admin roster in sync with the profile.
   let adminFloatId = null;
@@ -209,9 +255,9 @@ async function put__api_admin_users__userId_details(req, res) {
   try {
     await client.query('BEGIN');
     const userResult = await client.query(
-      `UPDATE users SET full_name = $1, email = $2, role = $3 WHERE id = $4
-       RETURNING id, email, full_name, role, joined_at`,
-      [fullName, email, role, userId]
+      `UPDATE users SET full_name = $1, email = $2, role = $3${mfaSetCols ? ', ' + mfaSetCols : ''} WHERE id = $4
+       RETURNING id, email, full_name, role, joined_at, mfa_method, mfa_enrolled`,
+      [fullName, email, role, userId, ...mfaSetVals]
     );
     if (userResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'User not found' }); }
 
@@ -257,7 +303,7 @@ async function put__api_admin_users__userId_details(req, res) {
     );
     await client.query('COMMIT');
     const u = userResult.rows[0];
-    res.json({ user: { ...u } });
+    res.json({ user: { ...u }, mfa_note: mfaNote });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.code === '23505') return res.status(409).json({ error: 'Email already in use by another account' });
