@@ -225,8 +225,6 @@ if (registerForm) {
     });
   }
 
-}
-
   function showRegisterMfa(info) {
     registerMfaToken = info.mfaToken;
     registerMfaMethod = info.method || 'email';
@@ -326,6 +324,8 @@ if (registerForm) {
       btn.addEventListener('click', () => sendRegisterMfa(btn.dataset.mfaMethod));
     });
   }
+
+}
 
 // Login form
 const loginForm = document.getElementById('login-form');
