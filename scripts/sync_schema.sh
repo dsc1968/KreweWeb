@@ -16,7 +16,10 @@ set -euo pipefail
 # an empty, partially-migrated, or fully-synced target, then VERIFIES the
 # result (every snapshot table and default-referenced sequence must exist).
 #
-# Never issues DROP. Safe to re-run after every code pull.
+# The additive part never issues DROP. One-off, guarded migrations in
+# scripts/migrate_*.sql are applied automatically too (they use IF EXISTS /
+# IF NOT EXISTS and are safe to re-run). Together, `sync_schema.sh` brings the
+# database fully up to date with the code on every pull.
 #
 # Does NOT: drop missing objects, rename, or alter column types.
 # (Those need a one-off manual migration.)
@@ -80,6 +83,28 @@ fi
 echo "== Schema sync =="
 echo "   Host: $PGHOST:$PGPORT   Database: $PGDATABASE"
 echo "   Source: $SCHEMA_FILE"; echo
+
+# ---------------------------------------------------------------------------
+# Apply any one-off migrations (scripts/migrate_*.sql). These handle schema
+# changes the additive sync cannot (e.g. widening a CHECK constraint, altering
+# a column type, backfilling data). They are written to be idempotent and safe
+# to re-run. Applying them here means `sync_schema.sh` brings the database
+# fully up to date with the code on every pull - no separate manual step.
+# ---------------------------------------------------------------------------
+shopt -s nullglob
+MIGRATIONS=("$REPO_ROOT"/scripts/migrate_*.sql)
+shopt -u nullglob
+if [ ${#MIGRATIONS[@]} -gt 0 ]; then
+  echo "== Applying migrations =="
+  for m in $(printf '%s\n' "${MIGRATIONS[@]}" | sort); do
+    echo "   -> $(basename "$m")"
+    if ! PGPASSWORD="$PGPASSWORD" psql -v ON_ERROR_STOP=1 --no-psqlrc \
+         -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -f "$m"; then
+      echo "Error: migration $(basename "$m") failed." >&2; exit 1
+    fi
+  done
+  echo
+fi
 
 IDEMPOTENT_FILE="$(mktemp)"
 {
