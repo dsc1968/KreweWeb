@@ -14,6 +14,12 @@ const ADMIN_EDIT_EXCLUDED_PAGES = new Set([
   '/backup-restore.html',
   '/shop.html',
   '/shop-admin.html',
+  '/finance-admin.html',
+  '/float-admin.html',
+  '/float-report.html',
+  '/users-report.html',
+  '/login.html',
+  '/register.html',
 ]);
 
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;

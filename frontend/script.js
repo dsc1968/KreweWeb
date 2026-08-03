@@ -143,7 +143,24 @@ if (countdownElements.days) {
     revertButton: null,
   };
   const albumRootElementKey = 'media-albums-root|container';
-  const nonEditablePagePaths = new Set(['/dashboard.html', '/user-management.html']);
+  // Pages the visual page editor must never run on. The editor is meant for the
+  // public content webpages only (home, history, royal court, photos, events,
+  // contact, veterans). Every other page — the dashboard, admin/application
+  // pages, and the auth pages — is excluded so their markup can't be edited.
+  const nonEditablePagePaths = new Set([
+    '/dashboard.html',
+    '/user-management.html',
+    '/configuration.html',
+    '/backup-restore.html',
+    '/shop-admin.html',
+    '/finance-admin.html',
+    '/float-admin.html',
+    '/float-report.html',
+    '/users-report.html',
+    '/shop.html',
+    '/login.html',
+    '/register.html',
+  ]);
   const resizeEdgeThreshold = 10;
   const minResizableWidth = 40;
   const minResizableHeight = 32;
