@@ -99,6 +99,7 @@ if (registerForm) {
   let registerMfaToken = null;
   let registerMfaMethod = 'email';
   let registrationRequiresMfa = true; // default to the verification flow until policy is known
+  let smsAvailable = true; // whether SMS MFA is offered (SMS gateway configured)
 
   // Reflect the site MFA policy on the registration button: when members don't
   // need MFA the form is a single "Register" action; otherwise it starts the
@@ -109,6 +110,9 @@ if (registerForm) {
       if (policyRes.ok) {
         const policy = await policyRes.json();
         registrationRequiresMfa = !!policy.registrationRequiresMfa;
+        smsAvailable = Array.isArray(policy.availableMethods)
+          ? policy.availableMethods.includes('sms')
+          : true;
       }
     } catch (_policyErr) { /* keep default (verification flow) */ }
     if (submitButton) {
@@ -155,6 +159,11 @@ if (registerForm) {
           return;
         }
 
+
+        if (resp.mfaEnrollmentRequired) {
+          showRegisterMfa(resp);
+          return;
+        }
 
         setRegisterFeedback(resp.error || 'Verification failed', true);
         return;
@@ -217,6 +226,106 @@ if (registerForm) {
   }
 
 }
+
+  function showRegisterMfa(info) {
+    registerMfaToken = info.mfaToken;
+    registerMfaMethod = info.method || 'email';
+    if (verificationCodeGroup) verificationCodeGroup.hidden = true;
+    if (mfaCodeGroup) mfaCodeGroup.hidden = false;
+    setMfaPrompt(mfaPrompt, info);
+    if (mfaCodeInput) { mfaCodeInput.required = true; mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+    if (mfaResendButton) mfaResendButton.hidden = (registerMfaMethod === 'authenticator');
+    if (mfaMethodSwitch) {
+      mfaMethodSwitch.hidden = false;
+      // Hide the SMS choice when the gateway is not configured (same rule as login).
+      const smsBtn = mfaMethodSwitch.querySelector('button[data-mfa-method="sms"]');
+      if (smsBtn) smsBtn.style.display = smsAvailable ? '' : 'none';
+    }
+    registerForm.dataset.phase = 'mfa';
+    submitButton.textContent = 'Verify and finish';
+    setRegisterFeedback(info.notice || 'A separate two-factor (MFA) code was just emailed to confirm your sign-in method. This is different from the email verification code you entered above — enter the new MFA code below.', false);
+    if (registerMfaMethod === 'authenticator') {
+      showRegisterAuthenticatorSetup();
+    } else {
+      // Auto-dispatch the MFA code email now (login sends it automatically on
+      // the server). This is the email the reported bug was about: without this
+      // the member never receives a one-time MFA code during registration.
+      (async () => {
+        try {
+          const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method: registerMfaMethod });
+          if (resp.mfaChallengeSent) {
+            registerMfaToken = resp.mfaToken;
+            registerMfaMethod = resp.method || registerMfaMethod;
+            setMfaPrompt(mfaPrompt, resp);
+            setRegisterFeedback(resp.deliveryNotice || 'MFA code sent to your email.', false);
+          }
+        } catch (_e) { /* keep the explanatory message; user can click Resend */ }
+      })();
+    }
+  }
+
+  if (mfaResendButton) {
+    mfaResendButton.addEventListener('click', async () => {
+      mfaResendButton.disabled = true;
+      setRegisterFeedback('Sending new code…', false);
+      try {
+        const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method: registerMfaMethod });
+        if (resp.mfaChallengeSent) {
+          registerMfaToken = resp.mfaToken;
+          registerMfaMethod = resp.method || registerMfaMethod;
+          setMfaPrompt(mfaPrompt, resp);
+          if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+          setRegisterFeedback(resp.deliveryNotice || 'New code sent.', false);
+        } else {
+          setRegisterFeedback(resp.error || 'Unable to resend code', true);
+        }
+      } finally {
+        mfaResendButton.disabled = false;
+      }
+    });
+  }
+
+  async function sendRegisterMfa(method) {
+    if (mfaResendButton) mfaResendButton.disabled = true;
+    setRegisterFeedback('Sending new code…', false);
+    try {
+      const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method });
+      if (resp.mfaChallengeSent) {
+        registerMfaToken = resp.mfaToken;
+        registerMfaMethod = resp.method || method;
+        setMfaPrompt(mfaPrompt, resp);
+        if (registerMfaMethod === 'authenticator') {
+          const setupEl = document.getElementById('mfa-otp-setup');
+          if (setupEl) { renderOtpSetup(setupEl, resp); setupEl.hidden = false; }
+        }
+        if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+      } else {
+        setRegisterFeedback(resp.error || 'Unable to send code', true);
+      }
+    } catch (_e) {
+      setRegisterFeedback('Network error sending code.', true);
+    } finally {
+      if (mfaResendButton) mfaResendButton.disabled = false;
+    }
+  }
+
+  async function showRegisterAuthenticatorSetup() {
+    const setupEl = document.getElementById('mfa-otp-setup');
+    if (!setupEl) return;
+    setupEl.hidden = false;
+    try {
+      const resp = await postJSON('/api/auth/mfa/send', { mfaToken: registerMfaToken, method: 'authenticator' });
+      renderOtpSetup(setupEl, resp);
+    } catch (_e) {
+      setupEl.innerHTML = '<p class="field-hint">Could not load the authenticator setup code. Please try again.</p>';
+    }
+  }
+
+  if (mfaMethodSwitch) {
+    mfaMethodSwitch.querySelectorAll('button[data-mfa-method]').forEach((btn) => {
+      btn.addEventListener('click', () => sendRegisterMfa(btn.dataset.mfaMethod));
+    });
+  }
 
 // Login form
 const loginForm = document.getElementById('login-form');

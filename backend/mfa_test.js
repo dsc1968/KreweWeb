@@ -27,9 +27,14 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   check('request-code 202', r.status === 202 && j.verificationRequired);
   const ec1 = (await pool.query('SELECT verification_code FROM pending_registrations WHERE email=$1', [e1])).rows[0].verification_code;
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e1, code: ec1 }) }); j = await r.json();
-  // Registration now completes with a single email verification code, which
-  // doubles as the email MFA enrollment - no second MFA code is sent.
-  check('verify-code enrolls MFA and logs in', r.status === 201 && j.token && j.mfaEnrolled === true); const mem1 = j.token;
+  // Registration under an MFA-required policy returns an enrollment challenge
+  // token (NOT a login token). The client must send + verify the MFA code
+  // email before the account becomes active.
+  check('verify-code returns mfaEnrollmentRequired', r.status === 201 && j.mfaEnrollmentRequired === true && !!j.mfaToken);
+  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, method: 'email' }) }); j = await r.json();
+  check('register mfa/send email', j.mfaChallengeSent === true && j.method === 'email', JSON.stringify(j).slice(0, 80));
+  r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: await getCode(e1) }) }); j = await r.json();
+  check('register mfa/verify logs in', r.status === 200 && j.token && j.mfaEnrolled === true); const mem1 = j.token;
   r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e1, password: pw }) }); j = await r.json();
   check('login mfaRequired', j.mfaRequired === true && !!j.mfaToken);
   r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: await getCode(e1) }) }); j = await r.json();
@@ -59,9 +64,13 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   r = await fetch(base + '/api/auth/register/request-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full_name: 'M2', email: e2, password: pw, mfa_method: 'sms', phone: '5551234567' }) });
   const ec2 = (await pool.query('SELECT verification_code FROM pending_registrations WHERE email=$1', [e2])).rows[0].verification_code;
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e2, code: ec2 }) }); j = await r.json();
-  // Registration now completes with a single email verification code, which
-  // doubles as email MFA enrollment - no second MFA code is sent.
-  check('register logs in with email MFA', r.status === 201 && j.token && j.mfaEnrolled === true);
+  // New members default to email MFA; registration returns an enrollment
+  // challenge token (NOT a login token) used to send + verify the MFA code email.
+  check('register returns mfaEnrollmentRequired', r.status === 201 && j.mfaEnrollmentRequired === true && !!j.mfaToken);
+  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, method: 'email' }) }); j = await r.json();
+  check('register mfa/send email', j.mfaChallengeSent === true && j.method === 'email', JSON.stringify(j).slice(0, 80));
+  r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: j.mfaToken, code: await getCode(e2) }) }); j = await r.json();
+  check('register logs in with email MFA', r.status === 200 && j.token && j.mfaEnrolled === true);
   // New members always default to email MFA, ignoring any client-sent mfa_method.
   const su = (await pool.query('SELECT mfa_method FROM users WHERE email=$1', [e2])).rows[0];
   check('user.mfa_method=email', su && su.mfa_method === 'email', 'got=' + (su && su.mfa_method));
@@ -90,9 +99,13 @@ const uniq = () => 'mfa_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   r = await fetch(base + '/api/auth/register/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e3, code: ec3 }) }); j = await r.json();
   // Registration under an MFA-required policy does NOT log the user in yet; it
   // returns an enrollment mfaToken the client uses to finish 2FA setup.
-  // Registration now completes with the single email verification code (email MFA
-  // enrolled). The member can still enroll an authenticator app afterward.
-  check('authenticator: registration logs in with MFA', r.status === 201 && j.token && j.mfaEnrolled === true); const mem3 = j.token;
+  check('authenticator: registration returns enrollment', r.status === 201 && j.mfaEnrollmentRequired === true && !!j.mfaToken); const mem3Enroll = j.mfaToken;
+  // Finish the required enrollment the same way the UI does: request the email
+  // MFA code (which stages the challenge and emails it), then verify it.
+  r = await fetch(base + '/api/auth/mfa/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: mem3Enroll, method: 'email' }) }); j = await r.json();
+  check('authenticator: register mfa/send', j.mfaChallengeSent === true && j.method === 'email', JSON.stringify(j).slice(0, 80));
+  r = await fetch(base + '/api/auth/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfaToken: mem3Enroll, code: await getCode(e3) }) }); j = await r.json();
+  check('authenticator: registration logs in with MFA', r.status === 200 && j.token && j.mfaEnrolled === true); const mem3 = j.token;
   // Enroll the authenticator app via the profile MFA endpoint (auth required).
   r = await fetch(base + '/api/profile/mfa', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mem3 }, body: JSON.stringify({ method: 'authenticator' }) }); j = await r.json();
   check('authenticator: enrollment provisioning', r.status === 200 && j.method === 'authenticator' && !!j.secret, 'method=' + j.method);
