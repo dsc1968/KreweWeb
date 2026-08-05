@@ -386,10 +386,17 @@ async function post__api_shop_checkout(req, res) {
     const total = cartResult.rows.reduce(
       (sum, row) => sum + parseFloat(row.price) * row.quantity, 0
     );
+    // In payment-simulation mode, choosing "Accept" is a successful payment, so
+    // the order is recorded as paid (and completed for fee-only carts). Without
+    // simulation this endpoint is the no-provider fallback and stays unpaid.
+    const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+    const simulatePaid = env.PAYMENT_SIMULATE === 'true';
+    const paymentStatus = simulatePaid ? 'succeeded' : 'unpaid';
+    const orderStatus = simulatePaid ? orderStatusForCart(cartResult.rows) : 'pending';
     const orderResult = await client.query(
-      `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, payment_status)
-       VALUES ($1,$2,$3,$4,$5,'unpaid') RETURNING id`,
-      [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null]
+      `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus, paymentStatus]
     );
     const orderId = orderResult.rows[0].id;
     for (const item of cartResult.rows) {
@@ -405,7 +412,10 @@ async function post__api_shop_checkout(req, res) {
         );
       }
     }
-    await applyMembershipFulfillment(client, req.user.userId, cartResult.rows);
+    // Membership/guest fees are only credited when the order is actually paid.
+    if (simulatePaid) {
+      await applyMembershipFulfillment(client, req.user.userId, cartResult.rows);
+    }
     await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
     await client.query('COMMIT');
     res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
