@@ -1834,9 +1834,11 @@ async function initDashboard() {
   async function loadDashboardOrders() {
     const feedEl = document.getElementById('db-orders-feedback');
     const listEl = document.getElementById('db-orders-list');
+    const pagEl  = document.getElementById('db-orders-pagination');
     if (!feedEl || !listEl) return;
     feedEl.textContent = 'Loading orders…';
     listEl.innerHTML = '';
+    if (pagEl) pagEl.innerHTML = '';
     try {
       const res = await fetch('/api/shop/orders', { headers: { Authorization: 'Bearer ' + getToken() } });
       const data = await parseJSONResponse(res);
@@ -1844,21 +1846,44 @@ async function initDashboard() {
       if (!res.ok) { listEl.innerHTML = `<p style="color:#f87171;">${data.error || 'Unable to load orders.'}</p>`; return; }
       if (data.orders.length === 0) { listEl.innerHTML = '<p style="color:var(--muted);">You have no orders yet. <a href="/shop.html" style="color:#ffd262;">Visit the shop</a> to place one.</p>'; return; }
       const statusColor = { pending:'#ffd262', processing:'#60a5fa', shipped:'#a78bfa', completed:'#4ade80', cancelled:'#f87171' };
-      listEl.innerHTML = data.orders.map((o) => {
-        const itemLines = (o.items || []).map((i) =>
-          `<span style="display:block;font-size:0.82rem;color:var(--muted);">${escHtml(i.product_name)} &times; ${i.quantity} &mdash; $${(parseFloat(i.unit_price)*i.quantity).toFixed(2)}</span>`
-        ).join('');
-        const col = statusColor[o.status] || '#b8c4e0';
-        return `<div style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.07);">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;">
-            <span style="font-weight:600;">Order #${o.id}</span>
-            <span style="font-size:0.78rem;color:${col};border:1px solid ${col};border-radius:999px;padding:0.1rem 0.55rem;">${o.status}</span>
-          </div>
-          <div style="font-size:0.82rem;color:var(--muted);margin:0.15rem 0;">${new Date(o.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</div>
-          ${itemLines}
-          <div style="margin-top:0.25rem;font-size:0.9rem;">Total: <strong style="color:#ffd262;">$${parseFloat(o.total_amount).toFixed(2)}</strong></div>
-        </div>`;
-      }).join('');
+      const perPage = 5;
+      const pageCount = Math.ceil(data.orders.length / perPage);
+
+      function renderDashOrdersPage(page) {
+        const start = (page - 1) * perPage;
+        const pageOrders = data.orders.slice(start, start + perPage);
+        listEl.innerHTML = pageOrders.map((o) => {
+          const itemLines = (o.items || []).map((i) =>
+            `<span style="display:block;font-size:0.82rem;color:var(--muted);">${escHtml(i.product_name)} &times; ${i.quantity} &mdash; $${(parseFloat(i.unit_price)*i.quantity).toFixed(2)}</span>`
+          ).join('');
+          const col = statusColor[o.status] || '#b8c4e0';
+          return `<div style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.07);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;">
+              <span style="font-weight:600;">Order #${o.id}</span>
+              <span style="font-size:0.78rem;color:${col};border:1px solid ${col};border-radius:999px;padding:0.1rem 0.55rem;">${o.status}</span>
+            </div>
+            <div style="font-size:0.82rem;color:var(--muted);margin:0.15rem 0;">${new Date(o.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</div>
+            ${itemLines}
+            <div style="margin-top:0.25rem;font-size:0.9rem;">Total: <strong style="color:#ffd262;">$${parseFloat(o.total_amount).toFixed(2)}</strong></div>
+          </div>`;
+        }).join('');
+        if (pagEl) {
+          pagEl.innerHTML = '';
+          if (pageCount > 1) {
+            pagEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.4rem;justify-content:center;margin-top:1rem;';
+            for (let i = 1; i <= pageCount; i++) {
+              const btn = document.createElement('button');
+              const active = i === page;
+              btn.textContent = i;
+              btn.style.cssText = `min-width:2rem;padding:0.35rem 0.6rem;border-radius:8px;border:1px solid ${active ? '#ffd262' : 'rgba(255,255,255,0.16)'};background:${active ? '#ffd262' : 'rgba(255,255,255,0.06)'};color:${active ? '#1a1206' : 'var(--text, #e6ecff)'};font:inherit;font-size:0.82rem;font-weight:${active ? '700' : '400'};cursor:pointer;`;
+              btn.addEventListener('click', () => renderDashOrdersPage(i));
+              pagEl.appendChild(btn);
+            }
+          }
+        }
+      }
+
+      renderDashOrdersPage(1);
     } catch { feedEl.textContent = 'Network error loading orders.'; }
   }
 
