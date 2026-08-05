@@ -2976,6 +2976,10 @@ async function initShopPage() {
   let stripeConfigured = false;
   let activeMethod = 'paypal';
   let paymentMode = false;
+  // Set by setupStripePayment so the payment-mode handlers can mount/tear down
+  // the Stripe Payment Element when the card UI is shown or cancelled.
+  let mountStripeCardEl = null;
+  let unmountStripeCardEl = null;
 
   async function completeOrder() {
     checkoutBtn.disabled = true;
@@ -3369,6 +3373,7 @@ async function initShopPage() {
       if (chooser) chooser.style.display = 'none';
       if (spContainer) spContainer.style.display = '';
       if (ppContainer) ppContainer.style.display = 'none';
+      if (mountStripeCardEl) mountStripeCardEl();
     }
   }
 
@@ -3385,6 +3390,7 @@ async function initShopPage() {
     if (spContainer) spContainer.style.display = 'none';
     if (checkoutBtn) { checkoutBtn.style.display = ''; checkoutBtn.disabled = false; }
     if (cartFeedEl) { cartFeedEl.innerHTML = ''; cartFeedEl.style.color = ''; }
+    if (unmountStripeCardEl) unmountStripeCardEl();
   }
 
   // ── Payment provider visibility / chooser ───────────────────────────────
@@ -3461,41 +3467,71 @@ async function initShopPage() {
       return d.client_secret;
     }
 
-    async function ensureElement(clientSecret) {
-      if (paymentElement) { try { paymentElement.unmount(); } catch (_e) {} paymentElement = null; stripeElements = null; }
-      stripeElements = stripe.elements({
-        clientSecret,
-        appearance: {
-          theme: 'night',
-          variables: {
-            colorPrimary: '#ffd262',
-            colorBackground: '#0a132c',
-            colorText: '#f5f7fb',
-            colorDanger: '#f87171',
-            colorTextPlaceholder: '#8a93a6',
-            borderRadius: '10px',
-            fontFamily: 'inherit',
+    let mounting = null;
+
+    // Fetches a PaymentIntent and mounts the Payment Element so the shopper can
+    // enter their card details. Idempotent: reuses an already-mounted element,
+    // which is essential — the element the shopper types into must be the same
+    // one passed to confirmPayment (re-mounting it wipes the entered card data).
+    function ensureElementMounted() {
+      if (paymentElement) return Promise.resolve();
+      if (mounting) return mounting;
+      mounting = (async () => {
+        const clientSecret = await getClientSecret();
+        stripeElements = stripe.elements({
+          clientSecret,
+          appearance: {
+            theme: 'night',
+            variables: {
+              colorPrimary: '#ffd262',
+              colorBackground: '#0a132c',
+              colorText: '#f5f7fb',
+              colorDanger: '#f87171',
+              colorTextPlaceholder: '#8a93a6',
+              borderRadius: '10px',
+              fontFamily: 'inherit',
+            },
           },
-        },
-      });
-      // Desktop browsers: card + bank only. Mobile devices: also expose the
-      // Apple Pay / Google Pay wallets.
-      const walletPref = isMobileDevice() ? 'auto' : 'never';
-      paymentElement = stripeElements.create('payment', {
-        layout: { type: 'tabs' },
-        wallets: { applePay: walletPref, googlePay: walletPref },
-      });
-      paymentElement.mount('#stripe-payment-element');
+        });
+        // Desktop browsers: card + bank only. Mobile devices: also expose the
+        // Apple Pay / Google Pay wallets.
+        const walletPref = isMobileDevice() ? 'auto' : 'never';
+        paymentElement = stripeElements.create('payment', {
+          layout: { type: 'tabs' },
+          wallets: { applePay: walletPref, googlePay: walletPref },
+        });
+        paymentElement.mount('#stripe-payment-element');
+      })();
+      // Allow a retry if creating the intent / mounting failed.
+      mounting.catch(() => { mounting = null; });
+      return mounting;
     }
+
+    // Tears down the element so a fresh PaymentIntent is created next time the
+    // shopper enters payment mode (e.g. after Cancel or a completed order).
+    function unmountElement() {
+      if (paymentElement) { try { paymentElement.unmount(); } catch (_e) {} }
+      paymentElement = null;
+      stripeElements = null;
+      mounting = null;
+      if (errEl) errEl.textContent = '';
+    }
+
+    // Exposed so the payment-mode handlers can mount the card fields as soon as
+    // the Stripe UI is shown, letting the shopper fill them in before paying.
+    mountStripeCardEl = () => { ensureElementMounted().catch((err) => {
+      if (errEl) errEl.textContent = (err && err.message) || 'Unable to start payment';
+    }); };
+    unmountStripeCardEl = unmountElement;
 
     payBtn.addEventListener('click', async () => {
       payBtn.disabled = true;
       if (errEl) errEl.textContent = '';
       cartFeedEl.style.color = 'var(--muted)';
-      cartFeedEl.textContent = 'Starting payment...';
+      cartFeedEl.textContent = 'Processing payment...';
       try {
-        const clientSecret = await getClientSecret();
-        await ensureElement(clientSecret);
+        await ensureElementMounted();
+        if (!stripeElements) throw new Error('Payment form is not ready. Please try again.');
         const result = await stripe.confirmPayment({
           elements: stripeElements,
           confirmParams: { return_url: window.location.origin + '/shop.html?stripe_return=1' },
@@ -3525,6 +3561,7 @@ async function initShopPage() {
             if (ordersPanel) ordersPanel.classList.add('is-active');
             closeCart();
             loadOrders();
+            unmountElement();
           } else {
             cartFeedEl.style.color = '#f87171';
             cartFeedEl.textContent = cdata.error || 'Payment confirmation failed.';
@@ -3595,6 +3632,7 @@ async function initShopPage() {
     const spContainer = document.getElementById('stripe-payment-container');
     if (ppContainer) ppContainer.style.display = method === 'paypal' ? '' : 'none';
     if (spContainer) spContainer.style.display = method === 'card' ? '' : 'none';
+    if (method === 'card' && mountStripeCardEl) mountStripeCardEl();
   }
 
 }
