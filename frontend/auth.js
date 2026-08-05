@@ -2855,7 +2855,7 @@ async function initShopPage() {
   const checkoutBtn = document.getElementById('shop-checkout-btn');
   const cartFeedEl  = document.getElementById('shop-cart-feedback');
 
-  function openCart()  { cartOverlay.classList.add('is-open');  cartDrawer.classList.add('is-open'); }
+  function openCart()  { cartOverlay.classList.add('is-open');  cartDrawer.classList.add('is-open'); exitPaymentMode(); }
   function closeCart() { cartOverlay.classList.remove('is-open'); cartDrawer.classList.remove('is-open'); }
   openCartBtn.addEventListener('click', openCart);
   cartClose.addEventListener('click', closeCart);
@@ -2875,14 +2875,18 @@ async function initShopPage() {
     cartItems.forEach((item) => {
       const div = document.createElement('div');
       div.className = 'shop-cart-item';
-      div.innerHTML = `
-        <span class="shop-cart-item-name">${escHtml(item.name)}</span>
-        <span class="shop-cart-item-price">${fmtPrice(parseFloat(item.price) * item.quantity)}</span>
-        <div class="shop-cart-item-controls">
+      const nameHtml = `${escHtml(item.name)}${item.size ? ` <span style="color:var(--muted);font-size:0.82em;">(${escHtml(item.size)})</span>` : ''}`;
+      const controlsHtml = item.is_donation
+        ? `<div class="shop-cart-item-controls"><span class="shop-cart-qty-val">Donation</span></div>`
+        : `<div class="shop-cart-item-controls">
           <button class="shop-cart-qty-btn" data-action="dec" data-id="${item.id}">−</button>
           <span class="shop-cart-qty-val">${item.quantity}</span>
           <button class="shop-cart-qty-btn" data-action="inc" data-id="${item.id}">+</button>
-        </div>
+        </div>`;
+      div.innerHTML = `
+        <span class="shop-cart-item-name">${nameHtml}</span>
+        <span class="shop-cart-item-price">${fmtPrice(parseFloat(item.price) * item.quantity)}</span>
+        ${controlsHtml}
         <button class="shop-cart-item-remove" data-id="${item.id}">Remove</button>
       `;
       cartItemsEl.appendChild(div);
@@ -2913,14 +2917,14 @@ async function initShopPage() {
     } catch { cartItems = []; renderCart(); }
   }
 
-  async function addToCart(productId) {
+  async function addToCart(productId, size) {
     const btn = document.querySelector(`.shop-add-btn[data-product-id="${productId}"]`);
     if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
     try {
       const res = await fetch('/api/shop/cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ product_id: productId, quantity: 1 }),
+        body: JSON.stringify({ product_id: productId, quantity: 1, size: size || '' }),
       });
       const data = await parseJSONResponse(res);
       if (!res.ok) {
@@ -2968,6 +2972,10 @@ async function initShopPage() {
   }
 
   let simulatePayment = false;
+  let paypalConfigured = false;
+  let stripeConfigured = false;
+  let activeMethod = 'paypal';
+  let paymentMode = false;
 
   async function completeOrder() {
     checkoutBtn.disabled = true;
@@ -3007,6 +3015,10 @@ async function initShopPage() {
 
   checkoutBtn.addEventListener('click', async () => {
     if (cartItems.length === 0) { cartFeedEl.textContent = 'Your cart is empty.'; return; }
+    if (!simulatePayment && (paypalConfigured || stripeConfigured)) {
+      enterPaymentMode();
+      return;
+    }
     if (simulatePayment) {
       checkoutBtn.style.display = 'none';
       const total = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0).toFixed(2);
@@ -3047,12 +3059,13 @@ async function initShopPage() {
       feedEl.textContent = '';
       renderFilters();
       renderProducts();
+      renderDonation();
     } catch { feedEl.textContent = 'Network error loading products.'; }
   }
 
   function renderFilters() {
     const filterEl = document.getElementById('shop-filters');
-    const categories = ['all', ...new Set(allProducts.map((p) => p.category).filter(Boolean))];
+    const categories = ['all', ...new Set(allProducts.filter((p) => !p.is_donation).map((p) => p.category).filter(Boolean))];
     filterEl.innerHTML = '';
     categories.forEach((cat) => {
       const btn = document.createElement('button');
@@ -3070,9 +3083,10 @@ async function initShopPage() {
 
   function renderProducts() {
     const grid = document.getElementById('shop-grid');
+    const shopProducts = allProducts.filter((p) => !p.is_donation);
     const filtered = activeCategory === 'all'
-      ? allProducts
-      : allProducts.filter((p) => p.category === activeCategory);
+      ? shopProducts
+      : shopProducts.filter((p) => p.category === activeCategory);
 
     if (filtered.length === 0) {
       grid.innerHTML = '<p style="color:var(--muted);">No products found.</p>';
@@ -3082,17 +3096,23 @@ async function initShopPage() {
     grid.innerHTML = '';
     filtered.forEach((p) => {
       const outOfStock = p.stock_qty != null && p.stock_qty <= 0;
+      const sizes = (p.sizes || '').split(',').map((s) => s.trim()).filter(Boolean);
+      let selectedSize = '';
       const card = document.createElement('div');
       card.className = 'shop-product-card';
       const imgHtml = p.image_path
         ? `<img class="shop-product-img" src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" loading="lazy" />`
         : `<div class="shop-product-img-placeholder">🛍</div>`;
+      const sizesHtml = sizes.length
+        ? `<div class="shop-size-chips">${sizes.map((s) => `<button type="button" class="shop-size-chip" data-size="${escHtml(s)}">${escHtml(s)}</button>`).join('')}</div>`
+        : '';
       card.innerHTML = `
         ${imgHtml}
         <div class="shop-product-body">
           ${p.category ? `<span class="shop-product-category">${escHtml(p.category)}</span>` : ''}
           <h3 class="shop-product-name">${escHtml(p.name)}</h3>
-          ${p.description ? `<p class="shop-product-desc">${escHtml(p.description)}</p>` : '<p class="shop-product-desc"></p>'}
+          ${p.description ? `<p class="shop-product-desc">${escHtml(p.description)}</p>` : ''}
+          ${sizesHtml}
           <div class="shop-product-footer">
             <span class="shop-product-price">${fmtPrice(p.price)}</span>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem;">
@@ -3104,9 +3124,77 @@ async function initShopPage() {
           </div>
         </div>
       `;
-      card.querySelector('.shop-add-btn:not(:disabled)')?.addEventListener('click', () => addToCart(p.id));
+      card.querySelectorAll('.shop-size-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          selectedSize = chip.dataset.size;
+          card.querySelectorAll('.shop-size-chip').forEach((c) => c.classList.remove('is-active'));
+          chip.classList.add('is-active');
+        });
+      });
+      card.querySelector('.shop-add-btn:not(:disabled)')?.addEventListener('click', () => {
+        if (sizes.length && !selectedSize) {
+          const feed = document.getElementById('shop-product-feedback');
+          if (feed) { feed.style.color = '#f87171'; feed.textContent = `Please choose a size for ${p.name}.`; }
+          return;
+        }
+        addToCart(p.id, selectedSize);
+      });
       grid.appendChild(card);
     });
+  }
+
+  function renderDonation() {
+    const mount = document.getElementById('shop-donation-mount');
+    if (!mount) return;
+    const donation = allProducts.find((p) => p.is_donation);
+    if (!donation) { mount.innerHTML = ''; return; }
+    mount.innerHTML = `
+      <div class="shop-donation">
+        <h3 class="shop-donation-title">${escHtml(donation.name || 'Add a donation')}</h3>
+        ${donation.description ? `<p class="shop-donation-desc">${escHtml(donation.description)}</p>` : ''}
+        <div class="shop-donation-row">
+          <div class="shop-donation-input-wrap">
+            <span class="shop-donation-currency">$</span>
+            <input id="shop-donation-amount" class="shop-donation-input" type="number" min="1" step="0.01" placeholder="0.00" inputmode="decimal" />
+          </div>
+          <button id="shop-donation-add" class="shop-add-btn">Add Donation</button>
+        </div>
+        <div id="shop-donation-feedback" class="shop-donation-feedback"></div>
+      </div>
+    `;
+    const input = document.getElementById('shop-donation-amount');
+    const addBtn = document.getElementById('shop-donation-add');
+    addBtn.addEventListener('click', () => addDonation(parseFloat(input.value)));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') addDonation(parseFloat(input.value)); });
+  }
+
+  async function addDonation(amount) {
+    const feed = document.getElementById('shop-donation-feedback');
+    if (!isFinite(amount) || amount <= 0) {
+      if (feed) { feed.style.color = '#f87171'; feed.textContent = 'Enter a donation amount greater than $0.'; }
+      return;
+    }
+    const addBtn = document.getElementById('shop-donation-add');
+    if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Adding…'; }
+    try {
+      const res = await fetch('/api/shop/donation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await parseJSONResponse(res);
+      if (!res.ok) {
+        if (feed) { feed.style.color = '#f87171'; feed.textContent = data.error || 'Unable to add donation.'; }
+        return;
+      }
+      await loadCart();
+      if (feed) { feed.style.color = '#4ade80'; feed.textContent = 'Donation added to cart. Thank you!'; }
+      openCart();
+    } catch {
+      if (feed) { feed.style.color = '#f87171'; feed.textContent = 'Network error. Please try again.'; }
+    } finally {
+      if (addBtn) { addBtn.disabled = false; addBtn.textContent = 'Add Donation'; }
+    }
   }
 
   // ── Orders ───────────────────────────────────────────────────────────────
@@ -3125,7 +3213,7 @@ async function initShopPage() {
         const div = document.createElement('div');
         div.className = 'shop-order-card';
         const itemLines = (o.items || []).map((i) =>
-          `${escHtml(i.product_name)} × ${i.quantity} — ${fmtPrice(parseFloat(i.unit_price) * i.quantity)}`
+          `${escHtml(i.product_name)}${i.size ? ` (${escHtml(i.size)})` : ''} × ${i.quantity} — ${fmtPrice(parseFloat(i.unit_price) * i.quantity)}`
         ).join('<br>');
         div.innerHTML = `
           <div class="shop-order-head">
@@ -3168,6 +3256,7 @@ async function initShopPage() {
     const ppRes = await fetch('/api/shop/paypal/config', { headers: { Authorization: 'Bearer ' + token } });
     const ppData = await ppRes.json();
     if (ppData.configured && ppData.client_id) {
+      paypalConfigured = true;
       await new Promise((resolve, reject) => {
         const existing = document.getElementById('paypal-sdk-script');
         if (existing) { resolve(); return; }
@@ -3242,6 +3331,272 @@ async function initShopPage() {
     // PayPal not configured or failed to load — plain checkout button remains
     console.warn('PayPal setup skipped:', err.message);
   }
+
+  // ── Stripe setup (added alongside PayPal; only runs when not simulating) ──
+  if (!simulatePayment) try {
+    const stripeRes = await fetch('/api/shop/stripe/config', { headers: { Authorization: 'Bearer ' + token } });
+    const stripeData = await stripeRes.json();
+    if (stripeData.configured && stripeData.publishable_key) {
+      const stripe = await loadStripeScript(stripeData.publishable_key);
+      setupStripePayment(stripe);
+      handleStripeReturn();
+      stripeConfigured = true;
+    }
+  } catch (err) {
+    // Stripe not configured or failed to load — PayPal/plain checkout remain
+    console.warn('Stripe setup skipped:', err && err.message);
+  }
+
+  // Reveals the payment UI (chooser + the appropriate provider panel) plus a
+  // Cancel control, and hides the plain Checkout button.
+  function enterPaymentMode() {
+    if (simulatePayment || !(paypalConfigured || stripeConfigured)) return;
+    paymentMode = true;
+    const chooser = document.getElementById('payment-method-chooser');
+    const cancelBtn = document.getElementById('shop-pay-cancel-btn');
+    const ppContainer = document.getElementById('paypal-button-container');
+    const spContainer = document.getElementById('stripe-payment-container');
+    if (checkoutBtn) checkoutBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = '';
+    if (paypalConfigured && stripeConfigured) {
+      if (chooser) chooser.style.display = '';
+      showPaymentMethod(activeMethod || 'paypal');
+    } else if (paypalConfigured) {
+      if (chooser) chooser.style.display = 'none';
+      if (ppContainer) ppContainer.style.display = '';
+      if (spContainer) spContainer.style.display = 'none';
+    } else if (stripeConfigured) {
+      if (chooser) chooser.style.display = 'none';
+      if (spContainer) spContainer.style.display = '';
+      if (ppContainer) ppContainer.style.display = 'none';
+    }
+  }
+
+  // Collapses the payment UI back to the neutral state (Checkout button shown).
+  function exitPaymentMode() {
+    paymentMode = false;
+    const chooser = document.getElementById('payment-method-chooser');
+    const cancelBtn = document.getElementById('shop-pay-cancel-btn');
+    const ppContainer = document.getElementById('paypal-button-container');
+    const spContainer = document.getElementById('stripe-payment-container');
+    if (chooser) chooser.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (ppContainer) ppContainer.style.display = 'none';
+    if (spContainer) spContainer.style.display = 'none';
+    if (checkoutBtn) { checkoutBtn.style.display = ''; checkoutBtn.disabled = false; }
+    if (cartFeedEl) { cartFeedEl.innerHTML = ''; cartFeedEl.style.color = ''; }
+  }
+
+  // ── Payment provider visibility / chooser ───────────────────────────────
+  if (!simulatePayment && (paypalConfigured || stripeConfigured)) {
+    // Wire the method chooser (only meaningful when both providers are enabled).
+    document.querySelectorAll('.shop-pay-method-btn').forEach((b) => {
+      b.addEventListener('click', () => showPaymentMethod(b.dataset.method));
+    });
+    // Wire the Cancel control that returns the panel to the neutral state.
+    const cancelBtn = document.getElementById('shop-pay-cancel-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', exitPaymentMode);
+    // Start neutral: show Checkout; reveal the payment UI only when it's clicked.
+    exitPaymentMode();
+  }
+
+  // True on phones/tablets, where the Apple Pay / Google Pay wallets are offered.
+  function isMobileDevice() {
+    try {
+      if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+        return navigator.userAgentData.mobile;
+      }
+    } catch (_e) { /* fall through to UA sniffing */ }
+    const ua = navigator.userAgent || '';
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    return /Android|iPhone|iPad|iPod|IEMobile|BlackBerry|Opera Mini|Mobile/i.test(ua) || (coarse && window.innerWidth <= 900);
+  }
+
+  // Loads Stripe.js and returns a Stripe instance for the given publishable key.
+  async function loadStripeScript(publishableKey) {
+    if (window.Stripe) return window.Stripe(publishableKey);
+    return await new Promise((resolve, reject) => {
+      const existing = document.getElementById('stripe-js-script');
+      if (existing) { resolve(window.Stripe(publishableKey)); return; }
+      const script = document.createElement('script');
+      script.id = 'stripe-js-script';
+      script.src = 'https://js.stripe.com/v3/';
+      script.onload = () => resolve(window.Stripe(publishableKey));
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  // Mounts the Stripe card Element and wires the "Pay with Card" button.
+  // Mounts the Stripe Payment Element (cards, wallets, bank redirects, Link,
+  // etc. - every method enabled in the Stripe dashboard) and wires "Pay".
+  function setupStripePayment(stripe) {
+    const payBtn = document.getElementById('stripe-pay-btn');
+    const errEl = document.getElementById('stripe-payment-errors');
+    const mountEl = document.getElementById('stripe-payment-element');
+    if (!payBtn || !mountEl || !stripe) return;
+
+    // Re-created on each pay attempt (the PaymentIntent amount is per-attempt).
+    let stripeElements = null;
+    let paymentElement = null;
+
+    async function reportStripeDecline() {
+      try {
+        await fetch('/api/shop/stripe/declined', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({}),
+        });
+      } catch (_e) { /* non-fatal: the shopper already sees the error */ }
+    }
+
+    async function getClientSecret() {
+      const r = await fetch('/api/shop/stripe/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({}),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Unable to start payment');
+      return d.client_secret;
+    }
+
+    async function ensureElement(clientSecret) {
+      if (paymentElement) { try { paymentElement.unmount(); } catch (_e) {} paymentElement = null; stripeElements = null; }
+      stripeElements = stripe.elements({
+        clientSecret,
+        appearance: {
+          theme: 'night',
+          variables: {
+            colorPrimary: '#ffd262',
+            colorBackground: '#0a132c',
+            colorText: '#f5f7fb',
+            colorDanger: '#f87171',
+            colorTextPlaceholder: '#8a93a6',
+            borderRadius: '10px',
+            fontFamily: 'inherit',
+          },
+        },
+      });
+      // Desktop browsers: card + bank only. Mobile devices: also expose the
+      // Apple Pay / Google Pay wallets.
+      const walletPref = isMobileDevice() ? 'auto' : 'never';
+      paymentElement = stripeElements.create('payment', {
+        layout: { type: 'tabs' },
+        wallets: { applePay: walletPref, googlePay: walletPref },
+      });
+      paymentElement.mount('#stripe-payment-element');
+    }
+
+    payBtn.addEventListener('click', async () => {
+      payBtn.disabled = true;
+      if (errEl) errEl.textContent = '';
+      cartFeedEl.style.color = 'var(--muted)';
+      cartFeedEl.textContent = 'Starting payment...';
+      try {
+        const clientSecret = await getClientSecret();
+        await ensureElement(clientSecret);
+        const result = await stripe.confirmPayment({
+          elements: stripeElements,
+          confirmParams: { return_url: window.location.origin + '/shop.html?stripe_return=1' },
+          redirect: 'if_required',
+        });
+        if (result.error) {
+          cartFeedEl.style.color = '#f87171';
+          cartFeedEl.textContent = result.error.message || 'Payment failed';
+          if (result.error.type !== 'validation_error') await reportStripeDecline();
+          payBtn.disabled = false;
+        } else if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+          const cr = await fetch('/api/shop/stripe/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ payment_intent_id: result.paymentIntent.id }),
+          });
+          const cdata = await cr.json();
+          if (cr.ok) {
+            cartFeedEl.style.color = '#4ade80';
+            cartFeedEl.textContent = 'Order #' + cdata.order_id + ' placed! Total: $' + parseFloat(cdata.total).toFixed(2);
+            await loadCart();
+            document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
+            document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
+            const ordersBtn = document.querySelector('[data-shop-tab="orders"]');
+            const ordersPanel = document.querySelector('[data-shop-panel="orders"]');
+            if (ordersBtn) ordersBtn.classList.add('is-active');
+            if (ordersPanel) ordersPanel.classList.add('is-active');
+            closeCart();
+            loadOrders();
+          } else {
+            cartFeedEl.style.color = '#f87171';
+            cartFeedEl.textContent = cdata.error || 'Payment confirmation failed.';
+            payBtn.disabled = false;
+          }
+        } else {
+          cartFeedEl.style.color = '#f87171';
+          cartFeedEl.textContent = 'Payment was not completed.';
+          await reportStripeDecline();
+          payBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error('Stripe payment error', err);
+        cartFeedEl.style.color = '#f87171';
+        cartFeedEl.textContent = (err && err.message) || 'Payment error. Please try again.';
+        payBtn.disabled = false;
+      }
+    });
+  }
+
+  // If Stripe redirected the customer back after a bank redirect / wallet
+  // authorization, verify and record the order now (the PaymentIntent was already
+  // confirmed server-side by Stripe).
+  async function handleStripeReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('stripe_return') || !params.get('payment_intent')) return;
+    const intentId = params.get('payment_intent');
+    history.replaceState({}, document.title, window.location.pathname);
+    if (!token || !cartFeedEl) return;
+    cartFeedEl.style.color = 'var(--muted)';
+    cartFeedEl.textContent = 'Verifying payment...';
+    try {
+      const cr = await fetch('/api/shop/stripe/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ payment_intent_id: intentId }),
+      });
+      const cdata = await cr.json();
+      if (cr.ok) {
+        cartFeedEl.style.color = '#4ade80';
+        cartFeedEl.textContent = 'Order #' + cdata.order_id + ' placed! Total: $' + parseFloat(cdata.total).toFixed(2);
+        await loadCart();
+        document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
+        document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
+        const ordersBtn = document.querySelector('[data-shop-tab="orders"]');
+        const ordersPanel = document.querySelector('[data-shop-panel="orders"]');
+        if (ordersBtn) ordersBtn.classList.add('is-active');
+        if (ordersPanel) ordersPanel.classList.add('is-active');
+        closeCart();
+        loadOrders();
+      } else {
+        cartFeedEl.style.color = '#f87171';
+        cartFeedEl.textContent = cdata.error || 'Payment verification failed.';
+      }
+    } catch (e) {
+      cartFeedEl.style.color = '#f87171';
+      cartFeedEl.textContent = 'Payment verification failed.';
+    }
+  }
+
+  // Shows the selected payment method's UI and hides the other.
+  function showPaymentMethod(method) {
+    activeMethod = method;
+    document.querySelectorAll('.shop-pay-method-btn').forEach((b) => {
+      b.classList.toggle('is-active', b.dataset.method === method);
+    });
+    const ppContainer = document.getElementById('paypal-button-container');
+    const spContainer = document.getElementById('stripe-payment-container');
+    if (ppContainer) ppContainer.style.display = method === 'paypal' ? '' : 'none';
+    if (spContainer) spContainer.style.display = method === 'card' ? '' : 'none';
+  }
+
 }
 
 // ── Shop: Admin management page ───────────────────────────────────────────
@@ -3274,6 +3629,8 @@ async function initShopAdminPage() {
       if (btn.dataset.shopTab === 'orders') loadAdminOrders(1);
     });
   });
+  const payFilterEl = document.getElementById('sa-payment-filter');
+  if (payFilterEl) payFilterEl.addEventListener('change', () => loadAdminOrders(1));
 
   // Product modal helpers
   const modal    = document.getElementById('sa-product-modal');
@@ -3291,6 +3648,7 @@ async function initShopAdminPage() {
     document.getElementById('sa-active').value = product ? String(product.active) : 'true';
     document.getElementById('sa-image').value = product ? (product.image_path || '') : '';
     document.getElementById('sa-desc').value = product ? (product.description || '') : '';
+    document.getElementById('sa-sizes').value = product ? (product.sizes || '') : '';
     formFeed.textContent = '';
     modal.style.display = 'flex';
   }
@@ -3316,6 +3674,7 @@ async function initShopAdminPage() {
       active:      document.getElementById('sa-active').value === 'true',
       image_path:  document.getElementById('sa-image').value.trim(),
       description: document.getElementById('sa-desc').value.trim(),
+      sizes:       document.getElementById('sa-sizes').value.trim(),
     };
 
     const url    = editingId ? `/api/admin/shop/products/${editingId}` : '/api/admin/shop/products';
@@ -3479,24 +3838,33 @@ async function initShopAdminPage() {
   }
 
   // ── Orders table ──────────────────────────────────────────────────────────
+  function payBadge(ps) {
+    const map = { succeeded: 'Paid', declined: 'Declined', unpaid: 'Unpaid' };
+    const cls = ['succeeded', 'declined', 'unpaid'].includes(ps) ? ps : 'pending';
+    const text = map[cls] || 'Pending';
+    return '<span class="sa-pay-status ' + cls + '">' + escHtml(text) + '</span>';
+  }
+
   async function loadAdminOrders(page) {
     ordFeed.textContent = 'Loading…';
     const tbody   = document.getElementById('sa-orders-tbody');
     const pagEl   = document.getElementById('sa-orders-pagination');
+    const payFilterEl = document.getElementById('sa-payment-filter');
+    const payParam = payFilterEl && payFilterEl.value ? '&payment_status=' + encodeURIComponent(payFilterEl.value) : '';
     try {
-      const res = await fetch(`/api/admin/shop/orders?page=${page}`, { headers: { Authorization: 'Bearer ' + token } });
+      const res = await fetch(`/api/admin/shop/orders?page=${page}${payParam}`, { headers: { Authorization: 'Bearer ' + token } });
       const data = await parseJSONResponse(res);
       ordFeed.textContent = '';
       if (!res.ok) { ordFeed.textContent = data.error || 'Unable to load orders.'; return; }
       if (data.orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:1.5rem;text-align:center;">No orders yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:1.5rem;text-align:center;">No orders yet.</td></tr>';
         pagEl.innerHTML = '';
         return;
       }
       tbody.innerHTML = '';
       const statusOptions = ['pending','processing','shipped','completed','cancelled'];
       data.orders.forEach((o) => {
-        const itemSummary = (o.items || []).map((i) => `${escHtml(i.product_name)} ×${i.quantity}`).join(', ');
+        const itemSummary = (o.items || []).map((i) => `${escHtml(i.product_name)}${i.size ? ` (${escHtml(i.size)})` : ''} ×${i.quantity}`).join(', ');
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>#${o.id}</td>
@@ -3510,6 +3878,7 @@ async function initShopAdminPage() {
             </select>
             <button class="sa-action-btn danger sa-order-delete" data-order-id="${o.id}" title="Remove order">Remove</button>
           </td>
+          <td>${payBadge(o.payment_status)}</td>
         `;
         tbody.appendChild(tr);
       });

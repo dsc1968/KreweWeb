@@ -6,6 +6,37 @@
     <title>Shop Management - Krewe Mystique</title>
     <link rel="stylesheet" href="styles.css" />
     <style>
+      .shop-tabs {
+        display: flex;
+        gap: 0.25rem;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        margin-bottom: 1.5rem;
+      }
+      .shop-tab-btn {
+        padding: 0.5rem 1.1rem;
+        border-radius: 10px 10px 0 0;
+        border: 1px solid transparent;
+        border-bottom: none;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 500;
+        position: relative;
+        bottom: -1px;
+        transition: color 0.15s, background 0.15s;
+      }
+      .shop-tab-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+      .shop-tab-btn.is-active {
+        background: rgba(10,19,44,0.98);
+        border-color: rgba(255,255,255,0.1);
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .shop-panel { display: none; }
+      .shop-panel.is-active { display: block; }
+
       .sa-table { width: 100%; border-collapse: collapse; }
       .sa-table th {
         text-align: left;
@@ -87,6 +118,16 @@
       .sa-order-status.shipped    { background: rgba(167,243,208,0.14); border:1px solid rgba(167,243,208,0.3); color: #6ee7b7; }
       .sa-order-status.completed  { background: rgba(74,222,128,0.14); border:1px solid rgba(74,222,128,0.3); color: #4ade80; }
       .sa-order-status.cancelled  { background: rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color: #f87171; }
+      .sa-pay-status {
+        display: inline-block; padding: 0.15rem 0.55rem;
+        border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      .sa-pay-status.succeeded { background: rgba(74,222,128,0.14); border:1px solid rgba(74,222,128,0.3); color: #4ade80; }
+      .sa-pay-status.declined  { background: rgba(248,113,113,0.14); border:1px solid rgba(248,113,113,0.3); color: #f87171; }
+      .sa-pay-status.unpaid    { background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color: #b8c4e0; }
+      .sa-pay-status.pending   { background: rgba(255,210,98,0.14); border:1px solid rgba(255,210,98,0.3); color: var(--accent); }
+
 
       .sa-status-select {
         padding: 0.3rem 0.6rem; border-radius: 8px;
@@ -149,6 +190,16 @@
         <!-- Orders panel -->
         <div class="shop-panel" data-shop-panel="orders">
           <div id="sa-orders-feedback" class="db-feedback"></div>
+          <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
+            <label for="sa-payment-filter" style="font-size:0.85rem;color:var(--muted);">Payment</label>
+            <select id="sa-payment-filter" class="sa-status-select">
+              <option value="">All</option>
+              <option value="succeeded">Paid</option>
+              <option value="declined">Declined</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
           <div style="overflow-x:auto;">
             <table class="sa-table">
               <thead>
@@ -159,6 +210,7 @@
                   <th>Total</th>
                   <th>Items</th>
                   <th>Status</th>
+                  <th>Payment</th>
                 </tr>
               </thead>
               <tbody id="sa-orders-tbody"></tbody>
@@ -202,6 +254,10 @@
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
               </select>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="sa-sizes">Sizes <span style="font-weight:400;">(comma-separated, blank = no sizes)</span></label>
+              <input type="text" id="sa-sizes" placeholder="e.g. XS,S,M,L,XL,XXL" />
             </div>
             <div class="form-group" style="grid-column:1/-1;">
               <label for="sa-image">Product Image</label>

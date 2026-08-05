@@ -428,6 +428,7 @@ async function ensureContentTable() {
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_id INTEGER REFERENCES floats(id) ON DELETE SET NULL',
     'ALTER TABLE floats ADD COLUMN IF NOT EXISTS capacity INTEGER',
+    "ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending'",
   ]) {
     await pool.query(col);
   }
@@ -490,6 +491,7 @@ async function ensureContentTable() {
       buyer_email TEXT NOT NULL,
       total_amount NUMERIC(10,2) NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      payment_status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -505,6 +507,23 @@ async function ensureContentTable() {
       unit_price NUMERIC(10,2) NOT NULL,
       quantity INTEGER NOT NULL
     )
+  `);
+
+  // ── Shop migrations: per-item sizes + variable-amount donation product ────
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS sizes TEXT`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS is_donation BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS size TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS custom_amount NUMERIC(10,2)`);
+  await pool.query(`ALTER TABLE shop_order_items ADD COLUMN IF NOT EXISTS size TEXT`);
+  // The same product in different sizes must be separate cart lines, so the
+  // uniqueness key now includes size.
+  await pool.query(`ALTER TABLE shop_cart_items DROP CONSTRAINT IF EXISTS shop_cart_items_user_id_product_id_key`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS shop_cart_items_user_product_size_key ON shop_cart_items (user_id, product_id, size)`);
+  // Seed the single variable-amount donation product backing the "Donate" option.
+  await pool.query(`
+    INSERT INTO shop_products (name, description, price, category, active, is_donation, position)
+    SELECT 'Donation to Krewe of Mystique', 'Support the Krewe of Mystique with a donation of any amount.', 0, NULL, TRUE, TRUE, 1000
+    WHERE NOT EXISTS (SELECT 1 FROM shop_products WHERE is_donation = TRUE)
   `);
 }
 

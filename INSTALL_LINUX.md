@@ -360,7 +360,10 @@ These are read by the running server (after `npm start`).
 | `PAYPAL_CLIENT_ID` | No | — | PayPal app client ID for shop payments |
 | `PAYPAL_CLIENT_SECRET` | No | — | PayPal app secret |
 | `PAYPAL_MODE` | No | `sandbox` | `sandbox` or `live` |
-| `PAYMENT_SIMULATE` | No | `false` | Set `true` to simulate payments without contacting PayPal |
+| `STRIPE_SECRET_KEY` | No | — | Stripe secret key for shop payments (leave blank to disable Stripe) |
+| `STRIPE_PUBLISHABLE_KEY` | No | — | Stripe publishable key (exposed to the browser) |
+| `STRIPE_MODE` | No | `test` | `test` or `live` |
+| `PAYMENT_SIMULATE` | No | `false` | Set `true` to simulate payments without contacting PayPal (applies to both PayPal and Stripe) |
 | `SEASON_END_DATE` | No | (computed) | Season-end rule, e.g. `fixed:7:15` or `relative:-1:5:8`. Defaults to Ash Wednesday when unset |
 | `BACKUP_PROVIDER` | No | `local` | Backup storage backend: `local`, `s3`, or `rclone` |
 | `BACKUP_S3_BUCKET` | No* | — | S3 bucket name (required when `BACKUP_PROVIDER=s3`) |

@@ -26,7 +26,7 @@ Out of the box it provides:
 - **Events** — a calendar/event listing.
 - **Admin editor** — edit page text, images, and sections in the browser, with
   the ability to revert to an original snapshot.
-- **Shop** — product listings with (optional) simulated or PayPal payments.
+- **Shop** — product listings with (optional) simulated, PayPal, or Stripe (credit-card) payments.
 - **Backup & restore** — database backups to local disk, S3-compatible storage,
   or rclone (OneDrive, Google Drive, Dropbox, and 70+ others).
 

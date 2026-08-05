@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict XJMcSK5JWsqtb1qmcUDlKsVFHcxuwy5oQbxXA1fjvlyXHU7vbFUWrFZKtisN5SN
+\restrict fgQApG4McmxAdrVK6jPtcCvsMBX3UG1XjB8NC7w0aJXwXewVegfRfL7ur3cgGfa
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -315,6 +315,8 @@ CREATE TABLE public.shop_cart_items (
     product_id integer NOT NULL,
     quantity integer DEFAULT 1 NOT NULL,
     added_at timestamp with time zone DEFAULT now() NOT NULL,
+    size text DEFAULT ''::text NOT NULL,
+    custom_amount numeric(10,2),
     CONSTRAINT shop_cart_items_quantity_check CHECK ((quantity > 0))
 );
 
@@ -349,7 +351,8 @@ CREATE TABLE public.shop_order_items (
     product_id integer,
     product_name text NOT NULL,
     unit_price numeric(10,2) NOT NULL,
-    quantity integer NOT NULL
+    quantity integer NOT NULL,
+    size text
 );
 
 
@@ -386,7 +389,8 @@ CREATE TABLE public.shop_orders (
     status text DEFAULT 'pending'::text NOT NULL,
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    payment_status text DEFAULT 'pending'::text NOT NULL
 );
 
 
@@ -426,7 +430,9 @@ CREATE TABLE public.shop_products (
     "position" integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    created_by integer
+    created_by integer,
+    sizes text,
+    is_donation boolean DEFAULT false NOT NULL
 );
 
 
@@ -695,14 +701,6 @@ ALTER TABLE ONLY public.shop_cart_items
 
 
 --
--- Name: shop_cart_items shop_cart_items_user_id_product_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.shop_cart_items
-    ADD CONSTRAINT shop_cart_items_user_id_product_id_key UNIQUE (user_id, product_id);
-
-
---
 -- Name: shop_order_items shop_order_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -785,6 +783,13 @@ CREATE INDEX pending_registrations_expires_idx ON public.pending_registrations U
 --
 
 CREATE INDEX photo_albums_page_position_idx ON public.photo_albums USING btree (page_path, "position");
+
+
+--
+-- Name: shop_cart_items_user_product_size_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX shop_cart_items_user_product_size_key ON public.shop_cart_items USING btree (user_id, product_id, size);
 
 
 --
@@ -943,5 +948,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict XJMcSK5JWsqtb1qmcUDlKsVFHcxuwy5oQbxXA1fjvlyXHU7vbFUWrFZKtisN5SN
+\unrestrict fgQApG4McmxAdrVK6jPtcCvsMBX3UG1XjB8NC7w0aJXwXewVegfRfL7ur3cgGfa
 
