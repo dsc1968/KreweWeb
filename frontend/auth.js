@@ -3796,7 +3796,7 @@ async function initShopAdminPage() {
       const img = document.createElement('img');
       img.src = path;
       img.loading = 'lazy';
-      img.style.cssText = 'width:100%;height:84px;object-fit:cover;display:block;';
+      img.style.cssText = 'width:100%;height:84px;object-fit:contain;display:block;';
       cell.appendChild(img);
       if (path === selectedImagePath) cell.style.borderColor = '#ffd262';
       cell.addEventListener('click', () => {
@@ -3891,7 +3891,7 @@ async function initShopAdminPage() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escHtml(p.name)}</td>
-          <td>${p.image_path ? `<img src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;" />` : '<span style="color:var(--muted);font-size:0.8rem;">—</span>'}</td>
+          <td>${p.image_path ? `<img src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" style="width:48px;height:48px;object-fit:contain;border-radius:8px;" />` : '<span style="color:var(--muted);font-size:0.8rem;">—</span>'}</td>
           <td>${escHtml(p.category || '—')}</td>
           <td>$${parseFloat(p.price).toFixed(2)}</td>
           <td>${p.stock_qty != null ? p.stock_qty : '∞'}</td>
