@@ -189,7 +189,40 @@ IDEMPOTENT_FILE="$(mktemp)"
     # new tables / columns / indexes / extensions added later are handled
     # automatically (no script edits needed). CREATE INDEX CONCURRENTLY is
     # checked before plain CREATE INDEX so the word CONCURRENTLY is preserved.
-    /^CREATE TABLE /              { sub(/^CREATE TABLE /,              "CREATE TABLE IF NOT EXISTS ");              print; next }
+    # CREATE TABLE: make idempotent AND self-updating. pg_dump inlines column
+    # definitions inside CREATE TABLE; on a database where the table already
+    # exists, "CREATE TABLE IF NOT EXISTS" is skipped, so newly-added columns
+    # would never reach the target and any later index/constraint that
+    # references them fails ("column ... does not exist"). To fix this
+    # generically, we buffer the table body and additionally emit
+    # "ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col def>" for every column.
+    # This is idempotent (existing columns are skipped) and needs no edits when
+    # new columns are added to the schema later. Table-level constraints
+    # (CONSTRAINT/PRIMARY KEY/UNIQUE/CHECK/FOREIGN KEY/EXCLUDE) are left to the
+    # table body / guarded ADD CONSTRAINT handling and are not turned into
+    # columns.
+    /^CREATE TABLE / {
+      hdr = $0
+      sub(/^CREATE TABLE /, "CREATE TABLE IF NOT EXISTS ", hdr)
+      print hdr
+      tbl = $3
+      ncol = 0
+      while ((getline bl) > 0) {
+        print bl
+        cl = bl
+        sub(/^[[:space:]]+/, "", cl)
+        if (cl ~ /^\);/) break
+        if (cl ~ /^CONSTRAINT/ || cl ~ /^PRIMARY KEY/ || cl ~ /^UNIQUE/ || cl ~ /^CHECK/ || cl ~ /^FOREIGN KEY/ || cl ~ /^EXCLUDE/) continue
+        cdef = cl
+        sub(/,[[:space:]]*$/, "", cdef)
+        if (cdef == "") continue
+        addcol[ncol++] = cdef
+      }
+      for (ci = 0; ci < ncol; ci++) {
+        print "ALTER TABLE " tbl " ADD COLUMN IF NOT EXISTS " addcol[ci] ";"
+      }
+      next
+    }
     /^CREATE UNIQUE INDEX /      { sub(/^CREATE UNIQUE INDEX /,      "CREATE UNIQUE INDEX IF NOT EXISTS ");      print; next }
     /^CREATE INDEX CONCURRENTLY / { sub(/^CREATE INDEX CONCURRENTLY /, "CREATE INDEX CONCURRENTLY IF NOT EXISTS "); print; next }
     /^CREATE INDEX /             { sub(/^CREATE INDEX /,             "CREATE INDEX IF NOT EXISTS ");             print; next }
