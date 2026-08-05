@@ -272,6 +272,7 @@
                 <span id="sa-image-name" style="font-size:0.8rem;color:#b8c4e0;"></span>
               </div>
               <input type="text" id="sa-image" style="display:none;" />
+              <input type="file" id="sa-image-file" accept="image/*" style="display:none;" />
             </div>
             <div class="form-group" style="grid-column:1/-1;">
               <label for="sa-desc">Description</label>
@@ -296,14 +297,16 @@
         </div>
         <div id="sa-image-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:0.6rem;"></div>
         <p id="sa-image-empty" style="color:#b8c4e0;font-size:0.88rem;display:none;">No images yet.</p>
-        <p style="margin:1rem 0 0;font-size:0.78rem;color:#b8c4e0;">Click an image to choose it. Click the same image again to clear it. Use “No image” for no picture.</p>
-        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:0.75rem;">
+        <p style="margin:1rem 0 0;font-size:0.78rem;color:#b8c4e0;">Click an image to choose it, or upload one from your computer. Click the same image again to clear it. Use “No image” for no picture.</p>
+        <div id="sa-image-upload-feedback" style="font-size:0.8rem;color:#b8c4e0;min-height:1.1em;margin-top:0.4rem;"></div>
+        <div style="display:flex;justify-content:space-between;gap:0.75rem;margin-top:0.75rem;flex-wrap:wrap;">
+          <button type="button" id="sa-image-upload" class="button">Upload from Computer</button>
           <button type="button" id="sa-image-cancel" class="button secondary">Close</button>
         </div>
       </div>
     </div>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260805b"></script>
+    <script src="auth.js?v=20260805c"></script>
   </body>
 </html>

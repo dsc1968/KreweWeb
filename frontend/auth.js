@@ -3813,6 +3813,8 @@ async function initShopAdminPage() {
 
   async function openImagePicker() {
     selectedImagePath = document.getElementById('sa-image').value.trim() || null;
+    const upFeed = document.getElementById('sa-image-upload-feedback');
+    if (upFeed) upFeed.textContent = '';
     imageModal.style.display = 'flex';
     try {
       const res = await fetch('/api/admin/images', { headers: { Authorization: 'Bearer ' + token } });
@@ -3832,6 +3834,44 @@ async function initShopAdminPage() {
   document.getElementById('sa-image-cancel').addEventListener('click', closeImagePicker);
   imageModal.addEventListener('click', (e) => { if (e.target === imageModal) closeImagePicker(); });
   clearImageBtn.addEventListener('click', () => setImageValue(''));
+
+  // Upload an image from the local machine, then select it for the product.
+  const imageFileInput  = document.getElementById('sa-image-file');
+  const uploadImageBtn  = document.getElementById('sa-image-upload');
+  const uploadFeedback  = document.getElementById('sa-image-upload-feedback');
+  if (uploadImageBtn && imageFileInput) {
+    uploadImageBtn.addEventListener('click', () => imageFileInput.click());
+    imageFileInput.addEventListener('change', async () => {
+      const file = imageFileInput.files && imageFileInput.files[0];
+      if (!file) return;
+      uploadImageBtn.disabled = true;
+      if (uploadFeedback) { uploadFeedback.style.color = '#b8c4e0'; uploadFeedback.textContent = 'Uploading ' + file.name + '…'; }
+      try {
+        const fd = new FormData();
+        fd.append('image', file);
+        fd.append('target', 'shop-product');
+        const res = await fetch('/api/admin/upload-image', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token },
+          body: fd,
+        });
+        const data = await parseJSONResponse(res);
+        if (res.ok && data.path) {
+          setImageValue(data.path);
+          if (uploadFeedback) uploadFeedback.textContent = '';
+          closeImagePicker();
+        } else if (uploadFeedback) {
+          uploadFeedback.style.color = '#f87171';
+          uploadFeedback.textContent = (data && data.error) || 'Upload failed.';
+        }
+      } catch {
+        if (uploadFeedback) { uploadFeedback.style.color = '#f87171'; uploadFeedback.textContent = 'Network error during upload.'; }
+      } finally {
+        uploadImageBtn.disabled = false;
+        imageFileInput.value = '';
+      }
+    });
+  }
 
   // ── Products table ───────────────────────────────────────────────────────
   async function loadAdminProducts() {
