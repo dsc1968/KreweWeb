@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict zpxGWJQ8hRHDuq6lfdkarNjRO7rcny1BBylhc9noNeM3lyFTk5eFQpCKx7IJyZb
+\restrict eSpMnZPNi79csmdJe9Dgm4Q4ucR6NbhofXDTWoT6ITNf1nevRhpkDJe9KequN2v
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -432,7 +432,6 @@ CREATE TABLE public.shop_products (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
     sizes text,
-    size_label text,
     is_donation boolean DEFAULT false NOT NULL
 );
 
@@ -949,5 +948,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict zpxGWJQ8hRHDuq6lfdkarNjRO7rcny1BBylhc9noNeM3lyFTk5eFQpCKx7IJyZb
+\unrestrict eSpMnZPNi79csmdJe9Dgm4Q4ucR6NbhofXDTWoT6ITNf1nevRhpkDJe9KequN2v
 
