@@ -1076,6 +1076,33 @@ function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Shared pagination control: prev/next arrows always visible (greyed when disabled) + numbered pages.
+function renderOrdersPagination(pagEl, page, pageCount, goFn) {
+  if (!pagEl) return;
+  pagEl.innerHTML = '';
+  pagEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.4rem;justify-content:center;align-items:center;margin-top:1rem;';
+  const mkBtn = (label, targetPage, { active = false, disabled = false } = {}) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerHTML = label;
+    btn.disabled = disabled;
+    const border = active ? '#ffd262' : 'rgba(255,255,255,0.16)';
+    const bg = active ? '#ffd262' : 'rgba(255,255,255,0.06)';
+    const color = active ? '#1a1206' : 'var(--text, #e6ecff)';
+    btn.style.cssText = `min-width:2rem;padding:0.35rem 0.6rem;border-radius:8px;border:1px solid ${border};`
+      + `background:${bg};color:${color};font:inherit;font-size:0.82rem;font-weight:${active ? '700' : '400'};`
+      + `cursor:${disabled ? 'default' : 'pointer'};opacity:${disabled ? '0.35' : '1'};line-height:1;`;
+    if (!disabled && !active) btn.addEventListener('click', () => goFn(targetPage));
+    return btn;
+  };
+  const total = Math.max(1, pageCount);
+  pagEl.appendChild(mkBtn('&lsaquo;', page - 1, { disabled: page <= 1 }));
+  for (let i = 1; i <= total; i++) {
+    pagEl.appendChild(mkBtn(String(i), i, { active: i === page }));
+  }
+  pagEl.appendChild(mkBtn('&rsaquo;', page + 1, { disabled: page >= total }));
+}
+
 function renderAdminUsers(users, currentUserId) {
   const section = document.getElementById('admin-user-management') || document.getElementById('admin-user-management-page');
   const tbody = document.getElementById('admin-user-table-body');
@@ -1867,20 +1894,7 @@ async function initDashboard() {
             <div style="margin-top:0.25rem;font-size:0.9rem;">Total: <strong style="color:#ffd262;">$${parseFloat(o.total_amount).toFixed(2)}</strong></div>
           </div>`;
         }).join('');
-        if (pagEl) {
-          pagEl.innerHTML = '';
-          if (pageCount > 1) {
-            pagEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.4rem;justify-content:center;margin-top:1rem;';
-            for (let i = 1; i <= pageCount; i++) {
-              const btn = document.createElement('button');
-              const active = i === page;
-              btn.textContent = i;
-              btn.style.cssText = `min-width:2rem;padding:0.35rem 0.6rem;border-radius:8px;border:1px solid ${active ? '#ffd262' : 'rgba(255,255,255,0.16)'};background:${active ? '#ffd262' : 'rgba(255,255,255,0.06)'};color:${active ? '#1a1206' : 'var(--text, #e6ecff)'};font:inherit;font-size:0.82rem;font-weight:${active ? '700' : '400'};cursor:pointer;`;
-              btn.addEventListener('click', () => renderDashOrdersPage(i));
-              pagEl.appendChild(btn);
-            }
-          }
-        }
+        renderOrdersPagination(pagEl, page, pageCount, renderDashOrdersPage);
       }
 
       renderDashOrdersPage(1);
@@ -3323,18 +3337,7 @@ async function initShopPage() {
           `;
           listEl.appendChild(div);
         });
-        if (pagEl) {
-          pagEl.innerHTML = '';
-          if (pageCount > 1) {
-            for (let i = 1; i <= pageCount; i++) {
-              const btn = document.createElement('button');
-              btn.className = 'shop-page-btn' + (i === page ? ' active' : '');
-              btn.textContent = i;
-              btn.addEventListener('click', () => renderOrdersPage(i));
-              pagEl.appendChild(btn);
-            }
-          }
-        }
+        renderOrdersPagination(pagEl, page, pageCount, renderOrdersPage);
       }
 
       renderOrdersPage(1);
@@ -4107,14 +4110,7 @@ async function initShopAdminPage() {
         });
       });
       // Pagination
-      pagEl.innerHTML = '';
-      for (let i = 1; i <= data.pages; i++) {
-        const btn = document.createElement('button');
-        btn.className = 'br-page-btn' + (i === data.page ? ' active' : '');
-        btn.textContent = i;
-        btn.addEventListener('click', () => loadAdminOrders(i));
-        pagEl.appendChild(btn);
-      }
+      renderOrdersPagination(pagEl, data.page, data.pages, loadAdminOrders);
     } catch { ordFeed.textContent = 'Network error loading orders.'; }
   }
 
