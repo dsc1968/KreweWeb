@@ -3264,31 +3264,55 @@ async function initShopPage() {
   async function loadOrders() {
     const feedEl = document.getElementById('shop-orders-feedback');
     const listEl = document.getElementById('shop-orders-list');
+    const pagEl  = document.getElementById('shop-orders-pagination');
     feedEl.textContent = 'Loading orders…';
     try {
       const res = await fetch('/api/shop/orders', { headers: { Authorization: 'Bearer ' + token } });
       const data = await parseJSONResponse(res);
       feedEl.textContent = '';
+      if (pagEl) pagEl.innerHTML = '';
       if (!res.ok) { listEl.innerHTML = `<p style="color:#f87171;">${data.error || 'Unable to load orders.'}</p>`; return; }
       if (data.orders.length === 0) { listEl.innerHTML = '<p style="color:var(--muted);">No orders yet.</p>'; return; }
-      listEl.innerHTML = '';
-      data.orders.forEach((o) => {
-        const div = document.createElement('div');
-        div.className = 'shop-order-card';
-        const itemLines = (o.items || []).map((i) =>
-          `${escHtml(i.product_name)}${i.size ? ` (${escHtml(i.size)})` : ''} × ${i.quantity} — ${fmtPrice(parseFloat(i.unit_price) * i.quantity)}`
-        ).join('<br>');
-        div.innerHTML = `
-          <div class="shop-order-head">
-            <span class="shop-order-id">Order #${o.id}</span>
-            <span class="shop-order-date">${new Date(o.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</span>
-            <span class="shop-order-total">${fmtPrice(o.total_amount)}</span>
-            <span class="shop-order-status ${o.status}">${o.status}</span>
-          </div>
-          <div class="shop-order-items">${itemLines || '—'}</div>
-        `;
-        listEl.appendChild(div);
-      });
+
+      const perPage = 5;
+      const pageCount = Math.ceil(data.orders.length / perPage);
+
+      function renderOrdersPage(page) {
+        const start = (page - 1) * perPage;
+        const pageOrders = data.orders.slice(start, start + perPage);
+        listEl.innerHTML = '';
+        pageOrders.forEach((o) => {
+          const div = document.createElement('div');
+          div.className = 'shop-order-card';
+          const itemLines = (o.items || []).map((i) =>
+            `${escHtml(i.product_name)}${i.size ? ` (${escHtml(i.size)})` : ''} × ${i.quantity} — ${fmtPrice(parseFloat(i.unit_price) * i.quantity)}`
+          ).join('<br>');
+          div.innerHTML = `
+            <div class="shop-order-head">
+              <span class="shop-order-id">Order #${o.id}</span>
+              <span class="shop-order-date">${new Date(o.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</span>
+              <span class="shop-order-total">${fmtPrice(o.total_amount)}</span>
+              <span class="shop-order-status ${o.status}">${o.status}</span>
+            </div>
+            <div class="shop-order-items">${itemLines || '—'}</div>
+          `;
+          listEl.appendChild(div);
+        });
+        if (pagEl) {
+          pagEl.innerHTML = '';
+          if (pageCount > 1) {
+            for (let i = 1; i <= pageCount; i++) {
+              const btn = document.createElement('button');
+              btn.className = 'shop-page-btn' + (i === page ? ' active' : '');
+              btn.textContent = i;
+              btn.addEventListener('click', () => renderOrdersPage(i));
+              pagEl.appendChild(btn);
+            }
+          }
+        }
+      }
+
+      renderOrdersPage(1);
     } catch { feedEl.textContent = 'Network error loading orders.'; }
   }
 
@@ -4372,7 +4396,7 @@ async function initFinanceAdminPage() {
     return fetch(path, Object.assign({ headers: { Authorization: 'Bearer ' + token } }, opts));
   }
 
-  const FIELDS = [['dues_paid', 'Dues'], ['guest_fee_paid', 'Guest Fee'], ['beads_paid', 'Beads'], ['costume_paid', 'Costume']];
+  const FIELDS = [['dues_paid', 'Dues'], ['guest_fee_paid', 'Guest Fee'], ['costume_paid', 'Costume']];
 
   function rowHtml(m) {
     const toggles = FIELDS.map((entry) => {

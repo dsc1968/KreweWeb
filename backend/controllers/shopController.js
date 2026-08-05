@@ -461,7 +461,7 @@ async function get__api_admin_shop_orders(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
-    const limit = 20;
+    const limit = 8;
     const offset = (page - 1) * limit;
     const payFilter = typeof req.query.payment_status === 'string' ? req.query.payment_status.trim() : '';
     const allowedPay = ['succeeded', 'declined', 'unpaid', 'pending'];

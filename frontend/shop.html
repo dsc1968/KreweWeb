@@ -419,10 +419,15 @@
         padding: 0.4rem 0.55rem;
         border-radius: 8px;
         border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.06);
+        background: #0f1830;
         color: var(--text);
         font: inherit;
         font-size: 0.82rem;
+        color-scheme: dark;
+      }
+      .shop-cart-item-beneficiary select option {
+        background: #0f1830;
+        color: var(--text);
       }
 
       .shop-cart-foot {
@@ -537,6 +542,33 @@
       .shop-order-status.shipped   { background: rgba(167,243,208,0.14); border: 1px solid rgba(167,243,208,0.3); color: #6ee7b7; }
       .shop-order-status.completed { background: rgba(74,222,128,0.14); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
       .shop-order-status.cancelled { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
+
+      .shop-orders-pagination {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        justify-content: center;
+        margin-top: 1rem;
+      }
+      .shop-orders-pagination:empty { display: none; }
+      .shop-page-btn {
+        min-width: 2rem;
+        padding: 0.35rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+      .shop-page-btn:hover { background: rgba(255,255,255,0.12); }
+      .shop-page-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #1a1206;
+        font-weight: 700;
+      }
 
       .shop-order-items { font-size: 0.85rem; color: var(--muted); line-height: 1.8; }
 
@@ -658,12 +690,13 @@
         <div class="shop-panel" data-shop-panel="orders">
           <div id="shop-orders-feedback" style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;"></div>
           <div id="shop-orders-list"></div>
+          <div id="shop-orders-pagination" class="shop-orders-pagination"></div>
         </div>
 
       </div>
     </main>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260805e"></script>
+    <script src="auth.js?v=20260805g"></script>
   </body>
 </html>
