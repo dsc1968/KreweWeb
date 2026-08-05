@@ -316,11 +316,18 @@ async function post__api_shop_donation(req, res) {
   }
 }
 
+// Fee payments (membership/guest) have nothing to ship, so an order made up
+// entirely of such lines is marked completed; anything shippable stays
+// 'processing' until an admin fulfills it.
+function orderStatusForCart(cartRows) {
+  const allFees = cartRows.length > 0 && cartRows.every((r) => r.fulfills_membership || r.fulfills_guest);
+  return allFees ? 'completed' : 'processing';
+}
+
 // After a successful order, mark membership dues / guest fee as paid on the
 // profile of each membership/guest line's beneficiary (defaulting to the buyer
 // when no other member was chosen). Runs inside the order transaction.
-async function applyMembershipFulfillment(client, buyerUserId, cartRows) {
-  const seasonYear = currentSeasonYear();
+async function applyMembershipFulfillment(client, buyerUserId, cartRows) {  const seasonYear = currentSeasonYear();
   const done = new Set();
   for (const row of cartRows) {
     if (!row.fulfills_membership && !row.fulfills_guest) continue;
@@ -597,10 +604,11 @@ async function post__api_shop_paypal_capture_order(req, res) {
       const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]);
       const buyer = userResult.rows[0];
       const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+      const orderStatus = orderStatusForCart(cartResult.rows);
       const orderResult = await client.query(
         `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-         VALUES ($1,$2,$3,$4,$5,'processing','succeeded') RETURNING id`,
-        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null]
+         VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
+        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
       );
       const orderId = orderResult.rows[0].id;
       for (const item of cartResult.rows) {
@@ -736,10 +744,11 @@ async function post__api_shop_stripe_confirm(req, res) {
       const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]);
       const buyer = userResult.rows[0];
       const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+      const orderStatus = orderStatusForCart(cartResult.rows);
       const orderResult = await client.query(
         `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-         VALUES ($1,$2,$3,$4,$5,'processing','succeeded') RETURNING id`,
-        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null]
+         VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
+        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
       );
       const orderId = orderResult.rows[0].id;
       for (const item of cartResult.rows) {
