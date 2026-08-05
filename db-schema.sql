@@ -432,6 +432,7 @@ CREATE TABLE public.shop_products (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
     sizes text,
+    size_label text,
     is_donation boolean DEFAULT false NOT NULL
 );
 

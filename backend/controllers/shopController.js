@@ -23,6 +23,13 @@ function normalizeSizes(input) {
   return unique.length ? unique.slice(0, 24).join(',') : null;
 }
 
+// Trims a size label (e.g. "Shirt Size") to a short single-line string, or null.
+function normalizeSizeLabel(input) {
+  if (input == null) return null;
+  const label = String(input).replace(/\s+/g, ' ').trim().slice(0, 40);
+  return label || null;
+}
+
 async function get__api_shop_payment_mode(req, res) {
   const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
   res.json({ simulate: env.PAYMENT_SIMULATE === 'true' });
@@ -31,7 +38,7 @@ async function get__api_shop_payment_mode(req, res) {
 async function get__api_shop_products(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, is_donation
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation
        FROM shop_products WHERE active = TRUE
        ORDER BY position ASC, id ASC`
     );
@@ -46,7 +53,7 @@ async function get__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, is_donation, active, position, created_at
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, active, position, created_at
        FROM shop_products ORDER BY position ASC, id ASC`
     );
     res.json({ products: result.rows });
@@ -58,7 +65,7 @@ async function get__api_admin_shop_products(req, res) {
 
 async function post__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
-  const { name, description, price, image_path, category, stock_qty, active, sizes } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, sizes, size_label } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -68,8 +75,8 @@ async function post__api_admin_shop_products(req, res) {
   }
   try {
     const result = await pool.query(
-      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, size_label, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -79,6 +86,7 @@ async function post__api_admin_shop_products(req, res) {
         stock_qty != null && stock_qty !== '' ? parseInt(stock_qty, 10) : null,
         active !== false,
         normalizeSizes(sizes),
+        normalizeSizeLabel(size_label),
         req.user.userId,
       ]
     );
@@ -92,7 +100,7 @@ async function post__api_admin_shop_products(req, res) {
 async function put__api_admin_shop_products__id___d__(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
-  const { name, description, price, image_path, category, stock_qty, active, position, sizes } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, position, sizes, size_label } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -104,8 +112,8 @@ async function put__api_admin_shop_products__id___d__(req, res) {
     const result = await pool.query(
       `UPDATE shop_products
        SET name=$1, description=$2, price=$3, image_path=$4, category=$5,
-           stock_qty=$6, active=$7, position=COALESCE($8, position), sizes=$9, updated_at=NOW()
-       WHERE id=$10 RETURNING *`,
+           stock_qty=$6, active=$7, position=COALESCE($8, position), sizes=$9, size_label=$10, updated_at=NOW()
+       WHERE id=$11 RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -116,6 +124,7 @@ async function put__api_admin_shop_products__id___d__(req, res) {
         active !== false,
         position != null && position !== '' ? parseInt(position, 10) : null,
         normalizeSizes(sizes),
+        normalizeSizeLabel(size_label),
         id,
       ]
     );

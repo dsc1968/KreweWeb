@@ -706,6 +706,19 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
   document.body.appendChild(backdrop);
 
+  // Wire the close controls first — before any await or DOM step below that
+  // could throw — so the overlay can always be dismissed and never traps the
+  // whole page in an unresponsive backdrop.
+  function close() {
+    document.removeEventListener('keydown', onModalKeydown);
+    backdrop.remove();
+  }
+  function onModalKeydown(e) { if (e.key === 'Escape') close(); }
+  const closeBtn = backdrop.querySelector('#uem-close');
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  document.addEventListener('keydown', onModalKeydown);
+
   // Populate list inputs
   // Kids: Name | Float # | ×
   // Riders: Name | Float Name | Float # | ×
@@ -826,10 +839,6 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     feedbackEl.textContent = msg;
     feedbackEl.style.color = isError ? '#ff9b9b' : '#88d498';
   }
-
-  function close() { backdrop.remove(); }
-  backdrop.querySelector('#uem-close').addEventListener('click', close);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
 
   // Payment rows — auto-save on every toggle so no "Save Changes" click is required
   const iconSvgPaid   = '<path fill="#fff" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
@@ -3108,7 +3117,7 @@ async function initShopPage() {
         ? `<img class="shop-product-img" src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" loading="lazy" />`
         : `<div class="shop-product-img-placeholder">🛍</div>`;
       const sizesHtml = sizes.length
-        ? `<div class="shop-size-chips">${sizes.map((s) => `<button type="button" class="shop-size-chip" data-size="${escHtml(s)}">${escHtml(s)}</button>`).join('')}</div>`
+        ? `<div class="shop-size-label">${p.size_label ? escHtml(p.size_label) : 'Size'}</div><div class="shop-size-chips">${sizes.map((s) => `<button type="button" class="shop-size-chip" data-size="${escHtml(s)}">${escHtml(s)}</button>`).join('')}</div>`
         : '';
       card.innerHTML = `
         ${imgHtml}
@@ -3687,6 +3696,7 @@ async function initShopAdminPage() {
     document.getElementById('sa-image').value = product ? (product.image_path || '') : '';
     document.getElementById('sa-desc').value = product ? (product.description || '') : '';
     document.getElementById('sa-sizes').value = product ? (product.sizes || '') : '';
+    document.getElementById('sa-size-label').value = product ? (product.size_label || '') : '';
     formFeed.textContent = '';
     modal.style.display = 'flex';
   }
@@ -3713,6 +3723,7 @@ async function initShopAdminPage() {
       image_path:  document.getElementById('sa-image').value.trim(),
       description: document.getElementById('sa-desc').value.trim(),
       sizes:       document.getElementById('sa-sizes').value.trim(),
+      size_label:  document.getElementById('sa-size-label').value.trim(),
     };
 
     const url    = editingId ? `/api/admin/shop/products/${editingId}` : '/api/admin/shop/products';

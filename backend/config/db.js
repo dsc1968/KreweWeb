@@ -511,6 +511,7 @@ async function ensureContentTable() {
 
   // ── Shop migrations: per-item sizes + variable-amount donation product ────
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS sizes TEXT`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS size_label TEXT`);
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS is_donation BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS size TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS custom_amount NUMERIC(10,2)`);
