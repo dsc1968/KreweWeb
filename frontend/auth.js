@@ -571,10 +571,10 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
 
   const backdrop = document.createElement('div');
   backdrop.id = 'admin-user-edit-modal';
-  backdrop.style.cssText = 'position:fixed;inset:0;z-index:11000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(2,8,22,0.8);overflow-y:auto;';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:11000;display:flex;align-items:flex-start;justify-content:center;padding:1rem;background:rgba(2,8,22,0.8);overflow-y:auto;';
 
   backdrop.innerHTML = `
-    <div style="width:min(780px,100%);background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
+    <div style="width:min(780px,100%);max-height:calc(100vh - 2rem);overflow-y:auto;margin:auto 0;background:#08102a;border:1px solid rgba(255,210,98,0.28);border-radius:20px;padding:1.5rem;box-shadow:0 24px 60px rgba(0,0,0,0.4);color:#f5f7ff;" role="dialog" aria-modal="true" aria-labelledby="uem-title">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
         <h2 id="uem-title" style="margin:0;font-size:1.05rem;">Edit: ${escHtml(full.full_name)}</h2>
         <button type="button" id="uem-close" style="background:none;border:none;color:#b8c4e0;font-size:1.4rem;cursor:pointer;line-height:1;" aria-label="Close">&times;</button>
