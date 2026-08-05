@@ -402,6 +402,29 @@
       }
       .shop-cart-item-remove:hover { color: #f87171; }
 
+      .shop-cart-item-beneficiary {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-top: 0.15rem;
+      }
+      .shop-cart-item-beneficiary label {
+        font-size: 0.72rem;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .shop-cart-item-beneficiary select {
+        width: 100%;
+        padding: 0.4rem 0.55rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.82rem;
+      }
+
       .shop-cart-foot {
         padding: 1rem 1.5rem 1.5rem;
         border-top: 1px solid rgba(255,255,255,0.08);
@@ -641,6 +664,6 @@
     </main>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260805d"></script>
+    <script src="auth.js?v=20260805e"></script>
   </body>
 </html>

@@ -2872,6 +2872,33 @@ async function initShopPage() {
 
   function fmtPrice(v) { return '$' + parseFloat(v).toFixed(2); }
 
+  // Member directory for the "pay on behalf of" picker on membership/guest
+  // cart lines. Loaded lazily and cached; a null value means "not loaded yet".
+  let shopMembers = null;
+  let shopMembersLoading = false;
+  async function ensureShopMembersLoaded() {
+    if (shopMembers !== null || shopMembersLoading) return;
+    shopMembersLoading = true;
+    try {
+      const res = await fetch('/api/shop/members', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await parseJSONResponse(res);
+      shopMembers = res.ok && Array.isArray(data.members) ? data.members : [];
+    } catch { shopMembers = []; }
+    shopMembersLoading = false;
+    renderCart();
+  }
+
+  async function updateCartBeneficiary(itemId, beneficiaryId) {
+    try {
+      const res = await fetch(`/api/shop/cart/${itemId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ beneficiary_user_id: beneficiaryId || null }),
+      });
+      if (res.ok) await loadCart();
+    } catch { /* leave the cart as-is on network error */ }
+  }
+
   function renderCart() {
     const total = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0);
     cartTotalEl.textContent = fmtPrice(total);
@@ -2880,6 +2907,8 @@ async function initShopPage() {
       cartItemsEl.innerHTML = '<p class="shop-cart-empty">Your cart is empty.</p>';
       return;
     }
+    const needsMembers = cartItems.some((i) => i.fulfills_membership || i.fulfills_guest);
+    if (needsMembers && shopMembers === null) ensureShopMembersLoaded();
     cartItemsEl.innerHTML = '';
     cartItems.forEach((item) => {
       const div = document.createElement('div');
@@ -2892,13 +2921,34 @@ async function initShopPage() {
           <span class="shop-cart-qty-val">${item.quantity}</span>
           <button class="shop-cart-qty-btn" data-action="inc" data-id="${item.id}">+</button>
         </div>`;
+      let beneficiaryHtml = '';
+      if (item.fulfills_membership || item.fulfills_guest) {
+        const fee = item.fulfills_membership ? 'membership dues' : 'guest fee';
+        const selected = String(item.beneficiary_user_id || '');
+        const opts = ['<option value="">Myself</option>']
+          .concat((shopMembers || []).map((m) =>
+            `<option value="${m.id}"${String(m.id) === selected ? ' selected' : ''}>${escHtml(m.full_name || ('Member #' + m.id))}</option>`))
+          .join('');
+        beneficiaryHtml = `
+          <div class="shop-cart-item-beneficiary">
+            <label>Apply ${fee} to</label>
+            <select data-beneficiary-for="${item.id}" ${shopMembers === null ? 'disabled' : ''}>${opts}</select>
+          </div>`;
+      }
       div.innerHTML = `
         <span class="shop-cart-item-name">${nameHtml}</span>
         <span class="shop-cart-item-price">${fmtPrice(parseFloat(item.price) * item.quantity)}</span>
         ${controlsHtml}
         <button class="shop-cart-item-remove" data-id="${item.id}">Remove</button>
+        ${beneficiaryHtml}
       `;
       cartItemsEl.appendChild(div);
+    });
+    cartItemsEl.querySelectorAll('select[data-beneficiary-for]').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const id = parseInt(sel.dataset.beneficiaryFor, 10);
+        updateCartBeneficiary(id, sel.value);
+      });
     });
     cartItemsEl.querySelectorAll('.shop-cart-qty-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -3697,6 +3747,8 @@ async function initShopAdminPage() {
     document.getElementById('sa-desc').value = product ? (product.description || '') : '';
     document.getElementById('sa-sizes').value = product ? (product.sizes || '') : '';
     document.getElementById('sa-size-label').value = product ? (product.size_label || '') : '';
+    document.getElementById('sa-fulfills-membership').checked = product ? product.fulfills_membership === true : false;
+    document.getElementById('sa-fulfills-guest').checked = product ? product.fulfills_guest === true : false;
     formFeed.textContent = '';
     modal.style.display = 'flex';
   }
@@ -3724,6 +3776,8 @@ async function initShopAdminPage() {
       description: document.getElementById('sa-desc').value.trim(),
       sizes:       document.getElementById('sa-sizes').value.trim(),
       size_label:  document.getElementById('sa-size-label').value.trim(),
+      fulfills_membership: document.getElementById('sa-fulfills-membership').checked,
+      fulfills_guest:      document.getElementById('sa-fulfills-guest').checked,
     };
 
     const url    = editingId ? `/api/admin/shop/products/${editingId}` : '/api/admin/shop/products';

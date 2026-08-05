@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middlewares/auth');
 const { upload } = require('../utils/files');
-const { get__api_shop_payment_mode, get__api_shop_products, get__api_admin_shop_products, post__api_admin_shop_products, put__api_admin_shop_products__id___d__, delete__api_admin_shop_products__id___d__, get__api_shop_cart, post__api_shop_cart, post__api_shop_donation, put__api_shop_cart__itemId___d__, delete__api_shop_cart__itemId___d__, post__api_shop_checkout, get__api_shop_orders, get__api_admin_shop_orders, delete__api_admin_shop_orders__id___d__, put__api_admin_shop_orders__id___d___status, get__api_shop_paypal_config, post__api_shop_paypal_create_order, post__api_shop_paypal_capture_order, get__api_shop_stripe_config, post__api_shop_stripe_create_payment_intent, post__api_shop_stripe_confirm, post__api_shop_stripe_declined } = require('../controllers/shopController');
+const { get__api_shop_payment_mode, get__api_shop_products, get__api_shop_members, get__api_admin_shop_products, post__api_admin_shop_products, put__api_admin_shop_products__id___d__, delete__api_admin_shop_products__id___d__, get__api_shop_cart, post__api_shop_cart, post__api_shop_donation, put__api_shop_cart__itemId___d__, delete__api_shop_cart__itemId___d__, post__api_shop_checkout, get__api_shop_orders, get__api_admin_shop_orders, delete__api_admin_shop_orders__id___d__, put__api_admin_shop_orders__id___d___status, get__api_shop_paypal_config, post__api_shop_paypal_create_order, post__api_shop_paypal_capture_order, get__api_shop_stripe_config, post__api_shop_stripe_create_payment_intent, post__api_shop_stripe_confirm, post__api_shop_stripe_declined } = require('../controllers/shopController');
 
 router.get('/api/shop/payment-mode', authenticateToken, get__api_shop_payment_mode);
 router.get('/api/shop/products', authenticateToken, get__api_shop_products);
+router.get('/api/shop/members', authenticateToken, get__api_shop_members);
 router.get('/api/admin/shop/products', authenticateToken, get__api_admin_shop_products);
 router.post('/api/admin/shop/products', authenticateToken, post__api_admin_shop_products);
 router.put('/api/admin/shop/products/:id(\\d+)', authenticateToken, put__api_admin_shop_products__id___d__);

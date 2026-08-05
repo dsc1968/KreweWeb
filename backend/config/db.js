@@ -513,9 +513,16 @@ async function ensureContentTable() {
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS sizes TEXT`);
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS size_label TEXT`);
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS is_donation BOOLEAN NOT NULL DEFAULT FALSE`);
+  // Products that, when paid for, mark the buyer's (or a chosen member's)
+  // membership dues or guest fee as paid on their profile.
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_membership BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_guest BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS size TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS custom_amount NUMERIC(10,2)`);
+  // The member a membership/guest purchase is credited to (defaults to buyer).
+  await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS beneficiary_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE shop_order_items ADD COLUMN IF NOT EXISTS size TEXT`);
+  await pool.query(`ALTER TABLE shop_order_items ADD COLUMN IF NOT EXISTS beneficiary_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
   // The same product in different sizes must be separate cart lines, so the
   // uniqueness key now includes size.
   await pool.query(`ALTER TABLE shop_cart_items DROP CONSTRAINT IF EXISTS shop_cart_items_user_id_product_id_key`);
