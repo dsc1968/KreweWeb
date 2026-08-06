@@ -1201,7 +1201,7 @@ function renderAdminUsers(users, currentUserId) {
   }
 
   function drawRows() {
-    const filterValue = filter ? filter.value : 'member';
+    const filterValue = filter ? filter.value : 'all';
     const visibleUsers = getFilteredUsers(users, filterValue);
     tbody.innerHTML = '';
 
