@@ -3039,17 +3039,22 @@ async function initShopPage() {
     } catch { cartItems = []; renderCart(); }
   }
 
+  async function postCartItem(productId, size) {
+    const res = await fetch('/api/shop/cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ product_id: productId, quantity: 1, size: size || '' }),
+    });
+    const data = await parseJSONResponse(res);
+    return { ok: res.ok, data };
+  }
+
   async function addToCart(productId, size) {
     const btn = document.querySelector(`.shop-add-btn[data-product-id="${productId}"]`);
     if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
     try {
-      const res = await fetch('/api/shop/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ product_id: productId, quantity: 1, size: size || '' }),
-      });
-      const data = await parseJSONResponse(res);
-      if (!res.ok) {
+      const { ok, data } = await postCartItem(productId, size);
+      if (!ok) {
         if (btn) { btn.disabled = false; btn.textContent = 'Add to Cart'; }
         alert(data.error || 'Unable to add to cart');
         return;
@@ -3173,6 +3178,72 @@ async function initShopPage() {
   // ── Products ─────────────────────────────────────────────────────────────
   let allProducts = [];
   let activeCategory = 'all';
+  // Multi-select state: product id -> chosen size (string, '' when sizeless).
+  const selectedProducts = new Map();
+
+  function updateBatchBar() {
+    const bar = document.getElementById('shop-batch-bar');
+    const info = document.getElementById('shop-batch-info');
+    if (!bar) return;
+    const count = selectedProducts.size;
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    if (info) info.textContent = count + ' item' + (count === 1 ? '' : 's') + ' selected';
+  }
+
+  function clearSelection() {
+    selectedProducts.clear();
+    document.querySelectorAll('.shop-select-cb').forEach((cb) => { cb.checked = false; });
+    document.querySelectorAll('.shop-product-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
+    updateBatchBar();
+  }
+
+  async function addSelectedToCart() {
+    if (selectedProducts.size === 0) return;
+    const feed = document.getElementById('shop-product-feedback');
+    // Any selected sized product must have a size chosen first.
+    const missing = [];
+    selectedProducts.forEach((size, id) => {
+      const p = allProducts.find((x) => x.id === id);
+      if (!p) return;
+      const sizes = (p.sizes || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (sizes.length && !size) missing.push(p.name);
+    });
+    if (missing.length) {
+      if (feed) { feed.style.color = '#f87171'; feed.textContent = 'Please choose a size for: ' + missing.join(', ') + '.'; }
+      return;
+    }
+
+    const addBtn = document.getElementById('shop-batch-add');
+    if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Adding…'; }
+    const entries = Array.from(selectedProducts.entries());
+    const failed = [];
+    for (const [id, size] of entries) {
+      try {
+        const { ok, data } = await postCartItem(id, size);
+        if (!ok) {
+          const p = allProducts.find((x) => x.id === id);
+          failed.push((p ? p.name : 'Item') + (data && data.error ? ' (' + data.error + ')' : ''));
+        }
+      } catch {
+        const p = allProducts.find((x) => x.id === id);
+        failed.push((p ? p.name : 'Item') + ' (network error)');
+      }
+    }
+    await loadCart();
+    const added = entries.length - failed.length;
+    clearSelection();
+    if (addBtn) { addBtn.disabled = false; addBtn.textContent = 'Add Selected to Cart'; }
+    if (feed) {
+      if (failed.length) {
+        feed.style.color = '#f87171';
+        feed.textContent = added + ' added. Could not add: ' + failed.join(', ') + '.';
+      } else {
+        feed.style.color = '#4ade80';
+        feed.textContent = added + ' item' + (added === 1 ? '' : 's') + ' added to cart.';
+      }
+    }
+    if (added > 0) openCart();
+  }
 
   async function loadProducts() {
     const feedEl = document.getElementById('shop-product-feedback');
@@ -3186,6 +3257,18 @@ async function initShopPage() {
       renderFilters();
       renderProducts();
       renderDonation();
+
+      const batchAddBtn = document.getElementById('shop-batch-add');
+      const batchClearBtn = document.getElementById('shop-batch-clear');
+      if (batchAddBtn && !batchAddBtn.dataset.bound) {
+        batchAddBtn.dataset.bound = 'true';
+        batchAddBtn.addEventListener('click', addSelectedToCart);
+      }
+      if (batchClearBtn && !batchClearBtn.dataset.bound) {
+        batchClearBtn.dataset.bound = 'true';
+        batchClearBtn.addEventListener('click', clearSelection);
+      }
+      updateBatchBar();
     } catch { feedEl.textContent = 'Network error loading products.'; }
   }
 
@@ -3223,16 +3306,21 @@ async function initShopPage() {
     filtered.forEach((p) => {
       const outOfStock = p.stock_qty != null && p.stock_qty <= 0;
       const sizes = (p.sizes || '').split(',').map((s) => s.trim()).filter(Boolean);
-      let selectedSize = '';
+      // Restore any prior selection/size so it survives filter re-renders.
+      let selectedSize = selectedProducts.has(p.id) ? (selectedProducts.get(p.id) || '') : '';
       const card = document.createElement('div');
-      card.className = 'shop-product-card';
+      card.className = 'shop-product-card' + (selectedProducts.has(p.id) ? ' is-selected' : '');
       const imgHtml = p.image_path
         ? `<img class="shop-product-img" src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" loading="lazy" />`
         : `<div class="shop-product-img-placeholder">🛍</div>`;
+      const selectHtml = outOfStock
+        ? ''
+        : `<label class="shop-select-overlay"><input type="checkbox" class="shop-select-cb" data-product-id="${p.id}" ${selectedProducts.has(p.id) ? 'checked' : ''} /> Select</label>`;
       const sizesHtml = sizes.length
-        ? `<div class="shop-size-label">${p.size_label ? escHtml(p.size_label) : 'Size'}</div><div class="shop-size-chips">${sizes.map((s) => `<button type="button" class="shop-size-chip" data-size="${escHtml(s)}">${escHtml(s)}</button>`).join('')}</div>`
+        ? `<div class="shop-size-label">${p.size_label ? escHtml(p.size_label) : 'Size'}</div><div class="shop-size-chips">${sizes.map((s) => `<button type="button" class="shop-size-chip${s === selectedSize ? ' is-active' : ''}" data-size="${escHtml(s)}">${escHtml(s)}</button>`).join('')}</div>`
         : '';
       card.innerHTML = `
+        ${selectHtml}
         ${imgHtml}
         <div class="shop-product-body">
           ${p.category ? `<span class="shop-product-category">${escHtml(p.category)}</span>` : ''}
@@ -3255,8 +3343,23 @@ async function initShopPage() {
           selectedSize = chip.dataset.size;
           card.querySelectorAll('.shop-size-chip').forEach((c) => c.classList.remove('is-active'));
           chip.classList.add('is-active');
+          // Keep the multi-select size in sync when the item is selected.
+          if (selectedProducts.has(p.id)) selectedProducts.set(p.id, selectedSize);
         });
       });
+      const selectCb = card.querySelector('.shop-select-cb');
+      if (selectCb) {
+        selectCb.addEventListener('change', () => {
+          if (selectCb.checked) {
+            selectedProducts.set(p.id, selectedSize);
+            card.classList.add('is-selected');
+          } else {
+            selectedProducts.delete(p.id);
+            card.classList.remove('is-selected');
+          }
+          updateBatchBar();
+        });
+      }
       card.querySelector('.shop-add-btn:not(:disabled)')?.addEventListener('click', () => {
         if (sizes.length && !selectedSize) {
           const feed = document.getElementById('shop-product-feedback');
@@ -3267,6 +3370,7 @@ async function initShopPage() {
       });
       grid.appendChild(card);
     });
+    updateBatchBar();
   }
 
   function renderDonation() {

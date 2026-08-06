@@ -97,8 +97,54 @@
         flex-direction: row;
         align-items: stretch;
         transition: border-color 0.2s, transform 0.2s;
+        position: relative;
       }
       .shop-product-card:hover { border-color: rgba(255,210,98,0.4); transform: translateY(-1px); }
+      .shop-product-card.is-selected { border-color: rgba(255,210,98,0.75); }
+
+      /* Multi-select checkbox overlay */
+      .shop-select-overlay {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.22rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(8,16,42,0.78);
+        border: 1px solid rgba(255,255,255,0.2);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+      }
+      .shop-select-overlay input {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      .shop-product-card.is-selected .shop-select-overlay { color: var(--accent); border-color: rgba(255,210,98,0.6); }
+
+      /* Batch add-to-cart bar */
+      .shop-batch-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+        padding: 0.6rem 0.9rem;
+        border-radius: 12px;
+        border: 1px solid rgba(255,210,98,0.35);
+        background: rgba(255,210,98,0.07);
+      }
+      .shop-batch-info { font-size: 0.88rem; font-weight: 600; color: var(--accent); }
+      .shop-batch-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
       .shop-product-img,
       .shop-product-img-placeholder {
@@ -681,6 +727,13 @@
         <!-- Browse panel -->
         <div class="shop-panel is-active" data-shop-panel="products">
           <div id="shop-filters" class="shop-filters"></div>
+          <div id="shop-batch-bar" class="shop-batch-bar" style="display:none;">
+            <span id="shop-batch-info" class="shop-batch-info">0 selected</span>
+            <div class="shop-batch-actions">
+              <button id="shop-batch-clear" type="button" class="button secondary" style="font-size:0.82rem;padding:0.4rem 0.9rem;">Clear</button>
+              <button id="shop-batch-add" type="button" class="button" style="font-size:0.82rem;padding:0.4rem 0.9rem;">Add Selected to Cart</button>
+            </div>
+          </div>
           <div id="shop-product-feedback" style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;"></div>
           <div id="shop-grid" class="shop-grid"></div>
           <div id="shop-donation-mount"></div>
@@ -697,6 +750,6 @@
     </main>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260805i"></script>
+    <script src="auth.js?v=20260806a"></script>
   </body>
 </html>
