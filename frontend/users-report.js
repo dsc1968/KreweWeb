@@ -71,10 +71,8 @@
   }
 
   // ── Rendering (grouped by role) ────────────────────────────────────────
-  function payCellHtml(paid, label) {
-    const cls = paid ? 'ur-pay-paid' : 'ur-pay-unpaid';
-    const text = paid ? 'Paid' : 'Unpaid';
-    return '<span class="ur-pay ' + cls + '" title="' + escHtml(label) + ': ' + text + '">' + text + '</span>';
+  function payCellHtml(paid) {
+    return paid ? 'Yes' : 'No';
   }
 
   function locationHtml(u) {
@@ -94,21 +92,19 @@
     const memberNo = escHtml(u.member_float_number || '');
     const occupation = escHtml(u.occupation || '');
     const orgs = escHtml(u.organizations || '');
-    const statusPill = '<span class="ur-status-pill' + (isDisabled ? ' ur-disabled' : '') + '">' +
-      (isDisabled ? 'Disabled' : 'Active') + '</span>';
-    const rowCls = isDisabled ? ' class="ur-disabled-row"' : '';
+    const status = isDisabled ? 'Disabled' : 'Active';
     return (
-      '<tr' + rowCls + '>' +
+      '<tr>' +
         '<td>' + name + '</td>' +
         '<td>' + email + '</td>' +
         '<td>' + phone + '</td>' +
         '<td>' + role + '</td>' +
-        '<td>' + statusPill + '</td>' +
+        '<td>' + status + '</td>' +
         '<td>' + joined + '</td>' +
-        '<td>' + payCellHtml(u.dues_paid, 'Dues') + '</td>' +
-        '<td>' + payCellHtml(u.guest_fee_paid, 'Guest Fee') + '</td>' +
-        '<td>' + payCellHtml(u.beads_paid, 'Beads') + '</td>' +
-        '<td>' + payCellHtml(u.costume_paid, 'Costume') + '</td>' +
+        '<td>' + payCellHtml(u.dues_paid) + '</td>' +
+        '<td>' + payCellHtml(u.guest_fee_paid) + '</td>' +
+        '<td>' + payCellHtml(u.beads_paid) + '</td>' +
+        '<td>' + payCellHtml(u.costume_paid) + '</td>' +
         '<td>' + (u.float_captain ? 'Yes' : '') + '</td>' +
         '<td>' + sponsor + '</td>' +
         '<td>' + locationHtml(u) + '</td>' +
