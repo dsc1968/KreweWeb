@@ -1221,7 +1221,8 @@ async function get__api_admin_floats_report(req, res) {
     }));
 
     const membersRes = await pool.query(
-      `SELECT p.float_id AS float_id, u.id AS user_id, u.full_name, u.email, u.phone,
+      `SELECT p.float_id AS float_id, u.id AS user_id, u.full_name, u.email,
+              u.phone AS user_phone, p.phone AS profile_phone,
               p.sponsor_name, p.member_float_number, p.address, p.city, p.state, p.zip,
               p.float_riders
        FROM user_profiles p
@@ -1232,11 +1233,13 @@ async function get__api_admin_floats_report(req, res) {
     const memberById = {};
     const ridersByFloat = {};
     membersRes.rows.forEach((r) => {
+      const phone = (r.profile_phone && String(r.profile_phone).trim())
+        || (r.user_phone && String(r.user_phone).trim()) || '';
       memberById[r.user_id] = {
         user_id: r.user_id,
         full_name: r.full_name || '',
         email: r.email || '',
-        phone: r.phone || '',
+        phone,
         sponsor_name: r.sponsor_name || '',
         member_float_number: r.member_float_number || '',
         address: r.address || '',
