@@ -22,6 +22,26 @@ function isEditPreviewMode() {
   return new URLSearchParams(window.location.search).get('edit') === '1';
 }
 
+// Formats a phone number entry as (###) - ###-#### as the user types.
+function formatPhoneNumber(value) {
+  const digits = String(value == null ? '' : value).replace(/\D/g, '').slice(0, 10);
+  if (digits.length === 0) return '';
+  if (digits.length < 4) return '(' + digits;
+  if (digits.length < 7) return '(' + digits.slice(0, 3) + ') - ' + digits.slice(3);
+  return '(' + digits.slice(0, 3) + ') - ' + digits.slice(3, 6) + '-' + digits.slice(6);
+}
+
+// Wires live (###) - ###-#### formatting onto a phone input, formatting any
+// existing value immediately.
+function attachPhoneFormatter(input) {
+  if (!input || input.dataset.phoneFmt) return;
+  input.dataset.phoneFmt = '1';
+  const apply = () => { input.value = formatPhoneNumber(input.value); };
+  input.addEventListener('input', apply);
+  input.addEventListener('blur', apply);
+  if (input.value) apply();
+}
+
 // Persists the optional profile fields collected on the registration form.
 // Used by both the verification step and the MFA enrollment step so a newly
 // created account keeps its phone/address/etc. regardless of which path wins.
@@ -86,6 +106,7 @@ if (registerForm) {
   if (getToken() && !isEditPreviewMode()) {
     window.location.href = '/dashboard.html';
   }
+  attachPhoneFormatter(document.getElementById('reg-phone'));
   const submitButton = document.getElementById('register-submit-button');
   const feedback = document.getElementById('register-feedback');
   const verificationCodeGroup = document.getElementById('verification-code-group');
@@ -705,6 +726,8 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   `;
 
   document.body.appendChild(backdrop);
+
+  attachPhoneFormatter(backdrop.querySelector('#uem-phone'));
 
   // Wire the close controls first — before any await or DOM step below that
   // could throw — so the overlay can always be dismissed and never traps the
@@ -1447,6 +1470,7 @@ async function initProfileDetailsForm(profile) {
   // Populate simple fields
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   set('pd-phone',         profile.phone);
+  attachPhoneFormatter(document.getElementById('pd-phone'));
   set('pd-mfa-method',    ['sms', 'authenticator'].includes(profile.mfa_method) ? profile.mfa_method : 'email');
 
   // Only show the "Text message (SMS)" option when the SMS gateway is actually
