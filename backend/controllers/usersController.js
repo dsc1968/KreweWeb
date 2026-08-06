@@ -1206,8 +1206,13 @@ async function get__api_admin_floats_report(req, res) {
     }
 
     const floatsRes = await pool.query(
-      `SELECT f.id, f.name, f.float_number, f.description, f.capacity
+      `SELECT f.id, f.name, f.float_number, f.description, f.capacity,
+              f.captain_user_id,
+              cu.full_name AS captain_name, cu.email AS captain_email,
+              cu.phone AS captain_user_phone, cp.phone AS captain_profile_phone
        FROM floats f
+       LEFT JOIN users cu ON cu.id = f.captain_user_id
+       LEFT JOIN user_profiles cp ON cp.user_id = f.captain_user_id
        ${floatId != null ? 'WHERE f.id = $1' : ''}
        ORDER BY f.position ASC, f.name ASC`,
       floatId != null ? [floatId] : []
@@ -1218,6 +1223,13 @@ async function get__api_admin_floats_report(req, res) {
       float_number: r.float_number || '',
       description: r.description || '',
       capacity: (typeof r.capacity === 'number') ? r.capacity : (r.capacity != null ? parseInt(r.capacity, 10) : null),
+      captain: r.captain_user_id ? {
+        user_id: r.captain_user_id,
+        full_name: r.captain_name || '',
+        email: r.captain_email || '',
+        phone: (r.captain_profile_phone && String(r.captain_profile_phone).trim())
+          || (r.captain_user_phone && String(r.captain_user_phone).trim()) || '',
+      } : null,
     }));
 
     const membersRes = await pool.query(
@@ -1272,6 +1284,7 @@ async function get__api_admin_floats_report(req, res) {
       float_number: f.float_number,
       description: f.description,
       capacity: f.capacity,
+      captain: f.captain,
       riders: (ridersByFloat[f.id] || []).map((r) => ({
         name: r.name,
         comment: r.comment,
@@ -1280,17 +1293,21 @@ async function get__api_admin_floats_report(req, res) {
     }));
 
     if (format === 'csv') {
-      const header = ['Float', 'Float #', 'Rider Name', 'Comment', 'Sponsoring Member', 'Sponsor Name', 'Email', 'Phone', 'Member #', 'Address', 'City', 'State', 'Zip'];
+      const header = ['Float', 'Float #', 'Captain', 'Captain Email', 'Captain Phone', 'Rider Name', 'Comment', 'Sponsoring Member', 'Sponsor Name', 'Email', 'Phone', 'Member #', 'Address', 'City', 'State', 'Zip'];
       const rows = [];
       reportFloats.forEach((f) => {
+        const cap = f.captain || {};
+        const capName = cap.full_name || '';
+        const capEmail = cap.email || '';
+        const capPhone = cap.phone || '';
         if (!f.riders.length) {
-          rows.push([f.name, f.float_number, '', '', '', '', '', '', '', '', '', '', '']);
+          rows.push([f.name, f.float_number, capName, capEmail, capPhone, '', '', '', '', '', '', '', '', '', '', '']);
           return;
         }
         f.riders.forEach((r) => {
           const m = r.member || {};
           rows.push([
-            f.name, f.float_number, r.name, r.comment,
+            f.name, f.float_number, capName, capEmail, capPhone, r.name, r.comment,
             m.full_name || '', m.sponsor_name || '', m.email || '', m.phone || '',
             m.member_float_number || '', m.address || '', m.city || '', m.state || '', m.zip || '',
           ]);

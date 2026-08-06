@@ -110,6 +110,14 @@
     const title = escHtml(f.name || 'Unnamed Float') +
       (f.float_number ? ' <span style="color:#b8c4e0;font-weight:400;">(#' + escHtml(String(f.float_number)) + ')</span>' : '');
 
+    const cap = f.captain || null;
+    const captainHtml = cap
+      ? '<p class="fr-float-captain"><strong>Captain:</strong> ' + escHtml(cap.full_name || '(unnamed)') +
+        (cap.phone ? '  •  ' + escHtml(cap.phone) : '') +
+        (cap.email ? '  •  ' + escHtml(cap.email) : '') +
+        '</p>'
+      : '<p class="fr-float-captain fr-empty"><strong>Captain:</strong> None designated</p>';
+
     const body = riders.length
       ? '<tbody>' + riders.map(riderRowHtml).join('') + '</tbody>'
       : '<tbody><tr><td colspan="6" class="fr-empty">No riders on this float.</td></tr></tbody>';
@@ -120,6 +128,7 @@
         '<label class="fr-float-select-wrap"><input type="checkbox" class="fr-float-select" value="' + fid + '" checked /> Include in export</label>' +
         '<h3 class="fr-float-title">' + title + '</h3>' +
         '<p class="fr-float-meta">' + meta.join('  •  ') + '</p>' +
+        captainHtml +
         '<table class="fr-table">' +
           '<thead><tr>' +
             '<th>Rider Name</th>' +
@@ -321,6 +330,13 @@
         v: 'Float: ' + (f.name || 'Unnamed') + (f.float_number ? ' (#' + f.float_number + ')' : ''),
         bold: true,
       }]);
+      const cap = f.captain || null;
+      const capText = cap
+        ? (cap.full_name || '(unnamed)') +
+          (cap.phone ? '  •  ' + cap.phone : '') +
+          (cap.email ? '  •  ' + cap.email : '')
+        : 'None designated';
+      rows.push([{ v: 'Captain: ' + capText, bold: true }]);
       rows.push([
         { v: 'Rider Name', bold: true },
         { v: 'Sponsoring Member', bold: true },
