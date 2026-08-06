@@ -103,7 +103,6 @@
         '<td>' + joined + '</td>' +
         '<td>' + payCellHtml(u.dues_paid) + '</td>' +
         '<td>' + payCellHtml(u.guest_fee_paid) + '</td>' +
-        '<td>' + payCellHtml(u.beads_paid) + '</td>' +
         '<td>' + payCellHtml(u.costume_paid) + '</td>' +
         '<td>' + (u.float_captain ? 'Yes' : '') + '</td>' +
         '<td>' + sponsor + '</td>' +
@@ -120,7 +119,7 @@
     const meta = group.label + '  •  ' + users.length + ' user' + (users.length === 1 ? '' : 's');
     const body = users.length
       ? '<tbody>' + users.map(userRowHtml).join('') + '</tbody>'
-      : '<tbody><tr><td colspan="16" class="ur-empty">No users in this role.</td></tr></tbody>';
+      : '<tbody><tr><td colspan="15" class="ur-empty">No users in this role.</td></tr></tbody>';
     const key = group.role || '';
     return (
       '<section class="user-report-block" data-role="' + escHtml(key) + '">' +
@@ -137,7 +136,6 @@
             '<th>Joined</th>' +
             '<th>Dues</th>' +
             '<th>Guest Fee</th>' +
-            '<th>Beads</th>' +
             '<th>Costume</th>' +
             '<th>Captain</th>' +
             '<th>Sponsor</th>' +
@@ -345,7 +343,6 @@
         { v: 'Joined', bold: true },
         { v: 'Dues', bold: true },
         { v: 'Guest Fee', bold: true },
-        { v: 'Beads', bold: true },
         { v: 'Costume', bold: true },
         { v: 'Captain', bold: true },
         { v: 'Sponsor', bold: true },
@@ -368,7 +365,6 @@
             { v: u.joined_at ? String(u.joined_at).slice(0, 10) : '' },
             { v: u.dues_paid ? 'Paid' : 'Unpaid' },
             { v: u.guest_fee_paid ? 'Paid' : 'Unpaid' },
-            { v: u.beads_paid ? 'Paid' : 'Unpaid' },
             { v: u.costume_paid ? 'Paid' : 'Unpaid' },
             { v: u.float_captain ? 'Yes' : 'No' },
             { v: u.sponsor_name || '' },
