@@ -72,7 +72,7 @@
 
   // ── Rendering (grouped by role) ────────────────────────────────────────
   function payCellHtml(paid) {
-    return paid ? 'Yes' : 'No';
+    return paid ? 'Paid' : 'Unpaid';
   }
 
   function locationHtml(u) {
