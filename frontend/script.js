@@ -1509,8 +1509,11 @@ if (countdownElements.days) {
     populateCalendarSelectors();
     renderCalendarGrid(state.calendarYear, state.calendarMonth);
 
-    if (elements.monthSelect && !elements.monthSelect.dataset.calendarBound) {
-      elements.monthSelect.dataset.calendarBound = 'true';
+    // Use a non-serializable JS property (not a data-* attribute) as the bind
+    // guard so it can't leak into saved page HTML and block re-binding later.
+    if (elements.monthSelect && !elements.monthSelect._calendarBound) {
+      elements.monthSelect._calendarBound = true;
+      elements.monthSelect.removeAttribute('data-calendar-bound');
       elements.monthSelect.addEventListener('change', () => {
         const nextMonth = Number.parseInt(elements.monthSelect.value, 10);
         if (!Number.isInteger(nextMonth) || nextMonth < 1 || nextMonth > 12) return;
@@ -1523,8 +1526,9 @@ if (countdownElements.days) {
       });
     }
 
-    if (elements.yearSelect && !elements.yearSelect.dataset.calendarBound) {
-      elements.yearSelect.dataset.calendarBound = 'true';
+    if (elements.yearSelect && !elements.yearSelect._calendarBound) {
+      elements.yearSelect._calendarBound = true;
+      elements.yearSelect.removeAttribute('data-calendar-bound');
       elements.yearSelect.addEventListener('change', () => {
         const nextYear = Number.parseInt(elements.yearSelect.value, 10);
         if (!Number.isInteger(nextYear) || nextYear < 1900 || nextYear > 3000) return;
