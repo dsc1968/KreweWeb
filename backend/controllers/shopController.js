@@ -615,6 +615,44 @@ async function get__api_admin_shop_orders(req, res) {
   }
 }
 
+// Returns every order (no pagination) with its line items so the Shop
+// Reports view can sort, group, filter and export the full dataset client-side.
+async function get__api_admin_shop_orders_report(req, res) {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const orders = await pool.query(
+      `SELECT id, buyer_name, buyer_email, total_amount, status, payment_status, notes, created_at
+       FROM shop_orders ORDER BY created_at DESC`
+    );
+    const orderIds = orders.rows.map((r) => r.id);
+    let itemRows = [];
+    if (orderIds.length > 0) {
+      const itemResult = await pool.query(
+        `SELECT order_id, product_name, unit_price, quantity, size
+         FROM shop_order_items WHERE order_id = ANY($1::int[])`,
+        [orderIds]
+      );
+      itemRows = itemResult.rows;
+    }
+    const byOrder = {};
+    itemRows.forEach((i) => {
+      if (!byOrder[i.order_id]) byOrder[i.order_id] = [];
+      byOrder[i.order_id].push(i);
+    });
+    res.json({
+      generatedAt: new Date().toISOString(),
+      orders: orders.rows.map((o) => ({
+        ...o,
+        item_count: (byOrder[o.id] || []).reduce((s, i) => s + Number(i.quantity || 0), 0),
+        items: byOrder[o.id] || [],
+      })),
+    });
+  } catch (err) {
+    console.error('Failed to generate orders report', err);
+    res.status(500).json({ error: 'Unable to generate orders report' });
+  }
+}
+
 async function delete__api_admin_shop_orders__id___d__(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
@@ -1020,4 +1058,4 @@ async function get__api_shop_members(req, res) {
   }
 }
 
-module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_products__id___d__,put__api_admin_shop_products_reorder,put__api_shop_cart__itemId___d__, };
+module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_orders_report,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_products__id___d__,put__api_admin_shop_products_reorder,put__api_shop_cart__itemId___d__, };

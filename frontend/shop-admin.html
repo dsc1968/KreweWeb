@@ -140,6 +140,72 @@
         .sa-table th:nth-child(3), .sa-table td:nth-child(3),
         .sa-table th:nth-child(5), .sa-table td:nth-child(5) { display: none; }
       }
+
+      /* ── Reports ─────────────────────────────────────────────────────────── */
+      .sr-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        align-items: flex-end;
+        margin-bottom: 1.25rem;
+      }
+      .sr-dynamic { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: flex-end; }
+      .sr-field {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .sr-input {
+        padding: 0.3rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: #12203f;
+        color: var(--text);
+        font: inherit;
+        font-size: 0.82rem;
+      }
+      .sr-actions { display: flex; gap: 0.5rem; margin-left: auto; align-items: flex-end; flex-wrap: wrap; }
+      .sr-summary { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
+      .sr-block { margin-bottom: 1.5rem; }
+      .sr-block-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 0.35rem;
+      }
+      .sr-block-title { margin: 0; font-size: 1rem; color: var(--accent); }
+      .sr-block-meta { font-size: 0.82rem; color: var(--muted); }
+      .sr-table td, .sr-table th { white-space: nowrap; }
+      .sr-empty { color: var(--muted); font-style: italic; text-align: center; padding: 1.2rem !important; }
+      .sr-badge {
+        display: inline-block; padding: 0.15rem 0.5rem; border-radius: 6px;
+        font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+      }
+      .sr-badge-active   { background: rgba(74,222,128,0.14); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+      .sr-badge-inactive { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.25); color: #f87171; }
+
+      @media print {
+        body.printing-shop-report .site-header,
+        body.printing-shop-report .shop-tabs,
+        body.printing-shop-report .sr-toolbar,
+        body.printing-shop-report #sr-feedback,
+        body.printing-shop-report .section > div:first-child { display: none !important; }
+        body.printing-shop-report .shop-panel:not([data-shop-panel="reports"]) { display: none !important; }
+        body.printing-shop-report .shop-panel[data-shop-panel="reports"] { display: block !important; }
+        body.printing-shop-report { background: #fff !important; color: #000 !important; }
+        body.printing-shop-report .container { max-width: none; padding: 0; }
+        body.printing-shop-report .sr-summary { color: #000 !important; }
+        body.printing-shop-report .sr-block-title { color: #000 !important; }
+        body.printing-shop-report .sr-block-meta { color: #333 !important; }
+        body.printing-shop-report .sr-block { break-inside: avoid; page-break-inside: avoid; }
+        body.printing-shop-report .sa-table th { color: #000 !important; border-bottom: 1px solid #999; }
+        body.printing-shop-report .sa-table td { color: #000 !important; border-bottom: 1px solid #ccc; }
+        body.printing-shop-report .sr-table td, body.printing-shop-report .sr-table th { white-space: normal; }
+        @page { size: letter landscape; margin: 0.4in; }
+      }
     </style>
   </head>
   <body>
@@ -161,6 +227,7 @@
         <nav class="shop-tabs" style="margin-bottom:1.5rem;">
           <button class="shop-tab-btn is-active" data-shop-tab="products">Products</button>
           <button class="shop-tab-btn" data-shop-tab="orders">Orders</button>
+          <button class="shop-tab-btn" data-shop-tab="reports">Reports</button>
         </nav>
 
         <!-- Products panel -->
@@ -217,6 +284,27 @@
             </table>
           </div>
           <div id="sa-orders-pagination" style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;"></div>
+        </div>
+
+        <!-- Reports panel -->
+        <div class="shop-panel" data-shop-panel="reports">
+          <div class="sr-toolbar" id="sr-toolbar">
+            <label class="sr-field">Report
+              <select id="sr-report" class="sa-status-select">
+                <option value="inventory">Inventory</option>
+                <option value="orders">Orders</option>
+              </select>
+            </label>
+            <div id="sr-dynamic-controls" class="sr-dynamic"></div>
+            <div class="sr-actions">
+              <button type="button" id="sr-refresh" class="button secondary">Refresh</button>
+              <button type="button" id="sr-export-excel" class="button secondary">Export Excel</button>
+              <button type="button" id="sr-export-pdf" class="button">Export PDF</button>
+            </div>
+          </div>
+          <p class="sr-summary" id="sr-summary"></p>
+          <div id="sr-feedback" class="db-feedback"></div>
+          <div id="shop-report-output"></div>
         </div>
 
       </section>
@@ -341,6 +429,8 @@
     </div>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260807c"></script>
+    <script src="auth.js?v=20260807d"></script>
+    <script src="report-export.js?v=20260807a"></script>
+    <script src="shop-reports.js?v=20260807a"></script>
   </body>
 </html>

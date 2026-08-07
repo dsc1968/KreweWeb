@@ -4023,6 +4023,7 @@ async function initShopAdminPage() {
       const panel = document.querySelector(`[data-shop-panel="${btn.dataset.shopTab}"]`);
       if (panel) panel.classList.add('is-active');
       if (btn.dataset.shopTab === 'orders') loadAdminOrders(1);
+      if (btn.dataset.shopTab === 'reports' && typeof window.initShopReports === 'function') window.initShopReports();
     });
   });
   const payFilterEl = document.getElementById('sa-payment-filter');
