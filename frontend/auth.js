@@ -2089,6 +2089,23 @@ function initChangePasswordForm() {
 // ── Season end-date UI ────────────────────────────────────────────────────
 // Mirrors the server-side resolveSeasonEndDate() logic in the browser so the
 // admin can see a live preview of the next reset date as they configure it.
+// Shows only the fields for the payment processor chosen in the dropdown.
+function setupPaymentProcessorUI(form) {
+  const sel = document.getElementById('cfg-payment-processor');
+  const paypal = document.getElementById('cfg-provider-paypal');
+  const stripe = document.getElementById('cfg-provider-stripe');
+  if (!sel || !paypal || !stripe) return;
+
+  function updateVisibility() {
+    const p = sel.value;
+    paypal.style.display = p === 'paypal' ? '' : 'none';
+    stripe.style.display = p === 'stripe' ? '' : 'none';
+  }
+
+  sel.addEventListener('change', updateVisibility);
+  updateVisibility();
+}
+
 function setupSeasonEndDateUI(form) {
   const typeEl        = document.getElementById('cfg-season-end-type');
   const fixedFields   = document.getElementById('cfg-season-fixed-fields');
@@ -2286,6 +2303,8 @@ async function initSiteConfig() {
     setFeedback('', false);
     // Wire up the season end-date sub-fields now that the hidden input has been populated
     setupSeasonEndDateUI(form);
+    // Show only the selected payment processor's fields
+    setupPaymentProcessorUI(form);
   } catch (_err) {
     setFeedback('Network error loading config.', true);
     return;

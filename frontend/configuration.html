@@ -70,45 +70,60 @@
               </div>
             </div>
 
-            <p class="db-config-section-label" style="margin-top:1rem;">PayPal Payments</p>
+            <p class="db-config-section-label" style="margin-top:1rem;">Payments</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Choose a single payment processor. Only the selected provider's fields are shown and offered at checkout. After saving, restart the server.</p>
             <div class="db-form-grid">
-              <div class="form-group">
-                <label for="cfg-paypal-mode">Mode</label>
-                <select id="cfg-paypal-mode" name="PAYPAL_MODE">
-                  <option value="sandbox">Sandbox (testing)</option>
-                  <option value="live">Live (production)</option>
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-payment-processor">Payment Processor</label>
+                <select id="cfg-payment-processor" name="PAYMENT_PROCESSOR">
+                  <option value="paypal">PayPal</option>
+                  <option value="stripe">Stripe (credit card)</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label for="cfg-paypal-client-id">Client ID</label>
-                <input type="text" id="cfg-paypal-client-id" name="PAYPAL_CLIENT_ID" placeholder="AaBb…" autocomplete="off" />
-              </div>
-              <div class="form-group">
-                <label for="cfg-paypal-secret">Client Secret</label>
-                <input type="password" id="cfg-paypal-secret" name="PAYPAL_CLIENT_SECRET" placeholder="••••••••" autocomplete="new-password" />
-              </div>
             </div>
-            <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
 
-            <p class="db-config-section-label" style="margin-top:1rem;">Stripe Payments</p>
-            <div class="db-form-grid">
-              <div class="form-group">
-                <label for="cfg-stripe-mode">Mode</label>
-                <select id="cfg-stripe-mode" name="STRIPE_MODE">
-                  <option value="test">Test (testing)</option>
-                  <option value="live">Live (production)</option>
-                </select>
+            <div id="cfg-provider-paypal" class="db-provider-fields">
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="cfg-paypal-mode">Mode</label>
+                  <select id="cfg-paypal-mode" name="PAYPAL_MODE">
+                    <option value="sandbox">Sandbox (testing)</option>
+                    <option value="live">Live (production)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="cfg-paypal-client-id">Client ID</label>
+                  <input type="text" id="cfg-paypal-client-id" name="PAYPAL_CLIENT_ID" placeholder="AaBb…" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="cfg-paypal-secret">Client Secret</label>
+                  <input type="password" id="cfg-paypal-secret" name="PAYPAL_CLIENT_SECRET" placeholder="••••••••" autocomplete="new-password" />
+                </div>
               </div>
-              <div class="form-group">
-                <label for="cfg-stripe-publishable">Publishable Key</label>
-                <input type="text" id="cfg-stripe-publishable" name="STRIPE_PUBLISHABLE_KEY" placeholder="pk_test_… / pk_live_…" autocomplete="off" />
-              </div>
-              <div class="form-group">
-                <label for="cfg-stripe-secret">Secret Key</label>
-                <input type="password" id="cfg-stripe-secret" name="STRIPE_SECRET_KEY" placeholder="sk_test_… / sk_live_…" autocomplete="new-password" />
-              </div>
+              <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
             </div>
-            <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain API keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">Stripe dashboard</a>. After saving, restart the server. Leave the keys blank to disable Stripe at checkout.</p>
+
+            <div id="cfg-provider-stripe" class="db-provider-fields">
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="cfg-stripe-mode">Mode</label>
+                  <select id="cfg-stripe-mode" name="STRIPE_MODE">
+                    <option value="test">Test (testing)</option>
+                    <option value="live">Live (production)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="cfg-stripe-publishable">Publishable Key</label>
+                  <input type="text" id="cfg-stripe-publishable" name="STRIPE_PUBLISHABLE_KEY" placeholder="pk_test_… / pk_live_…" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="cfg-stripe-secret">Secret Key</label>
+                  <input type="password" id="cfg-stripe-secret" name="STRIPE_SECRET_KEY" placeholder="sk_test_… / sk_live_…" autocomplete="new-password" />
+                </div>
+              </div>
+              <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain API keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">Stripe dashboard</a>. After saving, restart the server. Leave the keys blank to disable Stripe at checkout.</p>
+            </div>
+
             <div class="db-form-grid" style="margin-top:0.75rem;">
               <div class="form-group" style="grid-column:1/-1;">
                 <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
@@ -244,6 +259,6 @@
     </main>
 
     <script src="script.js?v=20250720d"></script>
-    <script src="auth.js?v=20260807c"></script>
+    <script src="auth.js?v=20260807d"></script>
   </body>
 </html>

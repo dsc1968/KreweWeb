@@ -697,7 +697,13 @@ async function recordPaidCartOrder(client, userId, notes) {
 
 async function get__api_shop_paypal_config(req, res) {
   const cfg = getPayPalConfig();
-  res.json({ client_id: cfg.clientId, mode: cfg.mode, configured: !!(cfg.clientId && cfg.clientSecret) });
+  const selected = getSelectedProcessor();
+  const active = selected === '' || selected === 'paypal';
+  res.json({
+    client_id: cfg.clientId,
+    mode: cfg.mode,
+    configured: active && !!(cfg.clientId && cfg.clientSecret),
+  });
 }
 
 async function post__api_shop_paypal_create_order(req, res) {
@@ -785,6 +791,15 @@ function getStripeConfig() {
   return { secretKey: env.STRIPE_SECRET_KEY || '', publishableKey: env.STRIPE_PUBLISHABLE_KEY || '', mode };
 }
 
+// The admin-selected active payment processor ('paypal' | 'stripe'). An empty
+// value means "unset" — legacy installs where whichever provider has
+// credentials stays active. Once set, only that provider is offered at checkout.
+function getSelectedProcessor() {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  const v = (env.PAYMENT_PROCESSOR || '').toLowerCase();
+  return v === 'paypal' || v === 'stripe' ? v : '';
+}
+
 // Raw HTTPS helper for the Stripe REST API (no external SDK dependency, mirroring
 // the existing PayPal helper so nothing new is introduced to the dependency tree).
 function stripeHttpRequest(method, urlPath, body) {
@@ -814,10 +829,12 @@ function stripeHttpRequest(method, urlPath, body) {
 
 async function get__api_shop_stripe_config(req, res) {
   const cfg = getStripeConfig();
+  const selected = getSelectedProcessor();
+  const active = selected === '' || selected === 'stripe';
   res.json({
     publishable_key: cfg.publishableKey,
     mode: cfg.mode,
-    configured: !!(cfg.secretKey && cfg.publishableKey),
+    configured: active && !!(cfg.secretKey && cfg.publishableKey),
   });
 }
 
