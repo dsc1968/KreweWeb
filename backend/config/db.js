@@ -398,6 +398,16 @@ async function ensureContentTable() {
   for (const col of [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_method TEXT NOT NULL DEFAULT 'none' CHECK (mfa_method IN ('none', 'email', 'sms'))",
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enrolled BOOLEAN NOT NULL DEFAULT FALSE',
+    // Multi-role support: a user can hold one base status (member/guest/admin/
+    // disabled) plus additive admin capabilities (store_admin/float_admin/
+    // finance_admin). The legacy single `role` column is kept in sync as the
+    // derived "primary" role for backward compatibility. Backfill seeds `roles`
+    // from the existing single role for pre-existing accounts.
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS roles JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "UPDATE users SET roles = to_jsonb(ARRAY[role]) WHERE (roles IS NULL OR roles = '[]'::jsonb) AND role IS NOT NULL",
+    // Stash of the role set held before an account was disabled, so enabling it
+    // restores every capability the member had rather than a single role.
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS roles_before_disable JSONB',
     'ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS desired_mfa_method TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS member_float_number TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS spouse_float_number TEXT',

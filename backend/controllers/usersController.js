@@ -3,7 +3,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
-const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, isFloatAdmin, isFinanceAdmin } = require('../utils/validation');
+const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, isFloatAdmin, isFinanceAdmin, normalizeRoleSet, primaryRole } = require('../utils/validation');
 const { floatLockEnabled, setFloatLock } = require('../utils/floatsLock');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
@@ -65,7 +65,7 @@ async function get__api_admin_users__userId(req, res) {
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Valid user id is required' });
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
+      `SELECT u.id, u.email, u.full_name, u.role, u.roles, u.joined_at, u.mfa_method, u.mfa_enrolled,
               p.phone, p.address, p.city, p.state, p.zip,
               p.birthdate, p.occupation, p.organizations, p.sponsor_name,
               p.spouse_name, p.kids_names, p.kids_birthdays,
@@ -103,6 +103,7 @@ async function get__api_admin_users__userId(req, res) {
 
     res.json({
       ...row,
+      roles: normalizeRoleSet(Array.isArray(row.roles) && row.roles.length ? row.roles : row.role),
       float_id: floatId,
       assigned_float,
       captain_of,
@@ -128,11 +129,26 @@ async function put__api_admin_users__userId_details(req, res) {
 
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const email = normalizeEmailAddress(req.body.email);
-  const role = ['admin', 'store_admin', 'member', 'disabled', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : null;
+  // Accept either a `roles` array (new multi-role UI) or a legacy single `role`
+  // string. Normalize into the canonical set and derive the primary role that
+  // the legacy `role` column stores for backward compatibility.
+  const hasRoleInput = Array.isArray(req.body.roles)
+    ? req.body.roles.length > 0
+    : typeof req.body.role === 'string';
+  const roleSet = normalizeRoleSet(
+    Array.isArray(req.body.roles) && req.body.roles.length
+      ? req.body.roles
+      : (typeof req.body.role === 'string' ? req.body.role : [])
+  );
+  const role = hasRoleInput ? primaryRole(roleSet) : null;
 
   if (!fullName) return res.status(400).json({ error: 'Full name is required' });
   if (!email || !isValidEmailAddress(email)) return res.status(400).json({ error: 'Valid email is required' });
   if (!role) return res.status(400).json({ error: 'Role must be member, store_admin, admin, float_admin, finance_admin, guest, or disabled' });
+  // An admin can never strip their own admin access through this form.
+  if (userId === req.user.userId && !roleSet.includes('admin')) {
+    return res.status(400).json({ error: 'You cannot remove your own admin role' });
+  }
 
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim().slice(0, 30) : null;
   const address = typeof req.body.address === 'string' ? req.body.address.trim().slice(0, 200) : null;
@@ -219,7 +235,7 @@ async function put__api_admin_users__userId_details(req, res) {
         }
       } catch (_e) { /* fall through */ }
     }
-    const mfaCols = ['mfa_method = $5', 'mfa_enrolled = $6'];
+    const mfaCols = ['mfa_method = $6', 'mfa_enrolled = $7'];
     const mfaValues = [mfaMethod, mfaEnrolled];
     if (mfaMethod === 'none') mfaCols.push('mfa_secret = NULL');
     mfaSetCols = mfaCols.join(', ');
@@ -237,7 +253,7 @@ async function put__api_admin_users__userId_details(req, res) {
   }
 
   // When floats are locked, only the Float Admin may edit float assignments.
-  if (await floatLockEnabled() && req.user.role !== 'float_admin') {
+  if (await floatLockEnabled() && !isFloatAdmin(req)) {
     try {
       const cur = await pool.query(
         'SELECT float_riders, member_float_number, float_id FROM user_profiles WHERE user_id = $1',
@@ -255,9 +271,9 @@ async function put__api_admin_users__userId_details(req, res) {
   try {
     await client.query('BEGIN');
     const userResult = await client.query(
-      `UPDATE users SET full_name = $1, email = $2, role = $3${mfaSetCols ? ', ' + mfaSetCols : ''} WHERE id = $4
-       RETURNING id, email, full_name, role, joined_at, mfa_method, mfa_enrolled`,
-      [fullName, email, role, userId, ...mfaSetVals]
+      `UPDATE users SET full_name = $1, email = $2, role = $3, roles = $4::jsonb${mfaSetCols ? ', ' + mfaSetCols : ''} WHERE id = $5
+       RETURNING id, email, full_name, role, roles, joined_at, mfa_method, mfa_enrolled`,
+      [fullName, email, role, JSON.stringify(roleSet), userId, ...mfaSetVals]
     );
     if (userResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'User not found' }); }
 
@@ -338,10 +354,10 @@ async function post__api_admin_users(req, res) {
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
     const result = await pool.query(
-      `INSERT INTO users (email, full_name, role, password_hash)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (email, full_name, role, roles, password_hash)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
        RETURNING id, email, full_name, role, joined_at`,
-      [email, fullName, role, hash]
+      [email, fullName, role, JSON.stringify(normalizeRoleSet(role)), hash]
     );
 
     res.status(201).json({ user: result.rows[0], created: true });
@@ -378,10 +394,10 @@ async function post__api_users(req, res) {
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
     const result = await pool.query(
-      `INSERT INTO users (email, full_name, role, password_hash)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (email, full_name, role, roles, password_hash)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
        RETURNING id, email, full_name, role, joined_at`,
-      [email, fullName, role, hash]
+      [email, fullName, role, JSON.stringify(normalizeRoleSet(role)), hash]
     );
 
     res.status(201).json({ user: result.rows[0], created: true });
@@ -414,8 +430,8 @@ async function put__api_admin_users__userId_role(req, res) {
 
   try {
     const result = await pool.query(
-      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
-      [role, userId]
+      'UPDATE users SET role = $1, roles = $2::jsonb WHERE id = $3 RETURNING id, email, full_name, role, joined_at',
+      [role, JSON.stringify(normalizeRoleSet(role)), userId]
     );
 
     if (result.rowCount === 0) {
@@ -449,8 +465,8 @@ async function put__api_users__userId_role(req, res) {
 
   try {
     const result = await pool.query(
-      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
-      [role, userId]
+      'UPDATE users SET role = $1, roles = $2::jsonb WHERE id = $3 RETURNING id, email, full_name, role, joined_at',
+      [role, JSON.stringify(normalizeRoleSet(role)), userId]
     );
 
     if (result.rowCount === 0) {
@@ -462,6 +478,36 @@ async function put__api_users__userId_role(req, res) {
     console.error('Failed to update user role', error);
     res.status(500).json({ error: 'Unable to update role' });
   }
+}
+
+// Disable/enable a user while preserving their full capability set. Disabling
+// stashes the current roles into roles_before_disable; enabling restores that
+// stash (falling back to restoreRole when none exists). Returns the updated
+// user row, or null when the user does not exist.
+async function applyDisabledState(userId, disabled, restoreRole) {
+  const cur = await pool.query('SELECT roles, roles_before_disable FROM users WHERE id = $1', [userId]);
+  if (cur.rowCount === 0) return null;
+  const curRow = cur.rows[0];
+  let roleSet;
+  let stash;
+  if (disabled) {
+    const existingStash = Array.isArray(curRow.roles_before_disable) && curRow.roles_before_disable.length
+      ? curRow.roles_before_disable : null;
+    const activeRoles = Array.isArray(curRow.roles) && curRow.roles.length && !curRow.roles.includes('disabled')
+      ? curRow.roles : null;
+    stash = existingStash || activeRoles || (restoreRole ? normalizeRoleSet(restoreRole) : null);
+    roleSet = ['disabled'];
+  } else {
+    const stashed = Array.isArray(curRow.roles_before_disable) && curRow.roles_before_disable.length
+      ? curRow.roles_before_disable : null;
+    roleSet = normalizeRoleSet(stashed || restoreRole);
+    stash = null;
+  }
+  const result = await pool.query(
+    'UPDATE users SET role = $1, roles = $2::jsonb, roles_before_disable = $3 WHERE id = $4 RETURNING id, email, full_name, role, joined_at',
+    [primaryRole(roleSet), JSON.stringify(roleSet), stash ? JSON.stringify(stash) : null, userId]
+  );
+  return result.rows[0];
 }
 
 async function put__api_admin_users__userId_disable(req, res) {
@@ -486,17 +532,12 @@ async function put__api_admin_users__userId_disable(req, res) {
   }
 
   try {
-    const nextRole = disabled ? 'disabled' : restoreRole;
-    const result = await pool.query(
-      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
-      [nextRole, userId]
-    );
-
-    if (result.rowCount === 0) {
+    const user = await applyDisabledState(userId, disabled, restoreRole);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user: result.rows[0] });
+    res.json({ user });
   } catch (error) {
     console.error('Failed to update user disabled state', error);
     res.status(500).json({ error: 'Unable to update user state' });
@@ -524,17 +565,12 @@ async function put__api_users__userId_disable(req, res) {
   }
 
   try {
-    const nextRole = disabled ? 'disabled' : restoreRole;
-    const result = await pool.query(
-      'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, email, full_name, role, joined_at',
-      [nextRole, userId]
-    );
-
-    if (result.rowCount === 0) {
+    const user = await applyDisabledState(userId, disabled, restoreRole);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user: result.rows[0] });
+    res.json({ user });
   } catch (error) {
     console.error('Failed to update user disabled state', error);
     res.status(500).json({ error: 'Unable to update user state' });

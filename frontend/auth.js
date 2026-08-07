@@ -18,6 +18,20 @@ function getToken() {
   return sessionStorage.getItem('krewe_token');
 }
 
+// The effective role set for a profile object. Prefers the multi-role `roles`
+// array, falling back to the legacy single `role`. A full `admin` satisfies any
+// capability check.
+function profileRoles(profile) {
+  if (!profile) return [];
+  if (Array.isArray(profile.roles) && profile.roles.length) return profile.roles;
+  return profile.role ? [profile.role] : [];
+}
+function profileHasRole(profile, role) {
+  const roles = profileRoles(profile);
+  if (role !== 'admin' && roles.includes('admin')) return true;
+  return roles.includes(role);
+}
+
 function isEditPreviewMode() {
   return new URLSearchParams(window.location.search).get('edit') === '1';
 }
@@ -573,6 +587,17 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   if (!res.ok) { alert(data.error || 'Unable to load user details'); return; }
   const full = data;
 
+  // Decompose the user's role set into a single base status plus additive admin
+  // capabilities for the edit form. `admin` implies every capability.
+  const uemRoleSet = new Set(Array.isArray(full.roles) && full.roles.length ? full.roles : [full.role]);
+  const uemBaseStatus = uemRoleSet.has('disabled') ? 'disabled'
+    : uemRoleSet.has('admin') ? 'admin'
+    : uemRoleSet.has('guest') ? 'guest'
+    : 'member';
+  const uemHasStore = uemRoleSet.has('store_admin');
+  const uemHasFloat = uemRoleSet.has('float_admin');
+  const uemHasFinance = uemRoleSet.has('finance_admin');
+
   // Lock state for the current admin (mirrors the dashboard/profile lock UX).
   // `profile` is not in scope here, so read it from the current user's profile.
   let uemFloatsLocked = false;
@@ -582,7 +607,8 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     if (profRes.ok) {
       const prof = await parseJSONResponse(profRes);
       uemFloatsLocked = Boolean(prof.float_locked);
-      uemIsFloatAdmin = prof.role === 'float_admin';
+      const profRoles = Array.isArray(prof.roles) && prof.roles.length ? prof.roles : [prof.role];
+      uemIsFloatAdmin = profRoles.includes('admin') || profRoles.includes('float_admin');
     }
   } catch (_e) { /* default to unlocked if the lookup fails */ }
 
@@ -617,16 +643,21 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
             <input id="uem-name" type="text" value="${escHtml(full.full_name)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
           <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Email</label>
             <input id="uem-email" type="email" value="${escHtml(full.email)}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
-          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Role</label>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Base Status</label>
             <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
-              <option value="member" ${full.role==='member'?'selected':''}>Member</option>
-              <option value="guest" ${full.role==='guest'?'selected':''}>Guest</option>
-              <option value="store_admin" ${full.role==='store_admin'?'selected':''}>Store Admin</option>
-              <option value="float_admin" ${full.role==='float_admin'?'selected':''}>Float Admin</option>
-              <option value="finance_admin" ${full.role==='finance_admin'?'selected':''}>Finance Admin</option>
-              <option value="admin" ${full.role==='admin'?'selected':''}>Admin</option>
-              ${full.role==='disabled'?'<option value="disabled" selected>Disabled</option>':''}
+              <option value="member" ${uemBaseStatus==='member'?'selected':''}>Member</option>
+              <option value="guest" ${uemBaseStatus==='guest'?'selected':''}>Guest</option>
+              <option value="admin" ${uemBaseStatus==='admin'?'selected':''}>Admin (all access)</option>
+              ${uemBaseStatus==='disabled'?'<option value="disabled" selected>Disabled</option>':''}
             </select></div>
+          <div class="form-group" id="uem-caps-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Admin Capabilities</label>
+            <div id="uem-caps" style="display:flex;flex-direction:column;gap:0.35rem;padding:0.15rem 0;">
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:#f5f7ff;font-weight:500;"><input type="checkbox" id="uem-cap-store" ${uemHasStore?'checked':''} ${user.id === currentUserId ? 'disabled' : ''} style="width:1rem;height:1rem;accent-color:#ffd262;" /> Store Admin</label>
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:#f5f7ff;font-weight:500;"><input type="checkbox" id="uem-cap-float" ${uemHasFloat?'checked':''} ${user.id === currentUserId ? 'disabled' : ''} style="width:1rem;height:1rem;accent-color:#ffd262;" /> Float Admin</label>
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:#f5f7ff;font-weight:500;"><input type="checkbox" id="uem-cap-finance" ${uemHasFinance?'checked':''} ${user.id === currentUserId ? 'disabled' : ''} style="width:1rem;height:1rem;accent-color:#ffd262;" /> Finance Admin</label>
+            </div>
+            <p style="font-size:0.72rem;color:#8ea0c4;margin:0.35rem 0 0;">Capabilities apply to Members. Admin already includes all; Guests and Disabled accounts have none.</p>
+          </div>
           <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Phone</label>
             <input id="uem-phone" type="tel" value="${escHtml(full.phone||'')}" placeholder="555-867-5309" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
           <div class="form-group" style="grid-column:1/-1;"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Home Address</label>
@@ -741,6 +772,25 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   if (closeBtn) closeBtn.addEventListener('click', close);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
   document.addEventListener('keydown', onModalKeydown);
+
+  // Capability checkboxes only apply to Members. When the base status is Admin
+  // (implies all), Guest or Disabled, the individual capabilities are locked.
+  const uemRoleSel = backdrop.querySelector('#uem-role');
+  const uemCapBoxes = ['uem-cap-store', 'uem-cap-float', 'uem-cap-finance'].map((id) => backdrop.querySelector('#' + id));
+  function syncCapabilityState() {
+    const isSelf = user.id === currentUserId;
+    const base = full.role === 'disabled' ? 'disabled' : (uemRoleSel ? uemRoleSel.value : uemBaseStatus);
+    const capsGroup = backdrop.querySelector('#uem-caps-group');
+    if (capsGroup) capsGroup.style.opacity = base === 'member' ? '1' : '0.5';
+    uemCapBoxes.forEach((box) => {
+      if (!box) return;
+      if (base === 'admin') { box.checked = true; box.disabled = true; }
+      else if (base === 'guest' || base === 'disabled') { box.checked = false; box.disabled = true; }
+      else { box.disabled = isSelf; }
+    });
+  }
+  if (uemRoleSel) uemRoleSel.addEventListener('change', syncCapabilityState);
+  syncCapabilityState();
 
   // Populate list inputs
   // Kids: Name | Float # | ×
@@ -997,10 +1047,22 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     const btn = backdrop.querySelector('#uem-save');
     btn.disabled = true;
     setFeedback('Saving…', false);
+    const baseSel = full.role === 'disabled' ? 'disabled' : (backdrop.querySelector('#uem-role').value);
+    let rolesPayload;
+    if (baseSel === 'admin') rolesPayload = ['admin'];
+    else if (baseSel === 'disabled') rolesPayload = ['disabled'];
+    else if (baseSel === 'guest') rolesPayload = ['guest'];
+    else {
+      rolesPayload = ['member'];
+      if (backdrop.querySelector('#uem-cap-store').checked) rolesPayload.push('store_admin');
+      if (backdrop.querySelector('#uem-cap-float').checked) rolesPayload.push('float_admin');
+      if (backdrop.querySelector('#uem-cap-finance').checked) rolesPayload.push('finance_admin');
+    }
     const payload = {
       full_name: backdrop.querySelector('#uem-name').value.trim(),
       email: backdrop.querySelector('#uem-email').value.trim(),
-      role: full.role === 'disabled' ? 'disabled' : backdrop.querySelector('#uem-role').value,
+      role: baseSel,
+      roles: rolesPayload,
       phone: backdrop.querySelector('#uem-phone').value.trim(),
       address: backdrop.querySelector('#uem-address').value.trim(),
       spouse_name: backdrop.querySelector('#uem-spouse').value.trim(),
@@ -1701,7 +1763,7 @@ async function initProfileDetailsForm(profile) {
   // When floats are locked, only the Float Admin may change float assignments.
   // Disable the float/riders controls for everyone else.
   const floatsLocked = Boolean(profile.float_locked);
-  const canEditFloats = !floatsLocked || profile.role === 'float_admin';
+  const canEditFloats = !floatsLocked || profileHasRole(profile, 'float_admin');
   if (!canEditFloats) {
     const rl = document.getElementById('riders-list');
     if (rl) rl.querySelectorAll('input, select, button').forEach((el) => { el.disabled = true; });
@@ -1833,15 +1895,19 @@ async function initDashboard() {
   `;
 
   // Any elevated role sees the Admin tab + the admin-tools card, but each
-  // role only gets the specific console links it is allowed to use.
+  // role only gets the specific console links it is allowed to use. A user may
+  // hold several capabilities at once, so the visible links are the union of
+  // every role they hold (a full admin sees them all).
   const adminToolLinksByRole = {
     admin: ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin'],
     store_admin: ['open-shop-admin'],
     float_admin: ['open-float-admin'],
     finance_admin: ['open-finance-admin'],
   };
-  const myAdminLinks = adminToolLinksByRole[profile.role];
-  if (myAdminLinks) {
+  const myAdminLinks = Array.from(new Set(
+    profileRoles(profile).flatMap((r) => adminToolLinksByRole[r] || [])
+  ));
+  if (myAdminLinks.length) {
     const adminTab = document.getElementById('db-tab-admin');
     if (adminTab) adminTab.hidden = false;
     const adminTools = document.getElementById('admin-tools');
@@ -2282,7 +2348,7 @@ async function initConfigurationPage() {
     return;
   }
 
-  if (profile.role !== 'admin') {
+  if (!profileHasRole(profile, 'admin')) {
     window.location.href = '/dashboard.html';
     return;
   }
@@ -2301,7 +2367,7 @@ async function initUserManagementPage() {
     return;
   }
 
-  if (profile.role !== 'admin') {
+  if (!profileHasRole(profile, 'admin')) {
     window.location.href = '/dashboard.html';
     return;
   }
@@ -2324,7 +2390,7 @@ async function initBackupRestorePage() {
 
   const profile = await fetchProfile();
   if (!profile) { window.location.href = '/login.html'; return; }
-  if (profile.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+  if (!profileHasRole(profile, 'admin')) { window.location.href = '/dashboard.html'; return; }
 
   section.style.display = 'block';
 
@@ -2909,7 +2975,7 @@ async function initShopPage() {
 
   // Show "Manage Store" button for admins and store admins
   const profile = await fetchProfile();
-  if (profile && (profile.role === 'admin' || profile.role === 'store_admin')) {
+  if (profile && (profileHasRole(profile, 'store_admin'))) {
     const manageBtn = document.getElementById('shop-manage-btn');
     if (manageBtn) manageBtn.style.display = '';
   }
@@ -3916,7 +3982,7 @@ async function initShopAdminPage() {
   if (!token) { window.location.href = '/login.html'; return; }
 
   const profile = await fetchProfile();
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'store_admin')) {
+  if (!profile || !profileHasRole(profile, 'store_admin')) {
     window.location.href = '/dashboard.html';
     return;
   }
@@ -4361,7 +4427,7 @@ async function initFloatAdminPage() {
 
   let profile;
   try { profile = await fetchProfile(); } catch (err) { return; }
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'float_admin')) {
+  if (!profile || !profileHasRole(profile, 'float_admin')) {
     section.style.display = 'none';
     if (deniedEl) deniedEl.style.display = 'block';
     return;
@@ -4473,7 +4539,7 @@ async function initFloatAdminPage() {
     info.style.color = (capacity != null && next > capacity) ? '#ff9b9b' : '#b8c4e0';
   }
   function render() {
-    const canEdit = !lockState || profile.role === 'float_admin' || profile.role === 'admin';
+    const canEdit = !lockState || profileHasRole(profile, 'float_admin');
     if (summaryEl) {
       summaryEl.textContent = floats.length + ' float' + (floats.length === 1 ? '' : 's') + ' - ' + users.length + ' member' + (users.length === 1 ? '' : 's') + (lockState ? '  (LOCKED)' : '');
     }
@@ -4639,7 +4705,7 @@ async function initFinanceAdminPage() {
 
   let profile;
   try { profile = await fetchProfile(); } catch (err) { return; }
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'finance_admin')) {
+  if (!profile || !profileHasRole(profile, 'finance_admin')) {
     section.style.display = 'none';
     if (deniedEl) deniedEl.style.display = 'block';
     return;

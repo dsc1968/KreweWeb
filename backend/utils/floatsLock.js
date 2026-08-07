@@ -22,12 +22,12 @@ async function requireFloatChange(req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const locked = await floatLockEnabled();
     if (locked) {
-      if (req.user.role !== 'float_admin' && req.user.role !== 'admin') {
+      if (!isFloatAdmin(req)) {
         return res.status(403).json({ error: 'Floats are locked. Only the Float Admin or an Admin can make changes.' });
       }
       return next();
     }
-    if (req.user.role !== 'admin' && req.user.role !== 'float_admin') {
+    if (!isFloatAdmin(req)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     next();

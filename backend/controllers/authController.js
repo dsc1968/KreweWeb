@@ -3,7 +3,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
-const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
+const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, isFloatAdmin, normalizeRoleSet, primaryRole } = require('../utils/validation');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp, isSmsConfigured } = require('../utils/email');
 const { randomBase32Secret, verifyTotp, buildOtpauthUri } = require('../utils/totp');
 
@@ -415,7 +415,7 @@ async function post__api_auth_login(req, res) {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.password_hash, u.mfa_method, u.mfa_enrolled,
+      `SELECT u.id, u.email, u.full_name, u.role, u.roles, u.password_hash, u.mfa_method, u.mfa_enrolled,
               p.phone AS profile_phone
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
@@ -467,7 +467,7 @@ async function post__api_auth_login(req, res) {
 
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
-    res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role }, token });
+    res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role, roles: normalizeRoleSet(Array.isArray(user.roles) && user.roles.length ? user.roles : user.role) }, token });
   } catch (error) {
     console.error('Login failed', error);
     res.status(500).json({ error: 'Unable to login' });
@@ -478,7 +478,7 @@ async function get__api_profile(req, res) {
   try {
     const mode = await getMfaMode();
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
+      `SELECT u.id, u.email, u.full_name, u.role, u.roles, u.joined_at, u.mfa_method, u.mfa_enrolled,
               p.phone, p.address, p.city, p.state, p.zip,
               p.birthdate, p.occupation, p.organizations, p.sponsor_name,
               p.spouse_name, p.kids_names, p.kids_birthdays,
@@ -510,6 +510,7 @@ async function get__api_profile(req, res) {
     res.json({
       ...row,
       captain_of,
+      roles: normalizeRoleSet(Array.isArray(row.roles) && row.roles.length ? row.roles : row.role),
       mfa_mode: mode,
       mfa_available_methods: getAvailableMfaMethods(),
       mfa_registration_required: registrationRequiresMfa(mode),
@@ -630,7 +631,7 @@ async function put__api_profile_details(req, res) {
   // When floats are locked, only the Float Admin may change float assignments.
   // Keep the member's existing float/riders data and ignore incoming changes.
   const floatsLocked = (await getSiteSetting('float_admin_lock')) === 'true';
-  if (floatsLocked && req.user.role !== 'float_admin') {
+  if (floatsLocked && !isFloatAdmin(req)) {
     try {
       const cur = await pool.query(
         'SELECT float_riders, rider_float_names, rider_float_numbers, member_float_number, float_id FROM user_profiles WHERE user_id = $1',
@@ -880,12 +881,12 @@ async function post__api_auth_mfa_verify(req, res) {
     } else {
       await client.query('UPDATE users SET mfa_method = $1, mfa_enrolled = TRUE WHERE id = $2', [c.method, userId]);
     }
-    const userRes = await client.query('SELECT id, email, full_name, role FROM users WHERE id = $1', [userId]);
+    const userRes = await client.query('SELECT id, email, full_name, role, roles FROM users WHERE id = $1', [userId]);
     const user = userRes.rows[0];
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.json({
-      user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+      user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role, roles: normalizeRoleSet(Array.isArray(user.roles) && user.roles.length ? user.roles : user.role) },
       token,
       mfaEnrolled: true,
     });
@@ -980,6 +981,7 @@ async function put__api_profile_password(req, res) {
 }
 
 function generateToken(user) {
-  return jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  const roles = normalizeRoleSet(Array.isArray(user.roles) && user.roles.length ? user.roles : user.role);
+  return jwt.sign({ userId: user.id, email: user.email, role: primaryRole(roles), roles }, JWT_SECRET, { expiresIn: '7d' });
 }
 module.exports = { generateToken, get__api_mfa_policy, get__api_members, get__api_profile, post__api_auth_login, post__api_auth_mfa_send, post__api_auth_mfa_verify, post__api_auth_register, post__api_auth_register_request_code, post__api_auth_register_verify_code, put__api_profile_details, put__api_profile_mfa, put__api_profile_password };

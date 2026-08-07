@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict jETTZUddh6tD49geon3pb6jRswN9kjDBAVIAdWVjdJPsWisHVBaYMuyVKngdPaK
+\restrict DVnZj95W9Q2KHBkU24SQ3LAO6YGAL4EEVgFJxpkO7UeBZSYB7dHYHm7EJk7Tgf7
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -317,6 +317,7 @@ CREATE TABLE public.shop_cart_items (
     added_at timestamp with time zone DEFAULT now() NOT NULL,
     size text DEFAULT ''::text NOT NULL,
     custom_amount numeric(10,2),
+    beneficiary_user_id integer,
     CONSTRAINT shop_cart_items_quantity_check CHECK ((quantity > 0))
 );
 
@@ -352,7 +353,8 @@ CREATE TABLE public.shop_order_items (
     product_name text NOT NULL,
     unit_price numeric(10,2) NOT NULL,
     quantity integer NOT NULL,
-    size text
+    size text,
+    beneficiary_user_id integer
 );
 
 
@@ -432,7 +434,14 @@ CREATE TABLE public.shop_products (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
     sizes text,
-    is_donation boolean DEFAULT false NOT NULL
+    is_donation boolean DEFAULT false NOT NULL,
+    size_label text,
+    fulfills_membership boolean DEFAULT false NOT NULL,
+    fulfills_guest boolean DEFAULT false NOT NULL,
+    is_coupon boolean DEFAULT false NOT NULL,
+    coupon_discount_type text,
+    coupon_discount_value numeric(10,2),
+    coupon_product_ids jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
 
@@ -526,6 +535,8 @@ CREATE TABLE public.users (
     mfa_method text DEFAULT 'none'::text NOT NULL,
     mfa_enrolled boolean DEFAULT false NOT NULL,
     mfa_secret text,
+    roles jsonb DEFAULT '[]'::jsonb NOT NULL,
+    roles_before_disable jsonb,
     CONSTRAINT users_mfa_method_check CHECK ((mfa_method = ANY (ARRAY['none'::text, 'email'::text, 'sms'::text, 'authenticator'::text])))
 );
 
@@ -873,6 +884,14 @@ ALTER TABLE ONLY public.photo_albums
 
 
 --
+-- Name: shop_cart_items shop_cart_items_beneficiary_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shop_cart_items
+    ADD CONSTRAINT shop_cart_items_beneficiary_user_id_fkey FOREIGN KEY (beneficiary_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: shop_cart_items shop_cart_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -886,6 +905,14 @@ ALTER TABLE ONLY public.shop_cart_items
 
 ALTER TABLE ONLY public.shop_cart_items
     ADD CONSTRAINT shop_cart_items_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: shop_order_items shop_order_items_beneficiary_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shop_order_items
+    ADD CONSTRAINT shop_order_items_beneficiary_user_id_fkey FOREIGN KEY (beneficiary_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -948,5 +975,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict jETTZUddh6tD49geon3pb6jRswN9kjDBAVIAdWVjdJPsWisHVBaYMuyVKngdPaK
+\unrestrict DVnZj95W9Q2KHBkU24SQ3LAO6YGAL4EEVgFJxpkO7UeBZSYB7dHYHm7EJk7Tgf7
 

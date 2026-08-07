@@ -84,12 +84,66 @@ function normalizeOpacityValue(value) {
   return String(Math.round(clamped * 1000) / 1000);
 }
 
+// ── Multi-role model ──────────────────────────────────────────────────────
+// A user holds one base status plus, for members, any additive admin
+// capabilities. `admin` implies every capability. The legacy single `role`
+// column is kept as the derived "primary" role for backward compatibility.
+const BASE_ROLES = ['member', 'guest', 'admin', 'disabled'];
+const CAPABILITY_ROLES = ['store_admin', 'float_admin', 'finance_admin'];
+const ALL_ROLES = [...BASE_ROLES, ...CAPABILITY_ROLES];
+// Highest-privilege-first ordering used to pick a single primary role.
+const ROLE_PRIORITY = ['disabled', 'admin', 'store_admin', 'float_admin', 'finance_admin', 'member', 'guest'];
+
+// Normalize an arbitrary roles input (an array, or a legacy single-role string)
+// into the canonical set: exactly one base status plus, for members, any
+// additive admin capabilities. Guests, admins and disabled accounts never carry
+// separate capabilities (admin already implies all; guests/disabled cannot).
+function normalizeRoleSet(input) {
+  let tokens = [];
+  if (Array.isArray(input)) tokens = input;
+  else if (typeof input === 'string' && input) tokens = [input];
+  const set = new Set(tokens.map((t) => String(t).trim()).filter((t) => ALL_ROLES.includes(t)));
+  let base;
+  if (set.has('disabled')) base = 'disabled';
+  else if (set.has('admin')) base = 'admin';
+  else if (set.has('guest') && !set.has('member')) base = 'guest';
+  else base = 'member';
+  const result = [base];
+  if (base === 'member') {
+    for (const cap of CAPABILITY_ROLES) if (set.has(cap)) result.push(cap);
+  }
+  return result;
+}
+
+// The single "primary" role derived from a role set, most privileged first.
+function primaryRole(roles) {
+  const set = new Set(Array.isArray(roles) ? roles : normalizeRoleSet(roles));
+  for (const r of ROLE_PRIORITY) if (set.has(r)) return r;
+  return 'member';
+}
+
+// The effective role set for the authenticated request. Prefers the normalized
+// `roles` array attached by the auth middleware, falling back to the legacy
+// single `role` for safety.
+function rolesOf(req) {
+  if (req && req.user && Array.isArray(req.user.roles) && req.user.roles.length) return req.user.roles;
+  if (req && req.user && req.user.role) return normalizeRoleSet(req.user.role);
+  return [];
+}
+
+// Whether the request's user holds `role` (admin satisfies any capability).
+function reqHasRole(req, role) {
+  const roles = rolesOf(req);
+  if (role !== 'admin' && roles.includes('admin')) return true;
+  return roles.includes(role);
+}
+
 function isAdmin(req) {
-  return Boolean(req.user && req.user.role === 'admin');
+  return rolesOf(req).includes('admin');
 }
 
 function isShopManager(req) {
-  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'store_admin'));
+  return reqHasRole(req, 'store_admin');
 }
 
 // Limited-admin roles scoped to a single domain, exactly like store_admin is
@@ -97,11 +151,11 @@ function isShopManager(req) {
 // through any of these paths. These roles are also treated as "elevated" for
 // MFA purposes (see authController.isElevatedRole).
 function isFloatAdmin(req) {
-  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'float_admin'));
+  return reqHasRole(req, 'float_admin');
 }
 
 function isFinanceAdmin(req) {
-  return Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'finance_admin'));
+  return reqHasRole(req, 'finance_admin');
 }
 
 module.exports = {
@@ -122,4 +176,12 @@ module.exports = {
   isShopManager,
   isFloatAdmin,
   isFinanceAdmin,
+  BASE_ROLES,
+  CAPABILITY_ROLES,
+  ALL_ROLES,
+  ROLE_PRIORITY,
+  normalizeRoleSet,
+  primaryRole,
+  rolesOf,
+  reqHasRole,
 };
