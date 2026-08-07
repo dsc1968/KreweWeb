@@ -22,15 +22,6 @@
         color: #b8c4e0;
         font-size: 0.85rem;
       }
-      .ur-select {
-        background: rgba(255,255,255,0.04);
-        color: #e8eefc;
-        border: 1px solid rgba(255,255,255,0.14);
-        border-radius: 8px;
-        padding: 0.3rem 0.5rem;
-        font-size: 0.85rem;
-      }
-      .ur-select option { color: #111; }
       .ur-selected-count { color: #b8c4e0; font-size: 0.85rem; }
       .ur-generated { color: #b8c4e0; font-size: 0.85rem; margin-left: auto; }
       .ur-summary { color: #b8c4e0; font-size: 0.9rem; margin: 0 0 1rem; }
@@ -172,13 +163,13 @@
         <div class="ur-toolbar" id="ur-toolbar">
           <div class="ur-view-tools">
             <label class="ur-field">View
-              <select id="ur-view" class="ur-select">
-                <option value="role" selected>Grouped by role</option>
-                <option value="alpha">Alphabetical (A–Z)</option>
+              <select id="ur-view" class="admin-user-select">
+                <option value="alpha" selected>Alphabetical (A–Z)</option>
+                <option value="role">Grouped by role</option>
               </select>
             </label>
             <label class="ur-field">Role
-              <select id="ur-filter-role" class="ur-select">
+              <select id="ur-filter-role" class="admin-user-select">
                 <option value="all" selected>All roles</option>
               </select>
             </label>
@@ -208,6 +199,6 @@
 
     <script src="script.js?v=20250720d"></script>
     <script src="auth.js?v=20260807c"></script>
-    <script src="users-report.js?v=20260807a"></script>
+    <script src="users-report.js?v=20260807b"></script>
   </body>
 </html>

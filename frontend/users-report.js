@@ -13,7 +13,7 @@
   // The rendered layout is identical across views — only the grouping/order and
   // the set of users shown change.
   let reportData = null;
-  const state = { view: 'role', roleFilter: 'all' };
+  const state = { view: 'alpha', roleFilter: 'all' };
 
   // ── Small helpers ───────────────────────────────────────────────────────
   function el(id) { return document.getElementById(id); }
