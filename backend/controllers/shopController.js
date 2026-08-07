@@ -129,11 +129,12 @@ async function post__api_admin_shop_products(req, res) {
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
-  const parsedPrice = parseFloat(price);
+  const isCoupon = is_coupon === true;
+  // A coupon is free by default, so an empty price is treated as 0.
+  const parsedPrice = isCoupon && (price == null || price === '') ? 0 : parseFloat(price);
   if (!isFinite(parsedPrice) || parsedPrice < 0) {
     return res.status(400).json({ error: 'Invalid price' });
   }
-  const isCoupon = is_coupon === true;
   const couponType = normalizeCouponType(coupon_discount_type);
   const couponValue = isCoupon ? (parseFloat(coupon_discount_value) || 0) : null;
   const couponTargets = isCoupon ? normalizeCouponProductIds(coupon_product_ids) : [];
@@ -177,11 +178,12 @@ async function put__api_admin_shop_products__id___d__(req, res) {
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
-  const parsedPrice = parseFloat(price);
+  const isCoupon = is_coupon === true;
+  // A coupon is free by default, so an empty price is treated as 0.
+  const parsedPrice = isCoupon && (price == null || price === '') ? 0 : parseFloat(price);
   if (!isFinite(parsedPrice) || parsedPrice < 0) {
     return res.status(400).json({ error: 'Invalid price' });
   }
-  const isCoupon = is_coupon === true;
   const couponType = normalizeCouponType(coupon_discount_type);
   const couponValue = isCoupon ? (parseFloat(coupon_discount_value) || 0) : null;
   const couponTargets = isCoupon ? normalizeCouponProductIds(coupon_product_ids) : [];

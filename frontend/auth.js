@@ -3979,6 +3979,9 @@ async function initShopAdminPage() {
   function toggleCouponFields() {
     const on = document.getElementById('sa-is-coupon').checked;
     document.getElementById('sa-coupon-fields').style.display = on ? '' : 'none';
+    // A coupon is free, so default its price to 0 when none was entered.
+    const priceEl = document.getElementById('sa-price');
+    if (on && !priceEl.value) priceEl.value = '0';
   }
 
   // Fills the coupon "applies to" multi-select with all non-coupon, non-donation
