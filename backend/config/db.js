@@ -517,6 +517,13 @@ async function ensureContentTable() {
   // membership dues or guest fee as paid on their profile.
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_membership BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_guest BOOLEAN NOT NULL DEFAULT FALSE`);
+  // Coupon products: when added to the cart, they discount the eligible
+  // products (coupon_product_ids) by either a percentage or a fixed dollar
+  // amount (coupon_discount_type / coupon_discount_value).
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS is_coupon BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS coupon_discount_type TEXT`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS coupon_discount_value NUMERIC(10,2)`);
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS coupon_product_ids JSONB NOT NULL DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS size TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE shop_cart_items ADD COLUMN IF NOT EXISTS custom_amount NUMERIC(10,2)`);
   // The member a membership/guest purchase is credited to (defaults to buyer).

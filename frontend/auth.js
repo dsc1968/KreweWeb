@@ -2935,6 +2935,32 @@ async function initShopPage() {
 
   function fmtPrice(v) { return '$' + parseFloat(v).toFixed(2); }
 
+  // Computes cart totals including coupon discounts (mirrors the server's
+  // computeCartPricing). Coupon lines discount the subtotal of their eligible
+  // products by a percentage or a fixed amount.
+  function computeCartTotals(items) {
+    const coupons = items.filter((i) => i.is_coupon);
+    const goods = items.filter((i) => !i.is_coupon);
+    const subtotal = goods.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0);
+    const discountByItemId = {};
+    let totalDiscount = 0;
+    coupons.forEach((c) => {
+      let targets = c.coupon_product_ids || [];
+      if (typeof targets === 'string') { try { targets = JSON.parse(targets); } catch { targets = []; } }
+      const set = new Set((Array.isArray(targets) ? targets : []).map(Number));
+      const eligible = goods
+        .filter((g) => set.has(Number(g.product_id)))
+        .reduce((s, g) => s + parseFloat(g.price) * g.quantity, 0);
+      const val = parseFloat(c.coupon_discount_value) || 0;
+      let d = c.coupon_discount_type === 'percent' ? eligible * (val / 100) : Math.min(val, eligible);
+      d = Math.max(0, Math.round(d * 100) / 100);
+      discountByItemId[c.id] = d;
+      totalDiscount += d;
+    });
+    const total = Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100);
+    return { subtotal, totalDiscount, total, discountByItemId };
+  }
+
   // Member directory for the "pay on behalf of" picker on membership/guest
   // cart lines. Loaded lazily and cached; a null value means "not loaded yet".
   let shopMembers = null;
@@ -2963,8 +2989,8 @@ async function initShopPage() {
   }
 
   function renderCart() {
-    const total = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0);
-    cartTotalEl.textContent = fmtPrice(total);
+    const totals = computeCartTotals(cartItems);
+    cartTotalEl.textContent = fmtPrice(totals.total);
     cartCountEl.textContent = cartItems.reduce((s, i) => s + i.quantity, 0);
     if (cartItems.length === 0) {
       cartItemsEl.innerHTML = '<p class="shop-cart-empty">Your cart is empty.</p>';
@@ -2977,13 +3003,17 @@ async function initShopPage() {
       const div = document.createElement('div');
       div.className = 'shop-cart-item';
       const nameHtml = `${escHtml(item.name)}${item.size ? ` <span style="color:var(--muted);font-size:0.82em;">(${escHtml(item.size)})</span>` : ''}`;
-      const controlsHtml = item.is_donation
-        ? `<div class="shop-cart-item-controls"><span class="shop-cart-qty-val">Donation</span></div>`
+      const isCoupon = item.is_coupon === true;
+      const controlsHtml = (item.is_donation || isCoupon)
+        ? `<div class="shop-cart-item-controls"><span class="shop-cart-qty-val">${isCoupon ? 'Coupon' : 'Donation'}</span></div>`
         : `<div class="shop-cart-item-controls">
           <button class="shop-cart-qty-btn" data-action="dec" data-id="${item.id}">−</button>
           <span class="shop-cart-qty-val">${item.quantity}</span>
           <button class="shop-cart-qty-btn" data-action="inc" data-id="${item.id}">+</button>
         </div>`;
+      const priceHtml = isCoupon
+        ? `−${fmtPrice(totals.discountByItemId[item.id] || 0)}`
+        : fmtPrice(parseFloat(item.price) * item.quantity);
       let beneficiaryHtml = '';
       if (item.fulfills_membership || item.fulfills_guest) {
         const fee = item.fulfills_membership ? 'membership dues' : 'guest fee';
@@ -3000,7 +3030,7 @@ async function initShopPage() {
       }
       div.innerHTML = `
         <span class="shop-cart-item-name">${nameHtml}</span>
-        <span class="shop-cart-item-price">${fmtPrice(parseFloat(item.price) * item.quantity)}</span>
+        <span class="shop-cart-item-price">${priceHtml}</span>
         ${controlsHtml}
         <button class="shop-cart-item-remove" data-id="${item.id}">Remove</button>
         ${beneficiaryHtml}
@@ -3152,7 +3182,7 @@ async function initShopPage() {
     }
     if (simulatePayment) {
       checkoutBtn.style.display = 'none';
-      const total = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0).toFixed(2);
+      const total = computeCartTotals(cartItems).total.toFixed(2);
       cartFeedEl.style.color = '';
       cartFeedEl.innerHTML = `
         <div style="text-align:center;padding:0.4rem 0;">
@@ -3326,6 +3356,7 @@ async function initShopPage() {
           ${p.category ? `<span class="shop-product-category">${escHtml(p.category)}</span>` : ''}
           <h3 class="shop-product-name">${escHtml(p.name)}</h3>
           ${p.description ? `<p class="shop-product-desc">${escHtml(p.description)}</p>` : ''}
+          ${p.is_coupon ? `<p class="shop-product-desc" style="color:#c4b5fd;">Coupon: ${p.coupon_discount_type === 'percent' ? (parseFloat(p.coupon_discount_value) || 0) + '% off' : fmtPrice(p.coupon_discount_value || 0) + ' off'} eligible items.</p>` : ''}
           ${sizesHtml}
           <div class="shop-product-footer">
             <span class="shop-product-price">${fmtPrice(p.price)}</span>
@@ -3894,6 +3925,9 @@ async function initShopAdminPage() {
   const prodFeed = document.getElementById('sa-products-feedback');
   const ordFeed  = document.getElementById('sa-orders-feedback');
   let editingId = null;
+  // Latest loaded products, used to populate the coupon "applies to" list and
+  // to drive drag-free up/down reordering.
+  let adminProducts = [];
 
   // Tab wiring (reuse shop-tab-btn / shop-panel classes)
   document.querySelectorAll('[data-shop-tab]').forEach((btn) => {
@@ -3929,10 +3963,39 @@ async function initShopAdminPage() {
     document.getElementById('sa-size-label').value = product ? (product.size_label || '') : '';
     document.getElementById('sa-fulfills-membership').checked = product ? product.fulfills_membership === true : false;
     document.getElementById('sa-fulfills-guest').checked = product ? product.fulfills_guest === true : false;
+    // Coupon fields
+    const isCoupon = product ? product.is_coupon === true : false;
+    document.getElementById('sa-is-coupon').checked = isCoupon;
+    document.getElementById('sa-coupon-type').value = product && product.coupon_discount_type === 'fixed' ? 'fixed' : 'percent';
+    document.getElementById('sa-coupon-value').value = product && product.coupon_discount_value != null ? product.coupon_discount_value : '';
+    populateCouponTargets(product);
+    toggleCouponFields();
     formFeed.textContent = '';
     modal.style.display = 'flex';
   }
   function closeModal() { modal.style.display = 'none'; }
+
+  // Shows/hides the coupon detail fields based on the "is a coupon" checkbox.
+  function toggleCouponFields() {
+    const on = document.getElementById('sa-is-coupon').checked;
+    document.getElementById('sa-coupon-fields').style.display = on ? '' : 'none';
+  }
+
+  // Fills the coupon "applies to" multi-select with all non-coupon, non-donation
+  // products (excluding the product being edited), preselecting current targets.
+  function populateCouponTargets(product) {
+    const sel = document.getElementById('sa-coupon-products');
+    if (!sel) return;
+    const selected = new Set(
+      (product && Array.isArray(product.coupon_product_ids) ? product.coupon_product_ids : []).map(Number)
+    );
+    const targets = adminProducts.filter((p) => !p.is_coupon && !p.is_donation && (!product || p.id !== product.id));
+    sel.innerHTML = targets
+      .map((p) => `<option value="${p.id}"${selected.has(p.id) ? ' selected' : ''}>${escHtml(p.name)}</option>`)
+      .join('');
+  }
+
+  document.getElementById('sa-is-coupon').addEventListener('change', toggleCouponFields);
 
   document.getElementById('sa-add-product-btn').addEventListener('click', () => openModal(null));
   document.getElementById('sa-modal-close').addEventListener('click', closeModal);
@@ -3958,6 +4021,10 @@ async function initShopAdminPage() {
       size_label:  document.getElementById('sa-size-label').value.trim(),
       fulfills_membership: document.getElementById('sa-fulfills-membership').checked,
       fulfills_guest:      document.getElementById('sa-fulfills-guest').checked,
+      is_coupon:   document.getElementById('sa-is-coupon').checked,
+      coupon_discount_type: document.getElementById('sa-coupon-type').value,
+      coupon_discount_value: document.getElementById('sa-coupon-value').value,
+      coupon_product_ids: Array.from(document.getElementById('sa-coupon-products').selectedOptions).map((o) => parseInt(o.value, 10)),
     };
 
     const url    = editingId ? `/api/admin/shop/products/${editingId}` : '/api/admin/shop/products';
@@ -4108,6 +4175,30 @@ async function initShopAdminPage() {
   }
 
   // ── Products table ───────────────────────────────────────────────────────
+  // Persists a new product ordering (array of ids) to the server.
+  async function reorderProducts(orderIds) {
+    try {
+      const res = await fetch('/api/admin/shop/products/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ order: orderIds }),
+      });
+      if (res.ok) loadAdminProducts();
+      else { const d = await parseJSONResponse(res); alert(d.error || 'Reorder failed.'); }
+    } catch { alert('Network error.'); }
+  }
+
+  // Moves a product up or down one position and saves the new order.
+  function moveProduct(id, dir) {
+    const idx = adminProducts.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+    const swap = dir === 'up' ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= adminProducts.length) return;
+    const ids = adminProducts.map((p) => p.id);
+    [ids[idx], ids[swap]] = [ids[swap], ids[idx]];
+    reorderProducts(ids);
+  }
+
   async function loadAdminProducts() {
     prodFeed.textContent = 'Loading…';
     const tbody = document.getElementById('sa-products-tbody');
@@ -4116,26 +4207,38 @@ async function initShopAdminPage() {
       const data = await parseJSONResponse(res);
       prodFeed.textContent = '';
       if (!res.ok) { prodFeed.textContent = data.error || 'Unable to load products.'; return; }
+      adminProducts = data.products;
       if (data.products.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:1.5rem;text-align:center;">No products yet.</td></tr>';
         return;
       }
       tbody.innerHTML = '';
-      data.products.forEach((p) => {
+      data.products.forEach((p, idx) => {
         const tr = document.createElement('tr');
+        const couponBadge = p.is_coupon
+          ? ` <span class="sa-badge" style="background:#7c3aed;color:#fff;">Coupon</span>`
+          : '';
         tr.innerHTML = `
-          <td>${escHtml(p.name)}</td>
+          <td>${escHtml(p.name)}${couponBadge}</td>
           <td>${p.image_path ? `<img src="${escHtml(p.image_path)}" alt="${escHtml(p.name)}" style="width:48px;height:48px;object-fit:contain;border-radius:8px;" />` : '<span style="color:var(--muted);font-size:0.8rem;">—</span>'}</td>
           <td>${escHtml(p.category || '—')}</td>
           <td>$${parseFloat(p.price).toFixed(2)}</td>
           <td>${p.stock_qty != null ? p.stock_qty : '∞'}</td>
           <td><span class="sa-badge ${p.active ? 'active' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</span></td>
           <td>
+            <button class="sa-action-btn sa-move-up" data-id="${p.id}" title="Move up" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="sa-action-btn sa-move-down" data-id="${p.id}" title="Move down" ${idx === data.products.length - 1 ? 'disabled' : ''}>↓</button>
             <button class="sa-action-btn sa-edit" data-id="${p.id}">Edit</button>
             <button class="sa-action-btn danger sa-delete" data-id="${p.id}">Delete</button>
           </td>
         `;
         tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('.sa-move-up').forEach((btn) => {
+        btn.addEventListener('click', () => moveProduct(parseInt(btn.dataset.id, 10), 'up'));
+      });
+      tbody.querySelectorAll('.sa-move-down').forEach((btn) => {
+        btn.addEventListener('click', () => moveProduct(parseInt(btn.dataset.id, 10), 'down'));
       });
       tbody.querySelectorAll('.sa-edit').forEach((btn) => {
         btn.addEventListener('click', () => {

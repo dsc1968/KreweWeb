@@ -30,6 +30,50 @@ function normalizeSizeLabel(input) {
   return label || null;
 }
 
+// Coupon helpers ────────────────────────────────────────────────────────────
+// Normalizes a coupon discount type to 'percent' or 'fixed' (default 'fixed').
+function normalizeCouponType(input) {
+  return String(input) === 'percent' ? 'percent' : 'fixed';
+}
+
+// Parses the list of product ids a coupon applies to into a de-duplicated array
+// of positive integers.
+function normalizeCouponProductIds(input) {
+  let raw = input;
+  if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = []; } }
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  for (const v of raw) {
+    const n = Number.parseInt(v, 10);
+    if (Number.isInteger(n) && n > 0) seen.add(n);
+  }
+  return Array.from(seen);
+}
+
+// Computes cart pricing including coupon discounts. Coupon lines (is_coupon)
+// reduce the subtotal of their eligible products; the discount for each coupon
+// line is returned by cart id so it can be recorded as a negative order line.
+function computeCartPricing(rows) {
+  const coupons = rows.filter((r) => r.is_coupon);
+  const goods = rows.filter((r) => !r.is_coupon);
+  const subtotal = goods.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+  const discountByCartId = new Map();
+  let totalDiscount = 0;
+  for (const c of coupons) {
+    const targets = new Set(normalizeCouponProductIds(c.coupon_product_ids));
+    const eligible = goods
+      .filter((r) => targets.has(Number(r.product_id)))
+      .reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+    const val = parseFloat(c.coupon_discount_value) || 0;
+    let d = c.coupon_discount_type === 'percent' ? eligible * (val / 100) : Math.min(val, eligible);
+    d = Math.max(0, Math.round(d * 100) / 100);
+    if (c.cart_id != null) discountByCartId.set(c.cart_id, d);
+    totalDiscount += d;
+  }
+  const total = Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100);
+  return { subtotal, totalDiscount, total, discountByCartId };
+}
+
 // Validates an optional beneficiary user id (the member a membership/guest
 // purchase is credited to). Returns { ok, id } where id is null when unset
 // (meaning "the buyer"). A provided id must reference an active member.
@@ -52,7 +96,8 @@ async function get__api_shop_payment_mode(req, res) {
 async function get__api_shop_products(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest,
+              is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids
        FROM shop_products WHERE active = TRUE
        ORDER BY position ASC, id ASC`
     );
@@ -67,7 +112,8 @@ async function get__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest, active, position, created_at
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest, active, position, created_at,
+              is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids
        FROM shop_products ORDER BY position ASC, id ASC`
     );
     res.json({ products: result.rows });
@@ -79,7 +125,7 @@ async function get__api_admin_shop_products(req, res) {
 
 async function post__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
-  const { name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -87,10 +133,17 @@ async function post__api_admin_shop_products(req, res) {
   if (!isFinite(parsedPrice) || parsedPrice < 0) {
     return res.status(400).json({ error: 'Invalid price' });
   }
+  const isCoupon = is_coupon === true;
+  const couponType = normalizeCouponType(coupon_discount_type);
+  const couponValue = isCoupon ? (parseFloat(coupon_discount_value) || 0) : null;
+  const couponTargets = isCoupon ? normalizeCouponProductIds(coupon_product_ids) : [];
+  if (isCoupon && (!isFinite(couponValue) || couponValue < 0 || (couponType === 'percent' && couponValue > 100))) {
+    return res.status(400).json({ error: 'Invalid coupon discount value' });
+  }
   try {
     const result = await pool.query(
-      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -103,6 +156,10 @@ async function post__api_admin_shop_products(req, res) {
         normalizeSizeLabel(size_label),
         fulfills_membership === true,
         fulfills_guest === true,
+        isCoupon,
+        isCoupon ? couponType : null,
+        couponValue,
+        JSON.stringify(couponTargets),
         req.user.userId,
       ]
     );
@@ -116,7 +173,7 @@ async function post__api_admin_shop_products(req, res) {
 async function put__api_admin_shop_products__id___d__(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
-  const { name, description, price, image_path, category, stock_qty, active, position, sizes, size_label, fulfills_membership, fulfills_guest } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, position, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -124,13 +181,22 @@ async function put__api_admin_shop_products__id___d__(req, res) {
   if (!isFinite(parsedPrice) || parsedPrice < 0) {
     return res.status(400).json({ error: 'Invalid price' });
   }
+  const isCoupon = is_coupon === true;
+  const couponType = normalizeCouponType(coupon_discount_type);
+  const couponValue = isCoupon ? (parseFloat(coupon_discount_value) || 0) : null;
+  const couponTargets = isCoupon ? normalizeCouponProductIds(coupon_product_ids) : [];
+  if (isCoupon && (!isFinite(couponValue) || couponValue < 0 || (couponType === 'percent' && couponValue > 100))) {
+    return res.status(400).json({ error: 'Invalid coupon discount value' });
+  }
   try {
     const result = await pool.query(
       `UPDATE shop_products
        SET name=$1, description=$2, price=$3, image_path=$4, category=$5,
            stock_qty=$6, active=$7, position=COALESCE($8, position), sizes=$9, size_label=$10,
-           fulfills_membership=$11, fulfills_guest=$12, updated_at=NOW()
-       WHERE id=$13 RETURNING *`,
+           fulfills_membership=$11, fulfills_guest=$12,
+           is_coupon=$13, coupon_discount_type=$14, coupon_discount_value=$15, coupon_product_ids=$16,
+           updated_at=NOW()
+       WHERE id=$17 RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -144,6 +210,10 @@ async function put__api_admin_shop_products__id___d__(req, res) {
         normalizeSizeLabel(size_label),
         fulfills_membership === true,
         fulfills_guest === true,
+        isCoupon,
+        isCoupon ? couponType : null,
+        couponValue,
+        JSON.stringify(couponTargets),
         id,
       ]
     );
@@ -171,6 +241,30 @@ async function delete__api_admin_shop_products__id___d__(req, res) {
   }
 }
 
+// Reorders products by assigning position from the given ordered id list.
+async function put__api_admin_shop_products_reorder(req, res) {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const order = Array.isArray(req.body && req.body.order) ? req.body.order : null;
+  if (!order) return res.status(400).json({ error: 'order (array of product ids) is required' });
+  const ids = order.map((v) => Number.parseInt(v, 10)).filter((n) => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) return res.status(400).json({ error: 'No valid product ids' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < ids.length; i++) {
+      await client.query('UPDATE shop_products SET position=$1, updated_at=NOW() WHERE id=$2', [i, ids[i]]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to reorder products', err);
+    res.status(500).json({ error: 'Unable to reorder products' });
+  } finally {
+    client.release();
+  }
+}
+
 async function get__api_shop_cart(req, res) {
   try {
     const result = await pool.query(
@@ -178,7 +272,8 @@ async function get__api_shop_cart(req, res) {
               bu.full_name AS beneficiary_name,
               p.id AS product_id, p.name,
               COALESCE(c.custom_amount, p.price) AS price, p.image_path, p.stock_qty, p.active,
-              p.is_donation, p.fulfills_membership, p.fulfills_guest
+              p.is_donation, p.fulfills_membership, p.fulfills_guest,
+              p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
        FROM shop_cart_items c
        JOIN shop_products p ON p.id = c.product_id
        LEFT JOIN users bu ON bu.id = c.beneficiary_user_id
@@ -200,11 +295,16 @@ async function post__api_shop_cart(req, res) {
   }
   try {
     const prod = await pool.query(
-      'SELECT id, sizes, is_donation, fulfills_membership, fulfills_guest FROM shop_products WHERE id=$1 AND active=TRUE', [product_id]
+      'SELECT id, sizes, is_donation, stock_qty, fulfills_membership, fulfills_guest FROM shop_products WHERE id=$1 AND active=TRUE', [product_id]
     );
     if (prod.rowCount === 0) return res.status(404).json({ error: 'Product not found' });
     if (prod.rows[0].is_donation) {
       return res.status(400).json({ error: 'Use the donation option to add a donation.' });
+    }
+    // A tracked stock that has reached zero is sold out (a null stock is
+    // unlimited and always available).
+    if (prod.rows[0].stock_qty != null && prod.rows[0].stock_qty <= 0) {
+      return res.status(400).json({ error: 'This item is sold out.' });
     }
     const available = prod.rows[0].sizes
       ? prod.rows[0].sizes.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
@@ -362,7 +462,8 @@ async function post__api_shop_checkout(req, res) {
     const cartResult = await client.query(
       `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
               COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
-              p.fulfills_membership, p.fulfills_guest
+              p.fulfills_membership, p.fulfills_guest,
+              p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
        FROM shop_cart_items c
        JOIN shop_products p ON p.id = c.product_id
        WHERE c.user_id = $1`,
@@ -379,13 +480,19 @@ async function post__api_shop_checkout(req, res) {
         error: `Some items are no longer available: ${inactive.map((r) => r.name).join(', ')}`,
       });
     }
+    const soldOut = cartResult.rows.filter((r) => !r.is_coupon && r.stock_qty != null && r.stock_qty <= 0);
+    if (soldOut.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Some items are sold out: ${soldOut.map((r) => r.name).join(', ')}`,
+      });
+    }
     const userResult = await client.query(
       'SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]
     );
     const buyer = userResult.rows[0];
-    const total = cartResult.rows.reduce(
-      (sum, row) => sum + parseFloat(row.price) * row.quantity, 0
-    );
+    const pricing = computeCartPricing(cartResult.rows);
+    const total = pricing.total;
     // In payment-simulation mode, choosing "Accept" is a successful payment, so
     // the order is recorded as paid (and completed for fee-only carts). Without
     // simulation this endpoint is the no-provider fallback and stays unpaid.
@@ -400,12 +507,15 @@ async function post__api_shop_checkout(req, res) {
     );
     const orderId = orderResult.rows[0].id;
     for (const item of cartResult.rows) {
+      const isCouponLine = item.is_coupon === true;
+      const unitPrice = isCouponLine ? -(pricing.discountByCartId.get(item.cart_id) || 0) : item.price;
+      const qty = isCouponLine ? 1 : item.quantity;
       await client.query(
         `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity, size, beneficiary_user_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [orderId, item.product_id, item.name, item.price, item.quantity, item.size || null, item.beneficiary_user_id || null]
+        [orderId, item.product_id, item.name, unitPrice, qty, item.size || null, item.beneficiary_user_id || null]
       );
-      if (item.stock_qty != null) {
+      if (!isCouponLine && item.stock_qty != null) {
         await client.query(
           'UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2',
           [item.quantity, item.product_id]
@@ -537,6 +647,52 @@ async function put__api_admin_shop_orders__id___d___status(req, res) {
   }
 }
 
+// Records a fully-paid order (PayPal/Stripe) from the user's cart inside an
+// existing transaction: creates the order and line items (coupon lines are
+// recorded as negative discount amounts), decrements tracked stock, credits
+// membership/guest fees, and clears the cart. Returns one of
+// { empty: true }, { soldOut: [names] }, or { orderId, total }.
+async function recordPaidCartOrder(client, userId, notes) {
+  const cartResult = await client.query(
+    `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
+            COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
+            p.fulfills_membership, p.fulfills_guest,
+            p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
+     FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
+     WHERE c.user_id = $1`,
+    [userId]
+  );
+  if (cartResult.rowCount === 0) return { empty: true };
+  const soldOut = cartResult.rows.filter((r) => !r.is_coupon && r.stock_qty != null && r.stock_qty <= 0);
+  if (soldOut.length) return { soldOut: soldOut.map((r) => r.name) };
+  const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
+  const buyer = userResult.rows[0];
+  const pricing = computeCartPricing(cartResult.rows);
+  const total = pricing.total;
+  const orderStatus = orderStatusForCart(cartResult.rows);
+  const orderResult = await client.query(
+    `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
+     VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
+    [userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
+  );
+  const orderId = orderResult.rows[0].id;
+  for (const item of cartResult.rows) {
+    const isCouponLine = item.is_coupon === true;
+    const unitPrice = isCouponLine ? -(pricing.discountByCartId.get(item.cart_id) || 0) : item.price;
+    const qty = isCouponLine ? 1 : item.quantity;
+    await client.query(
+      `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity, size, beneficiary_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [orderId, item.product_id, item.name, unitPrice, qty, item.size || null, item.beneficiary_user_id || null]
+    );
+    if (!isCouponLine && item.stock_qty != null) {
+      await client.query('UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2', [item.quantity, item.product_id]);
+    }
+  }
+  await applyMembershipFulfillment(client, userId, cartResult.rows);
+  await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [userId]);
+  return { orderId, total };
+}
+
 async function get__api_shop_paypal_config(req, res) {
   const cfg = getPayPalConfig();
   res.json({ client_id: cfg.clientId, mode: cfg.mode, configured: !!(cfg.clientId && cfg.clientSecret) });
@@ -547,7 +703,8 @@ async function post__api_shop_paypal_create_order(req, res) {
     const cfg = getPayPalConfig();
     if (!cfg.clientId || !cfg.clientSecret) return res.status(503).json({ error: 'PayPal is not configured' });
     const cartResult = await pool.query(
-      `SELECT c.quantity, COALESCE(c.custom_amount, p.price) AS price, p.name, p.active
+      `SELECT c.quantity, COALESCE(c.custom_amount, p.price) AS price, p.name, p.active, p.id AS product_id,
+              p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
        FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
        WHERE c.user_id = $1`,
       [req.user.userId]
@@ -555,7 +712,7 @@ async function post__api_shop_paypal_create_order(req, res) {
     if (cartResult.rowCount === 0) return res.status(400).json({ error: 'Cart is empty' });
     const inactive = cartResult.rows.filter((r) => !r.active);
     if (inactive.length) return res.status(400).json({ error: `Items unavailable: ${inactive.map((r) => r.name).join(', ')}` });
-    const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+    const total = computeCartPricing(cartResult.rows).total;
     const accessToken = await getPayPalAccessToken(cfg);
     const hostname = cfg.mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
     const ppOrder = await paypalHttpRequest(hostname, '/v2/checkout/orders', 'POST', {
@@ -602,38 +759,11 @@ async function post__api_shop_paypal_capture_order(req, res) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const cartResult = await client.query(
-        `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
-                COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
-                p.fulfills_membership, p.fulfills_guest
-         FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
-         WHERE c.user_id = $1`,
-        [req.user.userId]
-      );
-      if (cartResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
-      const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]);
-      const buyer = userResult.rows[0];
-      const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
-      const orderStatus = orderStatusForCart(cartResult.rows);
-      const orderResult = await client.query(
-        `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-         VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
-        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
-      );
-      const orderId = orderResult.rows[0].id;
-      for (const item of cartResult.rows) {
-        await client.query(
-          `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity, size, beneficiary_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [orderId, item.product_id, item.name, item.price, item.quantity, item.size || null, item.beneficiary_user_id || null]
-        );
-        if (item.stock_qty != null) {
-          await client.query('UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2', [item.quantity, item.product_id]);
-        }
-      }
-      await applyMembershipFulfillment(client, req.user.userId, cartResult.rows);
-      await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
+      const rec = await recordPaidCartOrder(client, req.user.userId, notes);
+      if (rec.empty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
+      if (rec.soldOut) { await client.query('ROLLBACK'); return res.status(400).json({ error: `Some items are sold out: ${rec.soldOut.join(', ')}` }); }
       await client.query('COMMIT');
-      res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
+      res.json({ ok: true, order_id: rec.orderId, total: rec.total.toFixed(2) });
     } catch (dbErr) {
       await client.query('ROLLBACK');
       console.error('DB order recording failed after PayPal capture', dbErr);
@@ -694,7 +824,8 @@ async function post__api_shop_stripe_create_payment_intent(req, res) {
     const cfg = getStripeConfig();
     if (!cfg.secretKey || !cfg.publishableKey) return res.status(503).json({ error: 'Stripe is not configured' });
     const cartResult = await pool.query(
-      `SELECT c.quantity, COALESCE(c.custom_amount, p.price) AS price, p.name, p.active
+      `SELECT c.quantity, COALESCE(c.custom_amount, p.price) AS price, p.name, p.active, p.id AS product_id,
+              p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
        FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
        WHERE c.user_id = $1`,
       [req.user.userId]
@@ -702,7 +833,7 @@ async function post__api_shop_stripe_create_payment_intent(req, res) {
     if (cartResult.rowCount === 0) return res.status(400).json({ error: 'Cart is empty' });
     const inactive = cartResult.rows.filter((r) => !r.active);
     if (inactive.length) return res.status(400).json({ error: `Items unavailable: ${inactive.map((r) => r.name).join(', ')}` });
-    const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
+    const total = computeCartPricing(cartResult.rows).total;
     const amountCents = Math.round(total * 100);
     // Restrict to card (which also carries Apple Pay / Google Pay) and US bank
     // transfer; this excludes Cash App Pay, Klarna, and other dashboard methods.
@@ -742,38 +873,11 @@ async function post__api_shop_stripe_confirm(req, res) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const cartResult = await client.query(
-        `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
-                COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
-                p.fulfills_membership, p.fulfills_guest
-         FROM shop_cart_items c JOIN shop_products p ON p.id = c.product_id
-         WHERE c.user_id = $1`,
-        [req.user.userId]
-      );
-      if (cartResult.rowCount === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
-      const userResult = await client.query('SELECT full_name, email FROM users WHERE id=$1', [req.user.userId]);
-      const buyer = userResult.rows[0];
-      const total = cartResult.rows.reduce((s, r) => s + parseFloat(r.price) * r.quantity, 0);
-      const orderStatus = orderStatusForCart(cartResult.rows);
-      const orderResult = await client.query(
-        `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-         VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
-        [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
-      );
-      const orderId = orderResult.rows[0].id;
-      for (const item of cartResult.rows) {
-        await client.query(
-          `INSERT INTO shop_order_items (order_id, product_id, product_name, unit_price, quantity, size, beneficiary_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [orderId, item.product_id, item.name, item.price, item.quantity, item.size || null, item.beneficiary_user_id || null]
-        );
-        if (item.stock_qty != null) {
-          await client.query('UPDATE shop_products SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2', [item.quantity, item.product_id]);
-        }
-      }
-      await applyMembershipFulfillment(client, req.user.userId, cartResult.rows);
-      await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
+      const rec = await recordPaidCartOrder(client, req.user.userId, notes);
+      if (rec.empty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
+      if (rec.soldOut) { await client.query('ROLLBACK'); return res.status(400).json({ error: `Some items are sold out: ${rec.soldOut.join(', ')}` }); }
       await client.query('COMMIT');
-      res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
+      res.json({ ok: true, order_id: rec.orderId, total: rec.total.toFixed(2) });
     } catch (dbErr) {
       await client.query('ROLLBACK');
       console.error('DB order recording failed after Stripe confirm', dbErr);
@@ -897,4 +1001,4 @@ async function get__api_shop_members(req, res) {
   }
 }
 
-module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_products__id___d__,put__api_shop_cart__itemId___d__, };
+module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_products__id___d__,put__api_admin_shop_products_reorder,put__api_shop_cart__itemId___d__, };
