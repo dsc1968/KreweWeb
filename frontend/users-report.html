@@ -14,6 +14,23 @@
         margin: 0.5rem 0 1.25rem;
       }
       .ur-select-tools { display: flex; gap: 0.5rem; align-items: center; }
+      .ur-view-tools { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+      .ur-field {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #b8c4e0;
+        font-size: 0.85rem;
+      }
+      .ur-select {
+        background: rgba(255,255,255,0.04);
+        color: #e8eefc;
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 8px;
+        padding: 0.3rem 0.5rem;
+        font-size: 0.85rem;
+      }
+      .ur-select option { color: #111; }
       .ur-selected-count { color: #b8c4e0; font-size: 0.85rem; }
       .ur-generated { color: #b8c4e0; font-size: 0.85rem; margin-left: auto; }
       .ur-summary { color: #b8c4e0; font-size: 0.9rem; margin: 0 0 1rem; }
@@ -145,13 +162,27 @@
       <section id="users-report-page" class="section" style="display:none;">
         <h2>Users Report</h2>
         <p>
-          All users grouped by role, one line per user. The layout is sized to fit and
-          print on regular landscape letter (8.5&times;11) paper &mdash; each role starts on
-          its own page. Tick individual roles and export just those, or leave all selected
-          to export everything.
+          All users, one line per user, in the same layout. Choose how to report them &mdash;
+          grouped by role or a single alphabetical (A&ndash;Z) list &mdash; and filter by role.
+          The layout is sized to fit and print on regular landscape letter (8.5&times;11) paper.
+          In the grouped view, tick individual roles and export just those, or leave all
+          selected to export everything.
         </p>
 
         <div class="ur-toolbar" id="ur-toolbar">
+          <div class="ur-view-tools">
+            <label class="ur-field">View
+              <select id="ur-view" class="ur-select">
+                <option value="role" selected>Grouped by role</option>
+                <option value="alpha">Alphabetical (A–Z)</option>
+              </select>
+            </label>
+            <label class="ur-field">Role
+              <select id="ur-filter-role" class="ur-select">
+                <option value="all" selected>All roles</option>
+              </select>
+            </label>
+          </div>
           <div class="ur-select-tools">
             <button type="button" id="ur-select-all" class="button secondary">Select all</button>
             <button type="button" id="ur-select-none" class="button secondary">Clear</button>
@@ -177,6 +208,6 @@
 
     <script src="script.js?v=20250720d"></script>
     <script src="auth.js?v=20260807c"></script>
-    <script src="users-report.js?v=20260806c"></script>
+    <script src="users-report.js?v=20260807a"></script>
   </body>
 </html>

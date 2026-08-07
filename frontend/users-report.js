@@ -9,6 +9,12 @@
 
   const REPORT_PATH = '/api/admin/users/report';
 
+  // Raw report data (as returned by the API) plus the current view/filter state.
+  // The rendered layout is identical across views — only the grouping/order and
+  // the set of users shown change.
+  let reportData = null;
+  const state = { view: 'role', roleFilter: 'all' };
+
   // ── Small helpers ───────────────────────────────────────────────────────
   function el(id) { return document.getElementById(id); }
 
@@ -68,6 +74,51 @@
       throw new Error(data.error || 'Unable to generate users report');
     }
     return res.json();
+  }
+
+  // ── View + filter helpers ───────────────────────────────────────────────
+  // Flattens the role groups into a single user array. Each user already
+  // carries its own `role` and `status`, so no extra tagging is needed.
+  function flattenUsers(roles) {
+    const out = [];
+    (Array.isArray(roles) ? roles : []).forEach(function (g) {
+      (Array.isArray(g.users) ? g.users : []).forEach(function (u) { out.push(u); });
+    });
+    return out;
+  }
+
+  function roleLabelFor(key) {
+    const src = (reportData && Array.isArray(reportData.roles)) ? reportData.roles : [];
+    for (let i = 0; i < src.length; i++) {
+      if (src[i].role === key) return src[i].label || key;
+    }
+    return key;
+  }
+
+  function filterRolesByRole(roles, roleKey) {
+    if (!roleKey || roleKey === 'all') return roles;
+    return roles.filter(function (g) { return g.role === roleKey; });
+  }
+
+  // Returns a { generatedAt, roles } payload reflecting the current view and
+  // role filter. Both rendering and export build on this so screen and file
+  // always match. In the alphabetical view every user is collapsed into a
+  // single A–Z block that reuses the same table layout.
+  function currentViewData() {
+    const src = (reportData && Array.isArray(reportData.roles)) ? reportData.roles : [];
+    const generatedAt = reportData ? reportData.generatedAt : null;
+    const filtered = filterRolesByRole(src, state.roleFilter);
+    if (state.view === 'alpha') {
+      const users = flattenUsers(filtered).slice().sort(function (a, b) {
+        return String(a.full_name || '').localeCompare(
+          String(b.full_name || ''), undefined, { sensitivity: 'base' });
+      });
+      const label = (state.roleFilter && state.roleFilter !== 'all')
+        ? 'All Users (A–Z) — ' + roleLabelFor(state.roleFilter)
+        : 'All Users (A–Z)';
+      return { generatedAt: generatedAt, roles: [{ role: 'all', label: label, users: users }] };
+    }
+    return { generatedAt: generatedAt, roles: filtered };
   }
 
   // ── Rendering (grouped by role) ────────────────────────────────────────
@@ -150,31 +201,49 @@
     );
   }
 
-  function renderReport(data) {
+  function renderReport() {
     const page = el('users-report-page');
     if (page) page.style.display = 'block';
 
-    const roles = Array.isArray(data.roles) ? data.roles : [];
+    const view = currentViewData();
+    const roles = Array.isArray(view.roles) ? view.roles : [];
+    const totalUsers = roles.reduce(function (s, g) {
+      return s + (Array.isArray(g.users) ? g.users.length : 0);
+    }, 0);
     const list = el('users-report-list');
     const summary = el('ur-summary');
     const generated = el('ur-generated');
 
     if (summary) {
-      const totalUsers = roles.reduce(function (s, g) { return s + (Array.isArray(g.users) ? g.users.length : 0); }, 0);
-      summary.textContent = roles.length + ' role' + (roles.length === 1 ? '' : 's') +
-        '  •  ' + totalUsers + ' user' + (totalUsers === 1 ? '' : 's');
+      const filterNote = (state.roleFilter && state.roleFilter !== 'all')
+        ? '  •  filtered to ' + roleLabelFor(state.roleFilter)
+        : '';
+      if (state.view === 'alpha') {
+        summary.textContent = totalUsers + ' user' + (totalUsers === 1 ? '' : 's') +
+          ', alphabetical' + filterNote;
+      } else {
+        summary.textContent = roles.length + ' role' + (roles.length === 1 ? '' : 's') +
+          '  •  ' + totalUsers + ' user' + (totalUsers === 1 ? '' : 's') + filterNote;
+      }
     }
     if (generated) {
-      const when = data.generatedAt ? new Date(data.generatedAt) : new Date();
+      const when = view.generatedAt ? new Date(view.generatedAt) : new Date();
       generated.textContent = 'Generated ' + when.toLocaleString();
     }
     if (list) {
-      list.innerHTML = roles.length
+      list.innerHTML = totalUsers
         ? roles.map(roleBlockHtml).join('')
         : '<p class="ur-empty">No users found.</p>';
     }
+
+    // Re-wire per-block export checkboxes (the list markup was just replaced).
+    document.querySelectorAll('.ur-role-select').forEach(function (b) {
+      b.addEventListener('change', updateSelectionUI);
+    });
+    updateSelectionUI();
+
     setFeedback('');
-    return data;
+    return view;
   }
 
   // ── PDF export (reliable, dependency-free print-to-PDF) ────────────────
@@ -472,12 +541,16 @@
     });
   }
 
-  function exportExcel(data) {
-    if (!data) return;
-    const roles = Array.isArray(data.roles) ? data.roles : [];
+  function exportExcel() {
+    // Build from the currently displayed view/filter, then honour any
+    // per-block "Include in export" selection (empty selection = all shown).
+    const view = currentViewData();
+    const roles = Array.isArray(view.roles) ? view.roles : [];
     const sel = getSelectedRoleKeys();
-    const filteredRoles = sel.length ? roles.filter(function (g) { return sel.indexOf(g.role) !== -1; }) : roles;
-    const payload = { generatedAt: data.generatedAt, roles: filteredRoles };
+    const filteredRoles = (sel.length && sel.indexOf('all') === -1)
+      ? roles.filter(function (g) { return sel.indexOf(g.role) !== -1; })
+      : roles;
+    const payload = { generatedAt: view.generatedAt, roles: filteredRoles };
     const d = new Date();
     const stamp = d.getFullYear() +
       String(d.getMonth() + 1).padStart(2, '0') +
@@ -509,10 +582,38 @@
     }
     if (!data) return; // fetchReport already redirected / showed denied
 
-    renderReport(data);
+    reportData = data;
+
+    // Read view/filter/role deep-link params before the first render.
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = (params.get('view') || '').toLowerCase();
+    if (viewParam === 'alpha' || viewParam === 'alphabetical') state.view = 'alpha';
+    else if (viewParam === 'role' || viewParam === 'grouped') state.view = 'role';
+
+    // Populate the role filter select from the roles present in the data.
+    const filterSel = el('ur-filter-role');
+    if (filterSel) {
+      const src = Array.isArray(reportData.roles) ? reportData.roles : [];
+      src.forEach(function (g) {
+        const opt = document.createElement('option');
+        opt.value = g.role;
+        opt.textContent = g.label || g.role;
+        filterSel.appendChild(opt);
+      });
+      // Support ?filter=member for a single-role view.
+      const filterParam = params.get('filter');
+      if (filterParam && src.some(function (g) { return g.role === filterParam; })) {
+        state.roleFilter = filterParam;
+      }
+      filterSel.value = state.roleFilter;
+    }
+
+    const viewSel = el('ur-view');
+    if (viewSel) viewSel.value = state.view;
+
+    renderReport();
 
     // Pre-select roles requested via ?role=admin,member (deep-link / per-role export).
-    const params = new URLSearchParams(window.location.search);
     const pre = params.get('role');
     if (pre) {
       const want = String(pre).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -520,30 +621,38 @@
         document.querySelectorAll('.ur-role-select').forEach(function (b) {
           b.checked = want.indexOf(b.value) !== -1;
         });
+        updateSelectionUI();
       }
     }
 
-    // Wire selection controls + live count.
+    // Wire view + role-filter controls (re-render on change).
+    if (viewSel) viewSel.addEventListener('change', function () {
+      state.view = viewSel.value === 'alpha' ? 'alpha' : 'role';
+      renderReport();
+    });
+    if (filterSel) filterSel.addEventListener('change', function () {
+      state.roleFilter = filterSel.value || 'all';
+      renderReport();
+    });
+
+    // Wire selection controls + live count. Per-block checkbox change handlers
+    // are (re)wired inside renderReport since the list markup is rebuilt.
     const allBtn = el('ur-select-all');
     const noneBtn = el('ur-select-none');
     if (allBtn) allBtn.addEventListener('click', function () { setAllChecked(true); });
     if (noneBtn) noneBtn.addEventListener('click', function () { setAllChecked(false); });
-    document.querySelectorAll('.ur-role-select').forEach(function (b) {
-      b.addEventListener('change', updateSelectionUI);
-    });
-    updateSelectionUI();
 
     const pdfBtn = el('ur-export-pdf');
     const excelBtn = el('ur-export-excel');
     if (pdfBtn) pdfBtn.addEventListener('click', exportPDF);
-    if (excelBtn) excelBtn.addEventListener('click', function () { exportExcel(data); });
+    if (excelBtn) excelBtn.addEventListener('click', function () { exportExcel(); });
 
     // Optional auto-export when arriving from the User Management "Export" buttons.
     const auto = params.get('auto');
     if (auto === 'pdf') {
       setTimeout(exportPDF, 250);
     } else if (auto === 'excel') {
-      setTimeout(function () { exportExcel(data); }, 250);
+      setTimeout(function () { exportExcel(); }, 250);
     }
   }
 
