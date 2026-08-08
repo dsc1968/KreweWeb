@@ -191,7 +191,7 @@
             '<th>Captain</th>' +
             '<th>Sponsor</th>' +
             '<th>Location</th>' +
-            '<th>Member #</th>' +
+            '<th>Float #</th>' +
             '<th>Occupation</th>' +
             '<th>Organizations</th>' +
           '</tr></thead>' +
@@ -416,7 +416,7 @@
         { v: 'Captain', bold: true },
         { v: 'Sponsor', bold: true },
         { v: 'Location', bold: true },
-        { v: 'Member #', bold: true },
+        { v: 'Float #', bold: true },
         { v: 'Occupation', bold: true },
         { v: 'Organizations', bold: true },
       ]);

@@ -1444,7 +1444,7 @@ async function get__api_admin_users_report(req, res) {
       const header = [
         'Role', 'Name', 'Email', 'Phone', 'Status', 'Joined',
         'Dues', 'Guest Fee', 'Beads', 'Costume', 'Captain',
-        'Sponsor', 'Address', 'City', 'State', 'Zip', 'Member #', 'Occupation', 'Organizations',
+        'Sponsor', 'Address', 'City', 'State', 'Zip', 'Float #', 'Occupation', 'Organizations',
       ];
       const rows = [];
       roles.forEach((group) => {
