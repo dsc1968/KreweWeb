@@ -1937,16 +1937,24 @@ async function initDashboard() {
   // Wire up tabs
   const tabs = document.querySelectorAll('.db-tab');
   const panels = document.querySelectorAll('.db-tab-panel');
+  function activateTab(tab) {
+    tabs.forEach((t) => t.classList.remove('is-active'));
+    panels.forEach((p) => p.classList.remove('is-active'));
+    tab.classList.add('is-active');
+    const target = document.getElementById('db-panel-' + tab.dataset.tab);
+    if (target) target.classList.add('is-active');
+    if (tab.dataset.tab === 'orders') loadDashboardOrders();
+  }
   tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      tabs.forEach((t) => t.classList.remove('is-active'));
-      panels.forEach((p) => p.classList.remove('is-active'));
-      tab.classList.add('is-active');
-      const target = document.getElementById('db-panel-' + tab.dataset.tab);
-      if (target) target.classList.add('is-active');
-      if (tab.dataset.tab === 'orders') loadDashboardOrders();
-    });
+    tab.addEventListener('click', () => activateTab(tab));
   });
+
+  // Open a specific tab when linked with a hash (e.g. #admin from an admin tool).
+  const hashTab = (location.hash || '').replace('#', '');
+  if (hashTab) {
+    const target = Array.from(tabs).find((t) => t.dataset.tab === hashTab && !t.hidden);
+    if (target) activateTab(target);
+  }
 
   async function loadDashboardOrders() {
     const feedEl = document.getElementById('db-orders-feedback');
