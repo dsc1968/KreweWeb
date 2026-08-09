@@ -5,6 +5,27 @@
 window.KREWE_EDITOR_VERSION = '20250720d';
 console.log('[KreweEditor] loaded version', window.KREWE_EDITOR_VERSION);
 
+// ── Site theme (dark default / light) ───────────────────────────────────────
+// The active theme is an admin-controlled site setting. We apply the cached
+// value from localStorage immediately (before paint) to avoid a flash, then
+// sync with the server. Exposed on window so the config page can update it live.
+function applyTheme(theme) {
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('krewe_theme', t); } catch (_e) { /* ignore */ }
+}
+window.applyTheme = applyTheme;
+(function initTheme() {
+  let cached = 'dark';
+  try { cached = localStorage.getItem('krewe_theme') || 'dark'; } catch (_e) { /* ignore */ }
+  applyTheme(cached);
+  // Sync with the server's current setting (cheap, unauthenticated).
+  fetch('/api/theme')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.theme) applyTheme(d.theme); })
+    .catch(() => { /* keep cached theme offline */ });
+})();
+
 const countdownTarget = new Date('2027-03-01T12:00:00').getTime();
 
 // ── Mobile hamburger nav ──────────────────────────────────────

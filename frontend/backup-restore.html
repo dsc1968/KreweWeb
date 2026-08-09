@@ -17,7 +17,7 @@
         padding: 1rem;
       }
       .br-modal-box {
-        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.97));
+        background: var(--card-bg);
         border: 1px solid var(--border);
         border-radius: 18px;
         padding: 2rem;
@@ -39,10 +39,10 @@
       .br-file-list {
         max-height: 240px;
         overflow-y: auto;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--border-soft);
         border-radius: 10px;
         padding: 0.5rem 0.6rem;
-        background: rgba(255,255,255,0.02);
+        background: var(--overlay-subtle);
         display: grid;
         gap: 0.25rem;
         margin-bottom: 0.6rem;
@@ -82,7 +82,7 @@
       .br-table th {
         text-align: left;
         padding: 0.75rem;
-        border-bottom: 1px solid rgba(255,255,255,0.12);
+        border-bottom: 1px solid var(--border-soft);
         font-size: 0.8rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -91,7 +91,7 @@
       }
       .br-table td {
         padding: 0.75rem;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid var(--border-subtle);
         font-size: 0.88rem;
         vertical-align: middle;
       }
@@ -113,8 +113,8 @@
       .br-action-btn {
         padding: 0.35rem 0.75rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-soft);
         color: var(--text);
         font: inherit;
         font-size: 0.8rem;
@@ -129,8 +129,8 @@
       .br-page-btn {
         padding: 0.3rem 0.7rem;
         border-radius: 7px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-medium);
+        background: var(--field-bg);
         color: var(--text);
         font: inherit;
         font-size: 0.82rem;

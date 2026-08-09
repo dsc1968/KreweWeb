@@ -66,8 +66,8 @@
       .shop-filter-btn {
         padding: 0.35rem 0.9rem;
         border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-soft);
         color: var(--muted);
         cursor: pointer;
         font: inherit;
@@ -89,7 +89,7 @@
       }
 
       .shop-product-card {
-        background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+        background: var(--db-card-bg, linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95)));
         border: 1px solid var(--border);
         border-radius: 16px;
         overflow: hidden;
@@ -214,8 +214,8 @@
         min-width: 2.4rem;
         padding: 0.3rem 0.55rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.18);
-        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-strong);
+        background: var(--field-bg);
         color: var(--muted);
         cursor: pointer;
         font: inherit;
@@ -270,7 +270,7 @@
       /* Donation section */
       .shop-donation {
         margin-top: 1.5rem;
-        background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+        background: var(--db-card-bg, linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95)));
         border: 1px solid rgba(255,210,98,0.3);
         border-radius: 16px;
         padding: 1.2rem 1.25rem;
@@ -296,8 +296,8 @@
       .shop-donation-input-wrap {
         display: flex;
         align-items: center;
-        background: rgba(2,8,22,0.7);
-        border: 1px solid rgba(255,255,255,0.18);
+        background: var(--field-bg);
+        border: 1px solid var(--field-border);
         border-radius: 10px;
         padding: 0 0.6rem;
       }
@@ -313,7 +313,7 @@
         font-size: 1rem;
         outline: none;
       }
-      .shop-donation-input::placeholder { color: rgba(255,255,255,0.3); }
+      .shop-donation-input::placeholder { color: var(--field-placeholder); }
       .shop-donation-feedback { font-size: 0.8rem; margin-top: 0.5rem; }
 
       /* ── Cart drawer ─────────────────────────────────────────────── */
@@ -332,7 +332,7 @@
         right: 0;
         bottom: 0;
         width: min(420px, 100vw);
-        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.99));
+        background: var(--card-bg);
         border-left: 1px solid var(--border);
         z-index: 501;
         display: flex;
@@ -348,7 +348,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
+        border-bottom: 1px solid var(--border-subtle);
         flex-shrink: 0;
       }
 
@@ -387,8 +387,8 @@
         align-items: start;
         padding: 0.75rem;
         border-radius: 12px;
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.07);
+        background: var(--overlay-subtle);
+        border: 1px solid var(--border-subtle);
       }
 
       .shop-cart-item-name {
@@ -418,8 +418,8 @@
         width: 1.6rem;
         height: 1.6rem;
         border-radius: 6px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-medium);
         color: var(--text);
         cursor: pointer;
         font: inherit;
@@ -429,7 +429,7 @@
         align-items: center;
         justify-content: center;
       }
-      .shop-cart-qty-btn:hover { background: rgba(255,255,255,0.12); }
+      .shop-cart-qty-btn:hover { background: var(--overlay-strong); }
 
       .shop-cart-qty-val { font-size: 0.88rem; min-width: 1.5rem; text-align: center; }
 
@@ -464,21 +464,21 @@
         width: 100%;
         padding: 0.4rem 0.55rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: #0f1830;
+        border: 1px solid var(--border-medium);
+        background: var(--select-bg);
         color: var(--text);
         font: inherit;
         font-size: 0.82rem;
-        color-scheme: dark;
+        color-scheme: var(--select-scheme);
       }
       .shop-cart-item-beneficiary select option {
-        background: #0f1830;
+        background: var(--select-option-bg);
         color: var(--text);
       }
 
       .shop-cart-foot {
         padding: 1rem 1.5rem 1.5rem;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        border-top: 1px solid var(--border-subtle);
         /* Shrink and scroll internally so the Pay/Cancel buttons stay reachable
            when the payment UI makes this region taller than the viewport. */
         flex-shrink: 1;
@@ -511,8 +511,8 @@
         flex: 1;
         padding: 0.5rem 0.5rem;
         border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-soft);
         color: var(--muted);
         cursor: pointer;
         font: inherit;
@@ -531,8 +531,8 @@
       .shop-stripe-wrap {
         padding: 0.9rem;
         border-radius: 12px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-medium);
+        background: var(--field-bg);
       }
       .shop-stripe-hint {
         margin: 0 0 0.7rem;
@@ -554,7 +554,7 @@
 
       /* ── Orders tab ──────────────────────────────────────────────── */
       .shop-order-card {
-        background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+        background: var(--db-card-bg, linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95)));
         border: 1px solid var(--border);
         border-radius: 14px;
         padding: 1rem 1.25rem;
@@ -601,14 +601,14 @@
         min-width: 2rem;
         padding: 0.35rem 0.6rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-medium);
         color: var(--text);
         font: inherit;
         font-size: 0.82rem;
         cursor: pointer;
       }
-      .shop-page-btn:hover { background: rgba(255,255,255,0.12); }
+      .shop-page-btn:hover { background: var(--overlay-strong); }
       .shop-page-btn.active {
         background: var(--accent);
         border-color: var(--accent);
@@ -640,7 +640,7 @@
         bottom: -1px;
         transition: color 0.15s, background 0.15s;
       }
-      .shop-tab-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+      .shop-tab-btn:hover { background: var(--field-bg); color: var(--text); }
       .shop-tab-btn.is-active {
         background: rgba(10,19,44,0.98);
         border-color: rgba(255,255,255,0.1);

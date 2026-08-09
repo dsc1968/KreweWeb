@@ -130,4 +130,45 @@ async function put__api_admin_mfa_config(req, res) {
   }
 }
 
-module.exports = { get__api_admin_config, get__api_admin_file_source, get__api_admin_mfa_config, post__api_admin_season_reset, put__api_admin_config, put__api_admin_file_source, put__api_admin_mfa_config };
+// UI theme (dark | light) is a site-wide default stored as a site setting, so
+// it applies immediately without a server restart. Dark is the default.
+async function get__api_admin_theme_config(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { getSiteSetting } = require('../utils/backup');
+    const theme = await getSiteSetting('ui_theme');
+    res.json({ theme: theme === 'light' ? 'light' : 'dark', availableThemes: ['dark', 'light'] });
+  } catch (err) {
+    console.error('Failed to read theme config', err);
+    res.status(500).json({ error: 'Unable to read theme config' });
+  }
+}
+
+async function put__api_admin_theme_config(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+  const theme = req.body.theme;
+  if (!['dark', 'light'].includes(theme)) {
+    return res.status(400).json({ error: 'Invalid theme' });
+  }
+  try {
+    const { setSiteSetting } = require('../utils/backup');
+    await setSiteSetting('ui_theme', theme);
+    res.json({ ok: true, theme });
+  } catch (err) {
+    console.error('Failed to save theme config', err);
+    res.status(500).json({ error: 'Unable to save theme config' });
+  }
+}
+
+// Public: any page reads the active theme on load to apply it before render.
+async function get__api_theme(req, res) {
+  try {
+    const { getSiteSetting } = require('../utils/backup');
+    const theme = await getSiteSetting('ui_theme');
+    res.json({ theme: theme === 'light' ? 'light' : 'dark' });
+  } catch (_err) {
+    res.json({ theme: 'dark' });
+  }
+}
+
+module.exports = { get__api_admin_config, get__api_admin_file_source, get__api_admin_mfa_config, get__api_admin_theme_config, get__api_theme, post__api_admin_season_reset, put__api_admin_config, put__api_admin_file_source, put__api_admin_mfa_config, put__api_admin_theme_config };

@@ -29,6 +29,18 @@
           </div>
           <form id="site-config-form" class="db-form" novalidate>
 
+            <p class="db-config-section-label">Appearance</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Choose the site-wide color theme. This applies immediately for everyone &mdash; no server restart needed. Dark is the default.</p>
+            <div class="db-form-grid">
+              <div class="form-group" style="grid-column:1/-1;">
+                <label for="cfg-ui-theme">Theme</label>
+                <select id="cfg-ui-theme" name="ui_theme">
+                  <option value="dark">Dark (default)</option>
+                  <option value="light">Light</option>
+                </select>
+              </div>
+            </div>
+
             <p class="db-config-section-label">Email / SMTP</p>
             <div class="db-form-grid">
               <div class="form-group">

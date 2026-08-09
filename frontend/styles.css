@@ -11,6 +11,48 @@
   /* Custom dropdown caret for <select>. Required because appearance:none
      removes the native arrow on Safari/iOS. Muted blue reads on dark themes. */
   --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23b8c4e0'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E");
+
+  /* ── Semantic theme tokens ────────────────────────────────────────────
+     Dark values below are the app's original colors (dark is unchanged).
+     The light theme (:root[data-theme="light"]) overrides these tokens, so
+     any rule that uses them adapts automatically. */
+  --page-bg-gradient:
+    radial-gradient(circle at top, rgba(255, 210, 98, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.06), transparent 18%),
+    linear-gradient(180deg, #020816 0%, #08102a 100%);
+  --header-bg: rgba(2, 8, 22, 0.88);
+  --header-border: rgba(255, 255, 255, 0.08);
+  /* Translucent surface overlays (used for chips, hovers, subtle panels) */
+  --overlay-subtle: rgba(255, 255, 255, 0.03);
+  --overlay-soft: rgba(255, 255, 255, 0.05);
+  --overlay-medium: rgba(255, 255, 255, 0.08);
+  --overlay-strong: rgba(255, 255, 255, 0.12);
+  /* Hairline borders drawn over dark surfaces */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.1);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  /* Form fields */
+  --field-bg: rgba(255, 255, 255, 0.04);
+  --field-border: rgba(255, 255, 255, 0.12);
+  --field-focus-border: rgba(239, 191, 88, 0.75);
+  --field-focus-ring: rgba(239, 191, 88, 0.14);
+  --field-placeholder: rgba(226, 232, 240, 0.52);
+  --select-bg: #12203f;
+  --select-option-bg: #12203f;
+  --select-scheme: dark;
+  /* Card surfaces (solid + gradient endpoints) */
+  --card-bg: linear-gradient(180deg, rgba(10, 19, 44, 0.98), rgba(15, 26, 56, 0.98));
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 10px 30px rgba(2, 8, 22, 0.6);
+  /* Status accents (text + tint background) */
+  --success: #4ade80;
+  --success-bg: rgba(74, 222, 128, 0.12);
+  --success-border: rgba(74, 222, 128, 0.4);
+  --danger: #f87171;
+  --danger-bg: rgba(248, 113, 113, 0.12);
+  --danger-border: rgba(248, 113, 113, 0.4);
+  --info: #60a5fa;
 }
 
 * {
@@ -47,9 +89,7 @@ body {
   overflow-x: hidden;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at top, rgba(255, 210, 98, 0.16), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.06), transparent 18%),
-    linear-gradient(180deg, #020816 0%, #08102a 100%);
+  background: var(--page-bg-gradient);
 }
 
 .site-header {
@@ -58,8 +98,8 @@ body {
   z-index: 100;
   width: 100%;
   backdrop-filter: blur(18px);
-  background: rgba(2, 8, 22, 0.88);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
 }
 
 .header-inner {
@@ -106,8 +146,8 @@ body {
   min-height: clamp(1.8rem, 2.5vw, 2.4rem);
   padding: 0 clamp(0.3rem, 0.7vw, 0.55rem);
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-medium);
+  background: var(--overlay-medium);
   color: var(--text);
   font-size: clamp(0.68rem, 0.95vw, 0.82rem);
   opacity: 0.95;
@@ -281,8 +321,8 @@ h1 {
   min-height: 3rem;
   padding: 0 1.4rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-medium);
+  background: var(--overlay-medium);
   color: var(--text);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
@@ -306,8 +346,8 @@ h1 {
 .secondary,
 .outline {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--overlay-medium);
+  border-color: var(--border-medium);
 }
 
 .section {
@@ -315,7 +355,7 @@ h1 {
 }
 
 .section-alt {
-  background: rgba(5, 13, 32, 0.9);
+  background: var(--section-alt-bg, rgba(5, 13, 32, 0.9));
 }
 
 .section-header {
@@ -363,8 +403,8 @@ p {
 
 .contact-copy-card,
 .contact-form-card {
-  background: linear-gradient(180deg, rgba(10, 19, 44, 0.94), rgba(15, 26, 56, 0.94));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 20px;
   box-shadow: 0 14px 38px rgba(2, 8, 22, 0.34);
 }
@@ -409,8 +449,8 @@ p {
   width: 100%;
   padding: 0.95rem 1rem;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   color: var(--text);
   font: inherit;
   transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
@@ -419,9 +459,9 @@ p {
 .contact-form select {
   -webkit-appearance: none;
   appearance: none;
-  background-color: #12203f;
-  color: #f5f7ff;
-  color-scheme: dark;
+  background-color: var(--select-bg);
+  color: var(--text);
+  color-scheme: var(--select-scheme);
   background-image: var(--select-caret);
   background-repeat: no-repeat;
   background-position: right 1rem center;
@@ -430,8 +470,8 @@ p {
 }
 
 .contact-form select option {
-  background: #12203f;
-  color: #f5f7ff;
+  background: var(--select-option-bg);
+  color: var(--text);
 }
 
 .contact-form input,
@@ -446,16 +486,16 @@ p {
 
 .contact-form input::placeholder,
 .contact-form textarea::placeholder {
-  color: rgba(226, 232, 240, 0.52);
+  color: var(--field-placeholder);
 }
 
 .contact-form input:focus,
 .contact-form select:focus,
 .contact-form textarea:focus {
   outline: none;
-  border-color: rgba(239, 191, 88, 0.75);
-  box-shadow: 0 0 0 4px rgba(239, 191, 88, 0.14);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--field-focus-border);
+  box-shadow: 0 0 0 4px var(--field-focus-ring);
+  background: var(--overlay-soft);
 }
 
 .contact-form .button {
@@ -1002,15 +1042,15 @@ body.admin-edit-mode .album-tools {
   justify-content: center;
   min-height: calc(100vh - 120px);
   padding: 2rem 1rem;
-  background: linear-gradient(180deg, rgba(2,8,22,0.6), rgba(2,8,22,0.9));
+  background: var(--auth-wrap-bg, linear-gradient(180deg, rgba(2,8,22,0.6), rgba(2,8,22,0.9)));
 }
 
 .auth-card {
-  background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.98));
+  background: var(--card-bg);
   padding: 2.25rem;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: 0 10px 30px rgba(2,8,22,0.6);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
   width: 100%;
   max-width: 680px;
 }
@@ -1034,11 +1074,11 @@ body.admin-edit-mode .album-tools {
   width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   color: var(--text);
   margin-top: 0.5rem;
-  color-scheme: dark;
+  color-scheme: var(--select-scheme);
 }
 
 /* Strip the native Safari/Chrome arrow (appearance:none) and draw our own
@@ -1272,22 +1312,22 @@ body.admin-edit-mode .album-tools {
 }
 
 .db-pay-status--paid {
-  color: #4ade80;
-  border-color: rgba(74, 222, 128, 0.4);
-  background: rgba(74, 222, 128, 0.1);
+  color: var(--success);
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .db-pay-status--unpaid {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 /* Tab nav */
 .db-tabs {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--border-soft);
   padding-bottom: 0;
 }
 
@@ -1308,13 +1348,13 @@ body.admin-edit-mode .album-tools {
 }
 
 .db-tab:hover {
-  background: rgba(255,255,255,0.05);
+  background: var(--overlay-soft);
   color: var(--text);
 }
 
 .db-tab.is-active {
-  background: linear-gradient(180deg, rgba(15,26,56,0.98), rgba(10,19,44,0.98));
-  border-color: rgba(255,255,255,0.1);
+  background: var(--tab-active-bg, linear-gradient(180deg, rgba(15,26,56,0.98), rgba(10,19,44,0.98)));
+  border-color: var(--border-soft);
   color: var(--accent);
   font-weight: 600;
 }
@@ -1342,7 +1382,7 @@ body.admin-edit-mode .album-tools {
 
 /* Single card */
 .db-card {
-  background: linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95));
+  background: var(--db-card-bg, linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95)));
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 1.5rem 1.75rem;
@@ -1391,14 +1431,14 @@ body.admin-edit-mode .album-tools {
   width: 100%;
   padding: 0.7rem 0.95rem;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   color: var(--text);
   font: inherit;
   font-size: 0.92rem;
   transition: border-color 0.15s;
   box-sizing: border-box;
-  color-scheme: dark;
+  color-scheme: var(--select-scheme);
 }
 
 .db-form input:focus {
@@ -1417,8 +1457,8 @@ body.admin-edit-mode .album-tools {
   margin-top: 0.45rem;
   padding: 0.35rem 0.8rem;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-medium);
+  background: var(--overlay-soft);
   color: var(--muted);
   font: inherit;
   font-size: 0.82rem;
@@ -1448,8 +1488,8 @@ body.admin-edit-mode .album-tools {
 }
 
 .db-feedback.is-error {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  background: var(--danger-bg);
   border: 1px solid rgba(248, 113, 113, 0.5);
   padding: 0.55rem 0.8rem;
   border-radius: 10px;
@@ -1480,8 +1520,8 @@ body.admin-edit-mode .album-tools {
   width: 100%;
   padding: 0.7rem 2.4rem 0.7rem 0.95rem;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   color: var(--text);
   font: inherit;
   font-size: 0.92rem;
@@ -1489,7 +1529,7 @@ body.admin-edit-mode .album-tools {
   box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
-  color-scheme: dark;
+  color-scheme: var(--select-scheme);
   background-image: var(--select-caret);
   background-repeat: no-repeat;
   background-position: right 0.95rem center;
@@ -1502,9 +1542,9 @@ body.admin-edit-mode .album-tools {
 }
 
 /* Native dropdown options inherit OS styling (often light) and ignore the dark
-   theme, making them invisible. Force a dark option list. */
+   theme, making them invisible. Force a themed option list. */
 .db-form select option {
-  background-color: #12203f;
+  background-color: var(--select-option-bg);
   color: var(--text);
 }
 
@@ -1523,8 +1563,8 @@ body.admin-edit-mode .album-tools {
   width: 100%;
   padding: 0.7rem 0.95rem;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   color: var(--text);
   font: inherit;
   font-size: 0.92rem;
@@ -1540,7 +1580,7 @@ body.admin-edit-mode .album-tools {
 .uem-tabs {
   display: flex;
   gap: 0.2rem;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--border-soft);
   margin-bottom: 1rem;
   flex-wrap: wrap;
 }
@@ -1563,13 +1603,13 @@ body.admin-edit-mode .album-tools {
 }
 
 .uem-tab-btn:hover {
-  background: rgba(255,255,255,0.05);
+  background: var(--overlay-soft);
   color: var(--text);
 }
 
 .uem-tab-btn.is-active {
-  background: rgba(15,26,56,0.98);
-  border-color: rgba(255,255,255,0.12);
+  background: var(--tab-active-bg, rgba(15,26,56,0.98));
+  border-color: var(--border-soft);
   color: var(--accent);
   font-weight: 700;
 }
@@ -1654,9 +1694,9 @@ body.admin-edit-mode .album-tools {
   appearance: none;
   padding: 0.5rem 2.2rem 0.5rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: #12203f;
-  color: #f5f7ff;
+  border: 1px solid var(--border-medium);
+  background: var(--select-bg);
+  color: var(--text);
   background-image: var(--select-caret);
   background-repeat: no-repeat;
   background-position: right 0.7rem center;
@@ -1664,8 +1704,8 @@ body.admin-edit-mode .album-tools {
 }
 
 .admin-user-select option {
-  background: #12203f;
-  color: #f5f7ff;
+  background: var(--select-option-bg);
+  color: var(--text);
 }
 
 .admin-user-select:disabled {
@@ -1761,7 +1801,7 @@ body.admin-edit-mode .album-tools {
   appearance: none;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #12203f;
+  background: var(--select-bg);
   color: var(--text);
   padding: 0.45rem 2.2rem 0.45rem 0.6rem;
   font: inherit;
@@ -1948,12 +1988,197 @@ body.admin-edit-mode .album-tools {
 
 /* Admin user edit modal: its selects (Role + rider float pickers) are injected
    into a backdrop appended to <body>, outside the themed form containers, so
-   they only had an inline dark closed-box. Force a dark scheme + dark option
-   list so the dropdown popups match the rest of the app. */
+   they only had an inline closed-box. Drive scheme + option list from tokens so
+   the dropdown popups match whichever theme is active. */
 #admin-user-edit-modal select {
-  color-scheme: dark;
+  color-scheme: var(--select-scheme);
 }
 #admin-user-edit-modal select option {
-  background-color: #12203f;
-  color: #f5f7ff;
+  background-color: var(--select-option-bg);
+  color: var(--text);
+}
+
+/* ══ LIGHT THEME ═══════════════════════════════════════════════════════════
+   Opt-in via <html data-theme="light">, driven by the "ui_theme" site setting.
+   Dark is the default and stays untouched. Because the core rules now read from
+   semantic tokens, the light theme only has to override those tokens — every
+   rule that uses them adapts automatically. A few extra rules below cover the
+   handful of surfaces that are still intentionally hardcoded in dark. */
+:root[data-theme="light"] {
+  --background: #eef1f8;
+  --surface: #ffffff;
+  --surface-alt: #f4f7fc;
+  --text: #1b2440;
+  --muted: #566180;
+  --accent: #b8860b;
+  --accent-dark: #966d00;
+  --border: rgba(20, 30, 60, 0.16);
+  --shadow: 0 20px 50px rgba(20, 30, 60, 0.12);
+  --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23566180'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E");
+  color-scheme: light;
+
+  /* Token overrides */
+  --page-bg-gradient:
+    radial-gradient(circle at top, rgba(184, 134, 11, 0.10), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(20, 30, 60, 0.05), transparent 22%),
+    linear-gradient(180deg, #eef1f8 0%, #e4e9f4 100%);
+  --header-bg: rgba(255, 255, 255, 0.85);
+  --header-border: rgba(20, 30, 60, 0.10);
+  --overlay-subtle: rgba(20, 30, 60, 0.03);
+  --overlay-soft: rgba(20, 30, 60, 0.05);
+  --overlay-medium: rgba(20, 30, 60, 0.06);
+  --overlay-strong: rgba(20, 30, 60, 0.10);
+  --border-subtle: rgba(20, 30, 60, 0.10);
+  --border-soft: rgba(20, 30, 60, 0.12);
+  --border-medium: rgba(20, 30, 60, 0.16);
+  --border-strong: rgba(20, 30, 60, 0.22);
+  --field-bg: #ffffff;
+  --field-border: rgba(20, 30, 60, 0.18);
+  --field-focus-border: rgba(184, 134, 11, 0.7);
+  --field-focus-ring: rgba(184, 134, 11, 0.16);
+  --field-placeholder: rgba(27, 36, 64, 0.45);
+  --select-bg: #ffffff;
+  --select-option-bg: #ffffff;
+  --select-scheme: light;
+  --card-bg: #ffffff;
+  --card-border: var(--border);
+  --card-shadow: var(--shadow);
+  --db-card-bg: #ffffff;
+  --tab-active-bg: #ffffff;
+  --section-alt-bg: var(--surface-alt);
+  --auth-wrap-bg: linear-gradient(180deg, #eef1f8 0%, #e4e9f4 100%);
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.12);
+  --success-border: rgba(21, 128, 61, 0.4);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.10);
+  --danger-border: rgba(220, 38, 38, 0.4);
+  --info: #2563eb;
+}
+
+/* Surfaces still using literal dark values (not yet tokenized) get light
+   counterparts here. */
+:root[data-theme="light"] .db-card {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+:root[data-theme="light"] .db-hero {
+  background: linear-gradient(135deg, #ffffff 0%, #eef2fb 100%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+:root[data-theme="light"] .db-form input:focus,
+:root[data-theme="light"] .db-form input[type="number"]:focus,
+:root[data-theme="light"] .db-form select:focus,
+:root[data-theme="light"] .db-form input[type="password"]:focus {
+  border-color: var(--field-focus-border);
+  background: #ffffff;
+}
+:root[data-theme="light"] .db-form select option:hover,
+:root[data-theme="light"] .db-form select option:checked {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+:root[data-theme="light"] .db-add-btn:hover {
+  border-color: rgba(184, 134, 11, 0.5);
+  color: var(--accent);
+}
+:root[data-theme="light"] .db-feedback.is-success {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+:root[data-theme="light"] .db-feedback.is-info {
+  color: var(--info);
+}
+:root[data-theme="light"] .royal-court-hero {
+  background-color: #e4e9f4;
+}
+
+/* The marketing hero sits on a dark photo with a dark tint, so its text must
+   stay light in both themes (var(--text) flips dark in light mode). */
+:root[data-theme="light"] .hero { color: #f5f7ff; }
+:root[data-theme="light"] .hero-copy { color: rgba(245, 247, 255, 0.85); }
+:root[data-theme="light"] .hero .eyebrow { color: #ffd262; }
+/* Heroes with a light background keep their dark text (unchanged). */
+:root[data-theme="light"] .history-hero h1,
+:root[data-theme="light"] .history-hero .hero-copy { color: #08102a; }
+
+/* Admin-set page background color is a dark-theme choice baked into the body;
+   in light mode let the theme gradient show instead (image backgrounds kept). */
+:root[data-theme="light"] body[data-page-bg-color]:not([data-page-bg-image]) {
+  background: var(--page-bg-gradient) !important;
+}
+
+/* Photos / albums use literal dark surfaces; map them to light equivalents. */
+:root[data-theme="light"] .album-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:root[data-theme="light"] .album-cover,
+:root[data-theme="light"] .album-photo-item {
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+:root[data-theme="light"] .album-cover-empty,
+:root[data-theme="light"] .album-photo-caption { color: var(--muted); }
+:root[data-theme="light"] .album-tools button,
+:root[data-theme="light"] .album-admin-toolbar button,
+:root[data-theme="light"] .album-viewer-toolbar button,
+:root[data-theme="light"] .album-photo-action {
+  background: var(--overlay-medium);
+  border-color: var(--border-medium);
+  color: var(--text);
+}
+:root[data-theme="light"] .album-photo-action.danger { color: var(--danger); }
+
+/* Image letterbox backdrops (object-fit: contain) read better light in light. */
+:root[data-theme="light"] .intro-card img,
+:root[data-theme="light"] .feature-card img,
+:root[data-theme="light"] .gallery-grid img {
+  background: var(--surface-alt);
+}
+
+/* ── JS-generated surfaces with inline colors ──────────────────────────────
+   Several admin/profile widgets are built in JS with inline dark colors that
+   CSS can't normally override (inline wins). In light mode we reach them with
+   scoped !important rules. We only flip the container surface + form fields, so
+   inline status colors (green/red pills, gold accents) are preserved and text
+   that inherits the container color becomes dark automatically. */
+:root[data-theme="light"] #admin-user-edit-modal > div {
+  background: #ffffff !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+:root[data-theme="light"] #admin-user-edit-modal input,
+:root[data-theme="light"] #admin-user-edit-modal select,
+:root[data-theme="light"] #admin-user-edit-modal textarea {
+  background: #ffffff !important;
+  color: var(--text) !important;
+  border-color: var(--field-border) !important;
+}
+/* Modal labels/hints use inline light colors that vanish on white. */
+:root[data-theme="light"] #admin-user-edit-modal label {
+  color: var(--text) !important;
+}
+:root[data-theme="light"] #admin-user-edit-modal > div > p,
+:root[data-theme="light"] #admin-user-edit-modal .uem-panel > p {
+  color: var(--muted) !important;
+}
+/* Dashboard profile: dynamically-built rider / child / grandchild rows. */
+:root[data-theme="light"] #riders-list input,
+:root[data-theme="light"] #riders-list select,
+:root[data-theme="light"] #kids-list input,
+:root[data-theme="light"] #kids-list select,
+:root[data-theme="light"] #grandchildren-list input,
+:root[data-theme="light"] #grandchildren-list select {
+  background: #ffffff !important;
+  color: var(--text) !important;
+  border-color: var(--field-border) !important;
+}
+/* The read-only "member" row uses inline light text on a gold tint; darken it
+   so it reads on the light surface. */
+:root[data-theme="light"] #riders-list .profile-member-row span,
+:root[data-theme="light"] #admin-user-edit-modal .uem-member-row span {
+  color: var(--text) !important;
 }

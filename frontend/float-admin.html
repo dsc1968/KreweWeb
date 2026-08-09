@@ -7,11 +7,11 @@
     <link rel="stylesheet" href="styles.css" />
     <style>
       .fa-card {
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--border-soft);
         border-radius: 14px;
         padding: 1rem 1.1rem;
         margin-bottom: 1rem;
-        background: rgba(255,255,255,0.02);
+        background: var(--overlay-subtle);
       }
       .fa-card-head {
         display: flex;
@@ -30,7 +30,7 @@
       .fa-card label {
         display: block;
         font-size: 0.78rem;
-        color: #b8c4e0;
+        color: var(--muted);
         margin-bottom: 0.3rem;
       }
       .fa-card input[type="text"],
@@ -42,30 +42,31 @@
         width: 100%;
         padding: 0.55rem 0.7rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.06);
-        color: #f5f7ff;
+        border: 1px solid var(--field-border);
+        background: var(--field-bg);
+        color: var(--text);
         font: inherit;
         box-sizing: border-box;
-        color-scheme: dark;
+        color-scheme: var(--select-scheme);
       }
-      /* Native <select> dropdowns ignore the dark theme for their open
-         option list and arrow, so force a dark appearance + custom arrow. */
+      /* Native <select> dropdowns ignore the theme for their open
+         option list and arrow, so force appearance + custom arrow. */
       .fa-card select,
       .fa-rider select {
         appearance: none;
         -webkit-appearance: none;
         -moz-appearance: none;
-        color-scheme: dark;
+        color-scheme: var(--select-scheme);
         padding-right: 2rem;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23b8c4e0' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+        background-image: var(--select-caret);
         background-repeat: no-repeat;
         background-position: right 0.7rem center;
+        background-size: 1rem 1rem;
       }
       .fa-card select option,
       .fa-rider select option {
-        background-color: #12203f;
-        color: #f5f7ff;
+        background-color: var(--select-option-bg);
+        color: var(--text);
       }
       .fa-card select:focus,
       .fa-rider select:focus {
@@ -75,9 +76,9 @@
       .fa-rider input {
         padding: 0.5rem 0.6rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.04);
-        color: #f5f7ff;
+        border: 1px solid var(--field-border);
+        background: var(--field-bg);
+        color: var(--text);
         font: inherit;
       }
       .fa-rider-remove { flex-shrink: 0; }
@@ -92,9 +93,9 @@
       width: 100%;
       padding: 0.65rem 0.9rem;
       border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06);
-      color: #f5f7ff;
+      border: 1px solid var(--field-border);
+      background: var(--field-bg);
+      color: var(--text);
       font: inherit;
       box-sizing: border-box;
     }
@@ -102,15 +103,16 @@
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      color-scheme: dark;
+      color-scheme: var(--select-scheme);
       padding-right: 2rem;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23b8c4e0' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+      background-image: var(--select-caret);
       background-repeat: no-repeat;
       background-position: right 0.7rem center;
+      background-size: 1rem 1rem;
     }
     #float-admin-create .form-group select option {
-      background-color: #12203f;
-      color: #f5f7ff;
+      background-color: var(--select-option-bg);
+      color: var(--text);
     }
     #float-admin-create .form-group input:focus,
     #float-admin-create .form-group select:focus { outline: none; border-color: rgba(94,234,212,0.5); }

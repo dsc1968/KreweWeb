@@ -2308,6 +2308,13 @@ async function initSiteConfig() {
       const mfaSel = form.querySelector('[name="mfa_mode"]');
       if (mfaRes.ok && mfaSel) mfaSel.value = mfaData.mfaMode || 'off';
     } catch (_mfaErr) { /* non-fatal */ }
+    // UI theme is also a site setting (applied instantly, no restart)
+    try {
+      const themeRes = await fetch('/api/admin/theme-config', { headers: { Authorization: 'Bearer ' + token } });
+      const themeData = await parseJSONResponse(themeRes);
+      const themeSel = form.querySelector('[name="ui_theme"]');
+      if (themeRes.ok && themeSel) themeSel.value = themeData.theme || 'dark';
+    } catch (_themeErr) { /* non-fatal */ }
     setFeedback('', false);
     // Wire up the season end-date sub-fields now that the hidden input has been populated
     setupSeasonEndDateUI(form);
@@ -2354,6 +2361,22 @@ async function initSiteConfig() {
           if (!mfaRes.ok) extra = ' (MFA setting not saved: ' + (mfaData.error || 'error') + ')';
         } catch (_mfaErr) {
           extra = ' (MFA setting not saved: network error)';
+        }
+      }
+      // Persist the UI theme (separate site setting; applies without a restart)
+      const themeSel = form.querySelector('[name="ui_theme"]');
+      if (themeSel) {
+        try {
+          const themeRes = await fetch('/api/admin/theme-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ theme: themeSel.value }),
+          });
+          const themeData = await parseJSONResponse(themeRes);
+          if (themeRes.ok) { applyTheme(themeSel.value); }
+          else { extra += ' (Theme not saved: ' + (themeData.error || 'error') + ')'; }
+        } catch (_themeErr) {
+          extra += ' (Theme not saved: network error)';
         }
       }
       setFeedback('Configuration saved. Restart the server to apply environment changes.' + extra, Boolean(extra));

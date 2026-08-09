@@ -9,7 +9,7 @@
       .shop-tabs {
         display: flex;
         gap: 0.25rem;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
+        border-bottom: 1px solid var(--border-soft);
         margin-bottom: 1.5rem;
       }
       .shop-tab-btn {
@@ -27,10 +27,10 @@
         bottom: -1px;
         transition: color 0.15s, background 0.15s;
       }
-      .shop-tab-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+      .shop-tab-btn:hover { background: var(--field-bg); color: var(--text); }
       .shop-tab-btn.is-active {
-        background: rgba(10,19,44,0.98);
-        border-color: rgba(255,255,255,0.1);
+        background: var(--tab-active-bg, rgba(10,19,44,0.98));
+        border-color: var(--border-soft);
         color: var(--accent);
         font-weight: 700;
       }
@@ -41,7 +41,7 @@
       .sa-table th {
         text-align: left;
         padding: 0.7rem 0.85rem;
-        border-bottom: 1px solid rgba(255,255,255,0.12);
+        border-bottom: 1px solid var(--border-soft);
         font-size: 0.78rem;
         font-weight: 700;
         text-transform: uppercase;
@@ -50,7 +50,7 @@
       }
       .sa-table td {
         padding: 0.7rem 0.85rem;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid var(--border-subtle);
         font-size: 0.88rem;
         vertical-align: middle;
       }
@@ -70,8 +70,8 @@
       .sa-action-btn {
         padding: 0.3rem 0.65rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-medium);
+        background: var(--overlay-soft);
         color: var(--text);
         font: inherit;
         font-size: 0.8rem;
@@ -89,7 +89,7 @@
         padding: 1rem;
       }
       .sa-modal-box {
-        background: linear-gradient(180deg, rgba(10,19,44,0.99), rgba(15,26,56,0.97));
+        background: var(--card-bg);
         border: 1px solid var(--border);
         border-radius: 18px;
         padding: 1.75rem;
@@ -125,14 +125,14 @@
       }
       .sa-pay-status.succeeded { background: rgba(74,222,128,0.14); border:1px solid rgba(74,222,128,0.3); color: #4ade80; }
       .sa-pay-status.declined  { background: rgba(248,113,113,0.14); border:1px solid rgba(248,113,113,0.3); color: #f87171; }
-      .sa-pay-status.unpaid    { background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color: #b8c4e0; }
+      .sa-pay-status.unpaid    { background: var(--overlay-medium); border:1px solid var(--border-strong); color: var(--muted); }
       .sa-pay-status.pending   { background: rgba(255,210,98,0.14); border:1px solid rgba(255,210,98,0.3); color: var(--accent); }
 
 
       .sa-status-select {
         padding: 0.3rem 0.6rem; border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: #12203f; color: var(--text);
+        border: 1px solid var(--border-medium);
+        background: var(--select-bg); color: var(--text);
         font: inherit; font-size: 0.82rem; cursor: pointer;
       }
 
@@ -162,8 +162,8 @@
       .sr-input {
         padding: 0.3rem 0.6rem;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.15);
-        background: #12203f;
+        border: 1px solid var(--border-medium);
+        background: var(--select-bg);
         color: var(--text);
         font: inherit;
         font-size: 0.82rem;
@@ -174,7 +174,7 @@
       .sr-block-head {
         display: flex; align-items: baseline; justify-content: space-between;
         flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border-soft); padding-bottom: 0.35rem;
       }
       .sr-block-title { margin: 0; font-size: 1rem; color: var(--accent); }
       .sr-block-meta { font-size: 0.82rem; color: var(--muted); }
@@ -381,24 +381,24 @@
                 </div>
                 <div class="form-group" style="grid-column:1/-1;">
                   <label for="sa-coupon-products">Applies to these products <span style="font-weight:400;">(Ctrl/Cmd-click to select multiple)</span></label>
-                  <select id="sa-coupon-products" multiple size="6" style="width:100%;padding:0.5rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font:inherit;"></select>
+                  <select id="sa-coupon-products" multiple size="6" style="width:100%;padding:0.5rem;border-radius:10px;border:1px solid var(--field-border);background:var(--field-bg);color:var(--text);font:inherit;"></select>
                 </div>
               </div>
             </div>
             <div class="form-group" style="grid-column:1/-1;">
               <label for="sa-image">Product Image</label>
               <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-                <img id="sa-image-preview" alt="Product preview" style="width:72px;height:72px;object-fit:contain;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);display:none;" />
+                <img id="sa-image-preview" alt="Product preview" style="width:72px;height:72px;object-fit:contain;border-radius:10px;border:1px solid var(--field-border);background:var(--field-bg);display:none;" />
                 <button type="button" id="sa-browse-image" class="button secondary">Browse / Choose Image</button>
                 <button type="button" id="sa-clear-image" class="button secondary" style="display:none;">Remove</button>
-                <span id="sa-image-name" style="font-size:0.8rem;color:#b8c4e0;"></span>
+                <span id="sa-image-name" style="font-size:0.8rem;color:var(--muted);"></span>
               </div>
               <input type="text" id="sa-image" style="display:none;" />
               <input type="file" id="sa-image-file" accept="image/*" style="display:none;" />
             </div>
             <div class="form-group" style="grid-column:1/-1;">
               <label for="sa-desc">Description</label>
-              <textarea id="sa-desc" rows="3" style="width:100%;padding:0.7rem 0.95rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font:inherit;resize:vertical;box-sizing:border-box;" placeholder="Short product description…"></textarea>
+              <textarea id="sa-desc" rows="3" style="width:100%;padding:0.7rem 0.95rem;border-radius:10px;border:1px solid var(--field-border);background:var(--field-bg);color:var(--text);font:inherit;resize:vertical;box-sizing:border-box;" placeholder="Short product description…"></textarea>
             </div>
           </div>
           <div id="sa-form-feedback" class="db-feedback" style="margin-top:0.75rem;"></div>

@@ -26,13 +26,13 @@
       .ur-generated { color: #b8c4e0; font-size: 0.85rem; margin-left: auto; }
       .ur-summary { color: #b8c4e0; font-size: 0.9rem; margin: 0 0 1rem; }
 
-      /* Dark-theme report on screen; prints as plain black-on-white. */
+      /* Report on screen follows the active theme; prints black-on-white. */
       .user-report-block {
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--border-soft);
         border-radius: 12px;
         padding: 0.85rem 1rem 1rem;
         margin-bottom: 1.25rem;
-        background: rgba(255,255,255,0.02);
+        background: var(--overlay-subtle);
         break-before: page;
         page-break-before: always;
       }
