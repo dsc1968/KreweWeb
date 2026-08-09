@@ -892,9 +892,9 @@ async function post__api_shop_stripe_create_payment_intent(req, res) {
     if (inactive.length) return res.status(400).json({ error: `Items unavailable: ${inactive.map((r) => r.name).join(', ')}` });
     const total = computeCartPricing(cartResult.rows).total;
     const amountCents = Math.round(total * 100);
-    // Restrict to card (which also carries Apple Pay / Google Pay) and US bank
-    // transfer; this excludes Cash App Pay, Klarna, and other dashboard methods.
-    const form = `amount=${amountCents}&currency=usd&description=${encodeURIComponent('Krewe Mystique Shop')}&metadata[source]=shop&payment_method_types[0]=card&payment_method_types[1]=us_bank_account`;
+    // Restrict to card, which also carries the Apple Pay / Google Pay wallets;
+    // this excludes US bank transfer, Cash App Pay, Klarna, and other methods.
+    const form = `amount=${amountCents}&currency=usd&description=${encodeURIComponent('Krewe Mystique Shop')}&metadata[source]=shop&payment_method_types[0]=card`;
     const intent = await stripeHttpRequest('POST', '/v1/payment_intents', form);
     if (intent.status !== 200 || !intent.body || !intent.body.id) {
       console.error('Stripe create payment intent failed', intent.body);

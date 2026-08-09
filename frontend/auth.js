@@ -3856,12 +3856,13 @@ async function initShopPage() {
             },
           },
         });
-        // Desktop browsers: card + bank only. Mobile devices: also expose the
-        // Apple Pay / Google Pay wallets.
-        const walletPref = isMobileDevice() ? 'auto' : 'never';
+        // Offer the Apple Pay / Google Pay wallets wherever the browser and
+        // device support them (Stripe hides them when unavailable). These ride
+        // on the "card" payment method; Samsung Pay is not offered by Stripe's
+        // web Payment Element, so it cannot be surfaced here.
         paymentElement = stripeElements.create('payment', {
           layout: { type: 'tabs' },
-          wallets: { applePay: walletPref, googlePay: walletPref },
+          wallets: { applePay: 'auto', googlePay: 'auto' },
         });
         paymentElement.mount('#stripe-payment-element');
       })();
