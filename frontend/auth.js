@@ -612,6 +612,15 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     }
   } catch (_e) { /* default to unlocked if the lookup fails */ }
 
+  // Load floats BEFORE building the modal so every button handler (Save, etc.)
+  // is wired synchronously once the modal is in the DOM. Fetching after the
+  // modal is shown left a window where clicking Save did nothing.
+  let adminFloats = [];
+  try {
+    const afRes = await fetch('/api/floats', { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (afRes.ok) adminFloats = await afRes.json();
+  } catch { /* floats list empty; selects fall back to "No float" */ }
+
   // Build modal backdrop
   const existing = document.getElementById('admin-user-edit-modal');
   if (existing) existing.remove();
@@ -868,14 +877,6 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     wrapper.appendChild(rm);
     container.appendChild(wrapper);
   }
-
-  // Floats defined by the float admin, so any role can assign a rider to any
-  // float (Option B) — independent of the sponsoring member.
-  let adminFloats = [];
-  try {
-    const afRes = await fetch('/api/floats', { headers: { Authorization: 'Bearer ' + getToken() } });
-    if (afRes.ok) adminFloats = await afRes.json();
-  } catch { /* floats list empty; selects fall back to "No float" */ }
 
   // The member is shown in the rider list too (read-only). Sometimes a member
   // rides, sometimes they don't — either way they appear here like any entry.
