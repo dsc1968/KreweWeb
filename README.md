@@ -96,10 +96,6 @@ terminate TLS, so the app itself never deals with certificates.
 | `seed.js` | Demo data seeder (`npm run seed`) |
 | `_backups/` | Server-managed database backups |
 
-> The repository also contains duplicate copies under `frontend/frontend/…`
-> (and a `frontend/package.json`). The canonical install and run location is
-> the **repository root** — ignore the nested copies.
-
 ## Requirements at a glance
 
 | Requirement | Linux | Windows |
@@ -128,11 +124,11 @@ Both guides cover the environment variables, Nginx Proxy Manager (reverse proxy
 ## Quick start (summary)
 
 ```bash
-git clone https://github.com/dsc1968/KreweWeb.git
+git clone https://github.com/dsc1968/KreweWeb.git Krewe
 cd Krewe
-npm install            # from the repository root only
-npm run init-db       # creates the DB role, database, .env, and a default admin
-npm start              # serves http://localhost:8000
+npm install       # install dependencies (from the repository root only)
+npm run init-db   # create the DB role, database, .env, and a default admin
+npm start         # serve http://localhost:8000
 ```
 
 See the install guides for the full, platform-specific instructions (system
