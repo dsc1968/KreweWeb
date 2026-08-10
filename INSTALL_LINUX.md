@@ -234,20 +234,16 @@ A JSON status response means the server and database are both working.
 
 ### Optional: demo seed data
 
-After the server is running you can create demo accounts for development and
-testing:
+To create demo accounts for development and testing, run the seed script from the
+project root (the server does not need to be running):
 
 ```bash
 npm run seed
 ```
 
-Or via the API while the server is running:
-
-```bash
-curl -X POST http://localhost:8000/api/dev/seed
-```
-
-Do not use demo accounts in production.
+This creates `demo@krewe.local` (password `demo123`) and, if it does not already
+exist, `admin@krewe.local` (password `admin123`). Do not use demo accounts in
+production.
 
 ---
 
@@ -373,9 +369,18 @@ These are read by the running server (after `npm start`).
 | `BACKUP_AWS_ACCESS_KEY_ID` | No* | — | S3 access key id |
 | `BACKUP_AWS_SECRET_ACCESS_KEY` | No* | — | S3 secret access key |
 | `RCLONE_CONFIG` | No | — | Path to `rclone.conf` when running as a service with `BACKUP_PROVIDER=rclone` |
+| `BACKUP_SCHEDULE_ENABLED` | No | `false` | Set `true` to turn on automatic scheduled backups |
+| `BACKUP_SCHEDULE_FREQUENCY` | No | `daily` | `daily`, `weekly`, or `monthly` |
+| `BACKUP_SCHEDULE_HOUR` | No | `3` | Hour of day the backup runs (0–23, server local time) |
+| `BACKUP_SCHEDULE_MINUTE` | No | `0` | Minute of the hour (0–59) |
+| `BACKUP_SCHEDULE_DOW` | No | `0` | Day of week for `weekly` (0 = Sunday … 6 = Saturday) |
+| `BACKUP_SCHEDULE_DOM` | No | `1` | Day of month for `monthly` (1–31) |
+| `BACKUP_SCHEDULE_TYPE` | No | `full` | What to back up: `full`, `files`, or `database` |
+| `BACKUP_SCHEDULE_RETENTION` | No | `0` | Number of scheduled backups to keep (`0` = keep all; older scheduled backups are pruned) |
 
-\* Required only when using the S3 backup provider. The `BACKUP_*` settings are
-also editable from the **Backup & Restore** page in the admin dashboard.
+\* Required only when using the S3 backup provider. The `BACKUP_*` settings —
+including the automatic backup schedule — are also editable from the **Backup &
+Restore** page in the admin dashboard, so you normally do not edit them by hand.
 
 Keep `.env` private. It is listed in `.gitignore` and must never be committed to
 the repository.
@@ -616,6 +621,13 @@ Nginx Proxy Manager proxies through Docker's internal network to reach it.
 The admin Backup & Restore page supports three storage providers. You choose one
 from the **Backup & Restore** page in the admin dashboard; the setting is saved
 in `.env`.
+
+**Automatic backups.** The same page lets you enable a recurring schedule
+(daily, weekly, or monthly) that runs a `full`, `files`, or `database` backup at
+a set time using whichever storage provider is configured. A retention setting
+keeps only the most recent scheduled backups and prunes older ones. The schedule
+runs inside the app process, so no cron job or Task Scheduler entry is required —
+just keep the service running.
 
 ### Provider 1 — Local filesystem (default)
 

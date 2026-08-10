@@ -12,23 +12,38 @@ Repository: https://github.com/dsc1968/KreweWeb.git
 ## What this project is
 
 The site is the public face of the krewe: home page, history, royal court,
-photo galleries/albums, events, contact, and member registration. Behind the
-pages is a full application that handles accounts, authentication, file uploads,
-and a visual page editor — all driven from a single Express server.
+veterans, photo galleries/albums, events, shop, contact, and member
+registration. Behind the pages is a full application that handles accounts,
+authentication, file uploads, and a visual page editor — all driven from a
+single Express server.
 
 Out of the box it provides:
 
-- **Public marketing site** — themed pages served as static assets.
+- **Public marketing site** — themed pages served as static assets (home,
+  history, royal court, veterans, events, photos, contact).
 - **Member accounts** — registration with email (and optional SMS) verification,
-  JWT auth, and two-factor sign-in.
+  JWT auth, and two-factor (MFA) sign-in with an admin-configurable MFA policy.
+- **Scoped admin roles** — a full `admin` plus limited roles (`store_admin`,
+  `float_admin`, `finance_admin`) that each unlock only their part of the
+  dashboard.
 - **Photo albums** — a gallery system with cover images, captions, and a
   lightbox viewer.
 - **Events** — a calendar/event listing.
 - **Admin editor** — edit page text, images, and sections in the browser, with
   the ability to revert to an original snapshot.
-- **Shop** — product listings with (optional) simulated, PayPal, or Stripe (credit-card) payments.
-- **Backup & restore** — database backups to local disk, S3-compatible storage,
-  or rclone (OneDrive, Google Drive, Dropbox, and 70+ others).
+- **Custom theming** — change site colors and styling from the admin dashboard;
+  the theme is applied to every page (including login and marketing pages).
+- **Float management** — assign members, spouses, guests, and riders to floats,
+  designate float captains, and lock float assignments once finalized.
+- **Finance & dues** — track member dues and payments, and export member,
+  float, and order reports.
+- **Shop** — product listings and member donations with (optional) simulated,
+  PayPal, or Stripe (credit-card) payments.
+- **Backup & restore** — manual and automatic scheduled database/file backups to
+  local disk, S3-compatible storage, or rclone (OneDrive, Google Drive, Dropbox,
+  and 70+ others).
+- **Season reset** — automatically clears per-season member data on a
+  configurable season-end date.
 
 ## What it is made of
 

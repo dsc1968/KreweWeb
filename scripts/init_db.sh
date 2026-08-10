@@ -357,6 +357,6 @@ fi
 echo
 echo "Next steps:"
 echo "  - Start server: npm start"
-echo "  - Seed demo accounts (dev only): curl -X POST http://localhost:$PORT/api/dev/seed"
+echo "  - Seed demo accounts (dev only): npm run seed"
 
 exit 0
