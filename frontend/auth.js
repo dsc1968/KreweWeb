@@ -883,17 +883,22 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   const assignedFloatLabel = (full.assigned_float && (full.assigned_float.name || full.assigned_float.float_number))
     ? `Float #${full.assigned_float.float_number || '?'} – ${full.assigned_float.name || ''}`.trim()
     : '';
-  if (full.float_id) {
-    addListItem('uem-riders', full.full_name, '', full.float_id, true, adminFloats);
-  }
+  // Never let a bad rider row abort the rest of setup — otherwise the tab and
+  // Save handlers below never wire and the backdrop traps the page.
+  try {
+    if (full.float_id) {
+      addListItem('uem-riders', full.full_name, '', full.float_id, true, adminFloats);
+    }
 
-  (full.float_riders || []).forEach((r) => {
-    const name = (r && typeof r === 'object') ? (r.name || '') : (typeof r === 'string' ? r : '');
-    const comment = (r && typeof r === 'object') ? (r.comment || '') : '';
-    addListItem('uem-riders', name, comment, (r && r.float_id) || '', false, adminFloats);
-  });
+    (full.float_riders || []).forEach((r) => {
+      const name = (r && typeof r === 'object') ? (r.name || '') : (typeof r === 'string' ? r : '');
+      const comment = (r && typeof r === 'object') ? (r.comment || '') : '';
+      addListItem('uem-riders', name, comment, (r && r.float_id) || '', false, adminFloats);
+    });
+  } catch (e) { console.error('Failed to render rider rows', e); }
 
-  backdrop.querySelector('#uem-add-rider').addEventListener('click', () => addListItem('uem-riders', '', '', '', false, adminFloats));
+  const uemAddRiderBtn = backdrop.querySelector('#uem-add-rider');
+  if (uemAddRiderBtn) uemAddRiderBtn.addEventListener('click', () => addListItem('uem-riders', '', '', '', false, adminFloats));
 
   // When floats are locked, only the Float Admin may change float assignments.
   // Mirror the dashboard/profile lock UX: show a note and disable the rider
