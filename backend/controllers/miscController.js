@@ -281,6 +281,11 @@ async function get__api_pending_users(req, res) {
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.role = $1
+         -- Only show NEW registrations (join requests), not accounts that were
+         -- disabled after being active. applyDisabledState() populates
+         -- roles_before_disable only when an existing member is turned off, so
+         -- pending registrations always have it NULL.
+         AND u.roles_before_disable IS NULL
        ORDER BY u.joined_at DESC`,
       ['disabled']
     );
