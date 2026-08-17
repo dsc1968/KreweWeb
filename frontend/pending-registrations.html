@@ -28,9 +28,9 @@
           <a class="button secondary" href="/dashboard.html#admin">Back to Admin Tools</a>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-top:0.5rem;">
-          <a class="button secondary" id="pending-export-excel" href="/users-report.html?role=disabled&auto=excel">Export Pending (Excel)</a>
-          <a class="button secondary" id="pending-export-pdf" href="/users-report.html?role=disabled&auto=pdf">Export Pending (PDF)</a>
-          <a class="button secondary" href="/users-report.html?role=disabled">View Pending Report</a>
+          <a class="button secondary" id="pending-export-excel" href="/users-report.html?role=pending&auto=excel">Export Pending (Excel)</a>
+          <a class="button secondary" id="pending-export-pdf" href="/users-report.html?role=pending&auto=pdf">Export Pending (PDF)</a>
+          <a class="button secondary" href="/users-report.html?role=pending">View Pending Report</a>
         </div>
         <div style="overflow-x:auto; margin-top:1rem;">
           <table style="width:100%; border-collapse:collapse;">
@@ -53,13 +53,17 @@
             if (!tbody) return;
             // Fetch users
             try {
+              // Use the dedicated pending-users endpoint, which returns ONLY new
+              // registrations (accounts that started disabled and are awaiting
+              // approval) — NOT existing members an admin has disabled. Those
+              // belong in User Management (enable/disable/edit), not here.
               const token = getToken(); // from auth.js
-              const response = await fetch('/api/admin/users', {
+              const response = await fetch('/api/admin/pending-users', {
                 headers: { Authorization: 'Bearer ' + token }
               });
-              if (!response.ok) throw new Error('Failed to fetch users');
-              const users = await response.json();
-              const pending = users.filter(u => u.role === 'disabled');
+              if (!response.ok) throw new Error('Failed to fetch pending registrations');
+              const data = await response.json();
+              const pending = Array.isArray(data.items) ? data.items : [];
               renderPendingUsers(pending, tbody);
             } catch (error) {
               console.error(error);

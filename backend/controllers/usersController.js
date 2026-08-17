@@ -1380,7 +1380,7 @@ async function get__api_admin_users_report(req, res) {
     const format = (req.query.format || 'json').toLowerCase();
 
     // Display order for role groups — most privileged first, disabled last.
-    const ROLE_ORDER = ['admin', 'float_admin', 'finance_admin', 'store_admin', 'member', 'guest', 'disabled'];
+    const ROLE_ORDER = ['admin', 'float_admin', 'finance_admin', 'store_admin', 'member', 'guest', 'pending', 'disabled'];
     const ROLE_LABELS = {
       admin: 'Admins',
       float_admin: 'Float Admins',
@@ -1388,11 +1388,12 @@ async function get__api_admin_users_report(req, res) {
       store_admin: 'Store Admins',
       member: 'Members',
       guest: 'Guests',
+      pending: 'Pending Registrations',
       disabled: 'Disabled',
     };
 
     const usersRes = await pool.query(
-      `SELECT u.id, u.full_name, u.email, u.phone AS user_phone, u.role, u.joined_at,
+      `SELECT u.id, u.full_name, u.email, u.phone AS user_phone, u.role, u.roles_before_disable, u.joined_at,
               p.phone AS profile_phone, p.sponsor_name, p.address, p.city, p.state, p.zip,
               p.member_float_number, p.birthdate, p.occupation, p.organizations,
               p.float_captain,
@@ -1412,7 +1413,11 @@ async function get__api_admin_users_report(req, res) {
     // Group users by role; each group is already name-sorted by the query.
     const byRole = {};
     usersRes.rows.forEach((u) => {
-      const role = u.role || 'member';
+      let role = u.role || 'member';
+      if (role === 'disabled') {
+        const stash = u.roles_before_disable;
+        role = (Array.isArray(stash) && stash.length) ? 'disabled' : 'pending';
+      }
       if (!byRole[role]) byRole[role] = [];
       byRole[role].push({
         id: u.id,
@@ -1420,7 +1425,7 @@ async function get__api_admin_users_report(req, res) {
         email: u.email || '',
         phone: normPhone(u),
         role: role,
-        status: role === 'disabled' ? 'Disabled' : 'Active',
+        status: role === 'pending' ? 'Pending' : (role === 'disabled' ? 'Disabled' : 'Active'),
         joined_at: u.joined_at ? new Date(u.joined_at).toISOString() : '',
         dues_paid: Boolean(u.dues_paid),
         guest_fee_paid: Boolean(u.guest_fee_paid),
