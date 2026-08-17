@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pending Registrations - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">Krewe Mystique</a>
+        <div id="nav-mount"></div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="admin-pending-registrations-page" class="section" data-page-type="pending">
+        <h2>Pending Registrations</h2>
+        <p>View and manage pending registrations. Approve to enable accounts, deny to remove.</p>
+        <div id="admin-pending-feedback" aria-live="polite"></div>
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-top:1rem;">
+          <p id="admin-pending-summary" style="margin:0;"></p>
+          <label for="admin-pending-filter">Show</label>
+          <select id="admin-pending-filter" class="admin-user-select">
+            <option value="disabled" selected>Pending Registrations</option>
+          </select>
+          <a class="button secondary" href="/dashboard.html#admin">Back to Admin Tools</a>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-top:0.5rem;">
+          <a class="button secondary" id="pending-export-excel" href="/users-report.html?role=disabled&auto=excel">Export Pending (Excel)</a>
+          <a class="button secondary" id="pending-export-pdf" href="/users-report.html?role=disabled&auto=pdf">Export Pending (PDF)</a>
+          <a class="button secondary" href="/users-report.html?role=disabled">View Pending Report</a>
+        </div>
+        <div style="overflow-x:auto; margin-top:1rem;">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Name</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Email</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Phone</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Joined</th>
+                <th style="text-align:left; padding:0.75rem; border-bottom:1px solid rgba(255,255,255,0.12);">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-pending-table-body"></tbody>
+          </table>
+        </div>
+        <script>
+          document.addEventListener('DOMContentLoaded', async () => {
+            const section = document.getElementById('admin-pending-registrations-page');
+            const tbody = document.getElementById('admin-pending-table-body');
+            if (!tbody) return;
+            // Fetch users
+            try {
+              const token = getToken(); // from auth.js
+              const response = await fetch('/api/admin/users', {
+                headers: { Authorization: 'Bearer ' + token }
+              });
+              if (!response.ok) throw new Error('Failed to fetch users');
+              const users = await response.json();
+              const pending = users.filter(u => u.role === 'disabled');
+              renderPendingUsers(pending, tbody);
+            } catch (error) {
+              console.error(error);
+              // Show error in feedback area
+              const feedback = document.getElementById('admin-pending-feedback');
+              if (feedback) {
+                feedback.textContent = 'Failed to load pending registrations.';
+                feedback.style.color = 'var(--error)';
+              }
+            }
+          });
+
+          function renderPendingUsers(users, tbody) {
+            tbody.innerHTML = '';
+            if (users.length === 0) {
+              const row = document.createElement('tr');
+              const cell = document.createElement('td');
+              cell.textContent = 'No pending registrations found.';
+              cell.colSpan = 5;
+              row.appendChild(cell);
+              tbody.appendChild(row);
+              return;
+            }
+            users.forEach(user => {
+              const row = document.createElement('tr');
+              const nameCell = document.createElement('td');
+              nameCell.style.padding = '0.75rem';
+              nameCell.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+              nameCell.textContent = user.full_name || '';
+              const emailCell = document.createElement('td');
+              emailCell.style.padding = '0.75rem';
+              emailCell.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+              emailCell.textContent = user.email || '';
+              const phoneCell = document.createElement('td');
+              phoneCell.style.padding = '0.75rem';
+              phoneCell.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+              phoneCell.textContent = user.phone || '';
+              const joinedCell = document.createElement('td');
+              joinedCell.style.padding = '0.75rem';
+              joinedCell.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+              joinedCell.textContent = new Date(user.joined_at).toLocaleDateString();
+              const actionCell = document.createElement('td');
+              actionCell.style.padding = '0.75rem';
+              actionCell.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+              // Approve button
+              const approveBtn = document.createElement('button');
+              approveBtn.textContent = 'Approve';
+              approveBtn.className = 'button secondary';
+              approveBtn.style.marginRight = '0.5rem';
+              approveBtn.addEventListener('click', async () => {
+                approveBtn.disabled = true;
+                try {
+                  const res = await fetch(`/api/admin/approve-user/${user.id}`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': 'Bearer ' + getToken(),
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  if (res.ok) {
+                    // Remove row
+                    row.remove();
+                  } else {
+                    const data = await res.json();
+                    alert(data.error || 'Failed to approve');
+                  }
+                } catch (e) {
+                  console.error(e);
+                  alert('Error approving');
+                } finally {
+                  approveBtn.disabled = false;
+                }
+              });
+              // Deny button
+              const denyBtn = document.createElement('button');
+              denyBtn.textContent = 'Deny';
+              denyBtn.className = 'button secondary';
+              denyBtn.addEventListener('click', async () => {
+                denyBtn.disabled = true;
+                try {
+                  const res = await fetch(`/api/admin/deny-user/${user.id}`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': 'Bearer ' + getToken(),
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  if (res.ok) {
+                    row.remove();
+                  } else {
+                    const data = await res.json();
+                    alert(data.error || 'Failed to deny');
+                  }
+                } catch (e) {
+                  console.error(e);
+                  alert('Error denying');
+                } finally {
+                  denyBtn.disabled = false;
+                }
+              });
+              // Edit button — opens the shared user-edit modal so details can be
+              // corrected before approving (name, email, phone, profile, etc.)
+              const editBtn = document.createElement('button');
+              editBtn.textContent = 'Edit';
+              editBtn.className = 'button secondary';
+              editBtn.style.marginRight = '0.5rem';
+              editBtn.addEventListener('click', () => {
+                openUserEditModal(user, -1, (updated) => {
+                  if (updated && updated.id === user.id) {
+                    if (updated.full_name != null) nameCell.textContent = updated.full_name;
+                    if (updated.email != null) emailCell.textContent = updated.email;
+                    if (updated.phone != null) phoneCell.textContent = updated.phone;
+                  }
+                });
+              });
+              actionCell.appendChild(editBtn);
+              actionCell.appendChild(approveBtn);
+              actionCell.appendChild(denyBtn);
+              row.appendChild(nameCell);
+              row.appendChild(emailCell);
+              row.appendChild(phoneCell);
+              row.appendChild(joinedCell);
+              row.appendChild(actionCell);
+              tbody.appendChild(row);
+            });
+          }
+        </script>
+      </section>
+    </main>
+
+    <script src="script.js?v=20250720d"></script>
+    <script src="auth.js?v=20260809b"></script>
+  </body>
+</html>

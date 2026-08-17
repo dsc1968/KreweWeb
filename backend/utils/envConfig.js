@@ -22,7 +22,12 @@ const ENV_CONFIG_ALLOWLIST = [
   'STRIPE_MODE',
   'PAYMENT_PROCESSOR',
   'PAYMENT_SIMULATE',
+  'JOIN_REQUEST_RECIPIENTS',
   'SEASON_END_DATE',
+  'APPROVAL_EMAIL_SUBJECT',
+  'APPROVAL_EMAIL_BODY',
+  'DENIAL_EMAIL_SUBJECT',
+  'DENIAL_EMAIL_BODY',
 ];
 
 // The application's real .env lives at the project root — the same place dotenv
@@ -43,7 +48,8 @@ function parseEnvFile(content) {
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    map[key] = value;
+
+    map[key] = value.replace(/\\n/g, '\n');
   }
   return map;
 }
@@ -60,7 +66,7 @@ function serializeEnvFile(originalContent, updates) {
     const key = trimmed.slice(0, eqIdx).trim();
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
       written.add(key);
-      const val = updates[key];
+      const val = updates[key].replace(/\n/g, '\\n');
       const needsQuotes = val.includes(' ') || val.includes('#') || val.includes('"');
       return `${key}=${needsQuotes ? `"${val.replace(/"/g, '\\"')}"` : val}`;
     }
@@ -70,7 +76,7 @@ function serializeEnvFile(originalContent, updates) {
   // Append any keys that weren't already in the file
   for (const key of Object.keys(updates)) {
     if (!written.has(key)) {
-      const val = updates[key];
+      const val = updates[key].replace(/\n/g, '\\n');
       const needsQuotes = val.includes(' ') || val.includes('#') || val.includes('"');
       result.push(`${key}=${needsQuotes ? `"${val.replace(/"/g, '\\"')}"` : val}`);
     }

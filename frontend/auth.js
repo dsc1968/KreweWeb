@@ -1390,36 +1390,102 @@ function renderAdminUsers(users, currentUserId) {
 
         nameCell.addEventListener('click', () => editButton.click());
 
-        // Disable / Enable button directly in the list (not shown for self)
+        // Disable / Enable / Approve / Deny buttons directly in the list (not shown for self)
         if (user.id !== currentUserId) {
-          const disableButton = document.createElement('button');
-          disableButton.type = 'button';
-          disableButton.className = 'button secondary';
-          disableButton.style.marginLeft = '0.5rem';
-          disableButton.textContent = isDisabled ? 'Enable' : 'Disable';
           if (isDisabled) {
-            disableButton.style.borderColor = 'rgba(74,222,128,0.45)';
-            disableButton.style.color = '#88d498';
+            // Approve - enables account and emails temporary password to the user
+            const approveButton = document.createElement('button');
+            approveButton.type = 'button';
+            approveButton.className = 'button secondary';
+            approveButton.style.marginLeft = '0.5rem';
+            approveButton.style.borderColor = 'rgba(74,222,128,0.45)';
+            approveButton.style.color = '#88d498';
+            approveButton.textContent = 'Approve';
+            approveButton.addEventListener('click', async () => {
+              approveButton.disabled = true;
+              setAdminFeedback(`Approving ${user.email}…`, false);
+              try {
+                const res = await fetch(`/api/admin/approve-user/${user.id}`, {
+                  method: 'POST',
+                  headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+                });
+                if (res.ok) {
+                  const idx = users.findIndex((u) => u.id === user.id);
+                  if (idx >= 0) users.splice(idx, 1);
+                  drawRows();
+                  setAdminFeedback(`${user.email} approved and notified.`, false);
+                } else {
+                  const data = await res.json().catch(() => ({}));
+                  setAdminFeedback(data.error || 'Unable to approve user', true);
+                }
+              } catch (e) {
+                console.error(e);
+                setAdminFeedback('Error approving user', true);
+              } finally {
+                approveButton.disabled = false;
+              }
+            });
+            actionCell.appendChild(approveButton);
+
+            // Deny - deletes the pending registration / account
+            const denyButton = document.createElement('button');
+            denyButton.type = 'button';
+            denyButton.className = 'button secondary';
+            denyButton.style.marginLeft = '0.5rem';
+            denyButton.style.borderColor = 'rgba(255,155,155,0.45)';
+            denyButton.style.color = '#ff9b9b';
+            denyButton.textContent = 'Deny';
+            denyButton.addEventListener('click', async () => {
+              if (!window.confirm(`Deny (delete) registration for ${user.email}? This cannot be undone.`)) return;
+              denyButton.disabled = true;
+              setAdminFeedback(`Denying ${user.email}…`, false);
+              try {
+                const res = await fetch(`/api/admin/deny-user/${user.id}`, {
+                  method: 'POST',
+                  headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+                });
+                if (res.ok) {
+                  const idx = users.findIndex((u) => u.id === user.id);
+                  if (idx >= 0) users.splice(idx, 1);
+                  drawRows();
+                  setAdminFeedback(`${user.email} denied and removed.`, false);
+                } else {
+                  const data = await res.json().catch(() => ({}));
+                  setAdminFeedback(data.error || 'Unable to deny user', true);
+                }
+              } catch (e) {
+                console.error(e);
+                setAdminFeedback('Error denying user', true);
+              } finally {
+                denyButton.disabled = false;
+              }
+            });
+            actionCell.appendChild(denyButton);
           } else {
+            // Standard Disable button for active accounts
+            const disableButton = document.createElement('button');
+            disableButton.type = 'button';
+            disableButton.className = 'button secondary';
+            disableButton.style.marginLeft = '0.5rem';
+            disableButton.textContent = 'Disable';
             disableButton.style.borderColor = 'rgba(255,155,155,0.45)';
             disableButton.style.color = '#ff9b9b';
+            disableButton.addEventListener('click', async () => {
+              disableButton.disabled = true;
+              setAdminFeedback(`Disabling ${user.email}…`, false);
+              const result = await setUserDisabled(user.id, true, user.role);
+              disableButton.disabled = false;
+              if (result.ok && result.data.user) {
+                Object.assign(user, result.data.user);
+                roleCell.textContent = user.role || 'member';
+                drawRows();
+                setAdminFeedback(`${user.email} disabled.`, false);
+              } else {
+                setAdminFeedback((result.data && result.data.error) || 'Unable to update account.', true);
+              }
+            });
+            actionCell.appendChild(disableButton);
           }
-          disableButton.addEventListener('click', async () => {
-            const shouldDisable = !isDisabled;
-            disableButton.disabled = true;
-            setAdminFeedback(shouldDisable ? `Disabling ${user.email}…` : `Enabling ${user.email}…`, false);
-            const result = await setUserDisabled(user.id, shouldDisable, user.role);
-            disableButton.disabled = false;
-            if (result.ok && result.data.user) {
-              Object.assign(user, result.data.user);
-              roleCell.textContent = user.role || 'member';
-              drawRows();
-              setAdminFeedback(shouldDisable ? `${user.email} disabled.` : `${user.email} enabled.`, false);
-            } else {
-              setAdminFeedback((result.data && result.data.error) || 'Unable to update account.', true);
-            }
-          });
-          actionCell.appendChild(disableButton);
         }
 
         actionCell.appendChild(editButton);
@@ -1905,7 +1971,7 @@ async function initDashboard() {
   // hold several capabilities at once, so the visible links are the union of
   // every role they hold (a full admin sees them all).
   const adminToolLinksByRole = {
-    admin: ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin'],
+    admin: ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin', 'open-pending-registrations'],
     store_admin: ['open-shop-admin'],
     float_admin: ['open-float-admin'],
     finance_admin: ['open-finance-admin'],
@@ -1919,7 +1985,7 @@ async function initDashboard() {
     const adminTools = document.getElementById('admin-tools');
     if (adminTools) adminTools.style.display = 'block';
     // Every admin-tool link starts hidden; reveal only this role's allowed set.
-    ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin']
+    ['open-user-management', 'open-site-config', 'open-backup-restore', 'open-shop-admin', 'open-float-admin', 'open-finance-admin', 'open-pending-registrations']
       .forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -2338,7 +2404,7 @@ async function initSiteConfig() {
     setFeedback('Saving…', false, true);
 
     const config = {};
-    form.querySelectorAll('input[name], select[name]').forEach((el) => {
+    form.querySelectorAll('input[name], select[name], textarea[name]').forEach((el) => {
       config[el.name] = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
     });
 

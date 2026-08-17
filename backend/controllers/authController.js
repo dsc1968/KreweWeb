@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT } = require('../config/db');
+const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT, JOIN_REQUEST_RECIPIENTS } = require('../config/db');
 const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, isFloatAdmin, normalizeRoleSet, primaryRole } = require('../utils/validation');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode, dispatchMfaCode, verifyPlivoOtp, isSmsConfigured } = require('../utils/email');
 const { randomBase32Secret, verifyTotp, buildOtpauthUri } = require('../utils/totp');
@@ -287,7 +287,7 @@ async function post__api_auth_register_verify_code(req, res) {
       `INSERT INTO users (email, full_name, role, password_hash)
        VALUES ($1, $2, $3, $4)
        RETURNING id, email, full_name, role, joined_at`,
-      [pending.email, pending.full_name, 'guest', pending.password_hash]
+      [pending.email, pending.full_name, 'disabled', pending.password_hash]
     );
     const user = insertResult.rows[0];
 
@@ -308,6 +308,32 @@ async function post__api_auth_register_verify_code(req, res) {
     }
 
     await client.query('COMMIT');
+    // Notify admins of new pending registration
+    try {
+      if (JOIN_REQUEST_RECIPIENTS) {
+        const recipients = JOIN_REQUEST_RECIPIENTS
+          .split(',')
+          .map(e => e.trim())
+          .filter(e => e.length > 0);
+        if (recipients.length > 0) {
+          const emailBody = `
+            New Krewe Registration Pending Approval
+
+            Email: ${pending.email}
+            Full Name: ${pending.full_name}
+            Phone: ${pending.phone || 'Not provided'}
+          `;
+          await smtpTransport.sendMail({
+            from: SMTP_FROM,
+            to: recipients.join(', '),
+            subject: 'New Krewe Registration Pending Approval',
+            text: emailBody.trim()
+          });
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send registration approval notification:', emailError);
+    }
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
     res.status(201).json({
@@ -320,7 +346,7 @@ async function post__api_auth_register_verify_code(req, res) {
       },
       token,
       mfaEnrolled: registrationRequiresMfa(mode),
-      message: 'Account created.',
+      message: 'Account created. An administrator will review your application.',
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -378,12 +404,37 @@ async function post__api_auth_register(req, res) {
     const hash = bcrypt.hashSync(password, salt);
     const insertResult = await client.query(
       `INSERT INTO users (email, full_name, role, password_hash)
-       VALUES ($1, $2, 'guest', $3)
+       VALUES ($1, $2, 'disabled', $3)
        RETURNING id, email, full_name, role, joined_at`,
       [email, fullName, hash]
     );
     await client.query('COMMIT');
+    // Notify admins of new pending registration
+    try {
+      if (JOIN_REQUEST_RECIPIENTS) {
+        const recipients = JOIN_REQUEST_RECIPIENTS
+          .split(',')
+          .map(e => e.trim())
+          .filter(e => e.length > 0);
+        if (recipients.length > 0) {
+          const emailBody = `
+            New Krewe Registration Pending Approval
 
+            Email: ${email}
+            Full Name: ${fullName}
+            Phone: ${phone || 'Not provided'}
+          `;
+          await smtpTransport.sendMail({
+            from: SMTP_FROM,
+            to: recipients.join(', '),
+            subject: 'New Krewe Registration Pending Approval',
+            text: emailBody.trim()
+          });
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send registration approval notification:', emailError);
+    }
     const user = insertResult.rows[0];
     const token = generateToken(user);
     res.cookie('krewe_token', token, { path: '/', sameSite: 'lax' });
@@ -396,6 +447,7 @@ async function post__api_auth_register(req, res) {
         role: user.role,
       },
       token,
+      message: 'Account created. An administrator will review your application.',
     });
   } catch (error) {
     await client.query('ROLLBACK');

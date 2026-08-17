@@ -43,6 +43,7 @@ async function get__api_admin_users(req, res) {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
+              p.phone,
               COALESCE(p.dues_paid,      false) AS dues_paid,
               COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
               COALESCE(p.beads_paid,     false) AS beads_paid,
@@ -270,6 +271,9 @@ async function put__api_admin_users__userId_details(req, res) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const prevRes = await client.query('SELECT email, role FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const prevEmail = prevRes.rows[0] ? prevRes.rows[0].email : null;
+    const prevRole = prevRes.rows[0] ? prevRes.rows[0].role : null;
     const userResult = await client.query(
       `UPDATE users SET full_name = $1, email = $2, role = $3, roles = $4::jsonb${mfaSetCols ? ', ' + mfaSetCols : ''} WHERE id = $5
        RETURNING id, email, full_name, role, roles, joined_at, mfa_method, mfa_enrolled`,
@@ -317,6 +321,11 @@ async function put__api_admin_users__userId_details(req, res) {
         float_captain, adminFloatId,
       ]
     );
+    // Keep a pending registration's lookup key in sync if an admin edits the
+    // email of a still-disabled (pending) account before approving it.
+    if (prevRole === 'disabled' && prevEmail && prevEmail !== email) {
+      await client.query('UPDATE pending_registrations SET email = $1 WHERE email = $2', [email, prevEmail]);
+    }
     await client.query('COMMIT');
     const u = userResult.rows[0];
     res.json({ user: { ...u }, mfa_note: mfaNote });

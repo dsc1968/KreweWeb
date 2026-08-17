@@ -20,6 +20,15 @@ const SMTP_REPLY_TO = process.env.SMTP_REPLY_TO || '';
 const CONTACT_RECIPIENT = (typeof process.env.CONTACT_RECIPIENT === 'string'
   ? process.env.CONTACT_RECIPIENT.trim().toLowerCase()
   : 'dougscobb@hotmail.com');
+const JOIN_REQUEST_RECIPIENTS = (typeof process.env.JOIN_REQUEST_RECIPIENTS === 'string'
+  ? process.env.JOIN_REQUEST_RECIPIENTS.trim()
+  : '');
+
+// Editable email templates for registration approval / denial responses.
+const APPROVAL_EMAIL_SUBJECT = process.env.APPROVAL_EMAIL_SUBJECT || '';
+const APPROVAL_EMAIL_BODY = process.env.APPROVAL_EMAIL_BODY || '';
+const DENIAL_EMAIL_SUBJECT = process.env.DENIAL_EMAIL_SUBJECT || '';
+const DENIAL_EMAIL_BODY = process.env.DENIAL_EMAIL_BODY || '';
 
 // currentSeasonYear is defined in utils/season.js (it depends on resolveSeasonEndDate,
 // which also lives there). Import it here for use by ensureContentTable() without
@@ -564,5 +573,6 @@ module.exports = {
   SMTP_FROM,
   SMTP_REPLY_TO,
   CONTACT_RECIPIENT,
+  JOIN_REQUEST_RECIPIENTS,
   ensureContentTable,
 };
