@@ -114,12 +114,27 @@ body {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
   font-size: clamp(0.78rem, 1.2vw, 1.0rem);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.brand-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: 56px;
+  max-width: 200px;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* Render larger, but pull the layout footprint back so the nav bar stays the same height. */
+  margin: -8px 0;
 }
 
 .site-nav {
