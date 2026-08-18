@@ -1,8 +1,8 @@
 // ── EDITOR BUILD MARKER ─────────────────────────────────────────────────────────
 // Open the browser console and run:  window.KREWE_EDITOR_VERSION
-// If it does NOT show "20250720d", your browser is serving a STALE
+// If it does NOT show "20250720e", your browser is serving a STALE
 // cached script.js. Hard-refresh (Ctrl/Cmd+Shift+R) or restart the dev server.
-window.KREWE_EDITOR_VERSION = '20250720d';
+window.KREWE_EDITOR_VERSION = '20250720e';
 console.log('[KreweEditor] loaded version', window.KREWE_EDITOR_VERSION);
 
 // ── Site theme (dark default / light) ───────────────────────────────────────
@@ -2109,117 +2109,118 @@ if (countdownElements.days) {
     return items;
   }
 
-  function ensureAlbumViewerModal() {
-    function ensureAlbumPhotoPickerModal() {
-      let modal = document.getElementById('admin-album-photo-picker-modal');
-      if (modal) return modal;
+  function ensureAlbumPhotoPickerModal() {
+    let modal = document.getElementById('admin-album-photo-picker-modal');
+    if (modal) return modal;
 
-      modal = document.createElement('div');
-      modal.id = 'admin-album-photo-picker-modal';
-      modal.className = 'admin-editor-backdrop';
-      modal.innerHTML = `
-        <div class="admin-editor-modal" role="dialog" aria-modal="true" aria-labelledby="admin-album-photo-picker-title">
-          <h2 id="admin-album-photo-picker-title">Add photo to album</h2>
-          <p class="section-intro">Upload a new photo from your computer, or choose one you have already uploaded.</p>
-          <div style="display:flex;flex-direction:column;gap:1rem;margin:0.75rem 0;">
-            <label style="display:flex;flex-direction:column;gap:0.4rem;">Upload a new photo
-              <input type="file" id="album-photo-picker-file" accept="image/*" />
-            </label>
-            <label style="display:flex;flex-direction:column;gap:0.4rem;">Or choose an existing uploaded photo
-              <select id="album-photo-picker-existing"><option value="">Select an uploaded photo</option></select>
-            </label>
-          </div>
-          <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
-            <button type="button" data-action="album-photo-cancel">Cancel</button>
-            <button type="button" data-action="album-photo-choose-existing">Add selected</button>
-            <button type="button" data-action="album-photo-upload">Upload &amp; add</button>
-          </div>
+    modal = document.createElement('div');
+    modal.id = 'admin-album-photo-picker-modal';
+    modal.className = 'admin-editor-backdrop';
+    modal.innerHTML = `
+      <div class="admin-editor-modal" role="dialog" aria-modal="true" aria-labelledby="admin-album-photo-picker-title">
+        <h2 id="admin-album-photo-picker-title">Add photo to album</h2>
+        <p class="section-intro">Upload a new photo from your computer, or choose one you have already uploaded.</p>
+        <div style="display:flex;flex-direction:column;gap:1rem;margin:0.75rem 0;">
+          <label style="display:flex;flex-direction:column;gap:0.4rem;">Upload a new photo
+            <input type="file" id="album-photo-picker-file" accept="image/*" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:0.4rem;">Or choose an existing uploaded photo
+            <select id="album-photo-picker-existing"><option value="">Select an uploaded photo</option></select>
+          </label>
         </div>
-      `;
-      modal.addEventListener('click', (event) => {
-        if (event.target === modal || event.target.dataset.action === 'album-photo-cancel') {
-          modal.style.display = 'none';
-        }
+        <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+          <button type="button" data-action="album-photo-cancel">Cancel</button>
+          <button type="button" data-action="album-photo-choose-existing">Add selected</button>
+          <button type="button" data-action="album-photo-upload">Upload &amp; add</button>
+        </div>
+      </div>
+    `;
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal || event.target.dataset.action === 'album-photo-cancel') {
+        modal.style.display = 'none';
+      }
+    });
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  async function openAlbumPhotoPicker(albumId, options) {
+    const opts = options || {};
+    const modal = ensureAlbumPhotoPickerModal();
+    const fileInput = modal.querySelector('#album-photo-picker-file');
+    const select = modal.querySelector('#album-photo-picker-existing');
+    const chooseExistingButton = modal.querySelector('[data-action="album-photo-choose-existing"]');
+    const uploadButton = modal.querySelector('[data-action="album-photo-upload"]');
+
+    fileInput.value = '';
+    select.innerHTML = '<option value="">Loading uploaded photos...</option>';
+    modal.style.display = 'flex';
+
+    try {
+      const items = await fetchAdminImageLibrary();
+      select.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select an uploaded photo';
+      select.appendChild(placeholder);
+      items.forEach((pathValue) => {
+        const option = document.createElement('option');
+        option.value = pathValue;
+        option.textContent = pathValue;
+        select.appendChild(option);
       });
-      document.body.appendChild(modal);
-      return modal;
+    } catch (error) {
+      select.innerHTML = '<option value="">Unable to load uploaded photos</option>';
+      alert(error.message);
     }
 
-    async function openAlbumPhotoPicker(albumId, options) {
-      const opts = options || {};
-      const modal = ensureAlbumPhotoPickerModal();
-      const fileInput = modal.querySelector('#album-photo-picker-file');
-      const select = modal.querySelector('#album-photo-picker-existing');
-      const chooseExistingButton = modal.querySelector('[data-action="album-photo-choose-existing"]');
-      const uploadButton = modal.querySelector('[data-action="album-photo-upload"]');
+    async function finishAdd(imagePath) {
+      if (!imagePath) return false;
+      const caption = window.prompt('Photo caption (optional):', '') || '';
+      await createAlbumImage(albumId, {
+        imagePath,
+        caption,
+        setAsCover: Boolean(opts.setAsCover),
+      });
+      modal.style.display = 'none';
+      if (typeof opts.onAdded === 'function') {
+        await opts.onAdded();
+      }
+      return true;
+    }
 
-      fileInput.value = '';
-      select.innerHTML = '<option value="">Loading uploaded photos...</option>';
-      modal.style.display = 'flex';
-
+    chooseExistingButton.onclick = async () => {
+      const selectedPath = select.value.trim();
+      if (!selectedPath) {
+        alert('Choose an uploaded photo from the list first.');
+        return;
+      }
       try {
-        const items = await fetchAdminImageLibrary();
-        select.innerHTML = '';
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'Select an uploaded photo';
-        select.appendChild(placeholder);
-        items.forEach((pathValue) => {
-          const option = document.createElement('option');
-          option.value = pathValue;
-          option.textContent = pathValue;
-          select.appendChild(option);
-        });
+        await finishAdd(selectedPath);
       } catch (error) {
-        select.innerHTML = '<option value="">Unable to load uploaded photos</option>';
         alert(error.message);
       }
+    };
 
-      async function finishAdd(imagePath) {
-        if (!imagePath) return false;
-        const caption = window.prompt('Photo caption (optional):', '') || '';
-        await createAlbumImage(albumId, {
-          imagePath,
-          caption,
-          setAsCover: Boolean(opts.setAsCover),
-        });
-        modal.style.display = 'none';
-        if (typeof opts.onAdded === 'function') {
-          await opts.onAdded();
-        }
-        return true;
+    uploadButton.onclick = async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        alert('Choose a photo file to upload first.');
+        return;
       }
+      uploadButton.disabled = true;
+      try {
+        const uploadedPath = await uploadAdminImage(file, '');
+        await finishAdd(uploadedPath);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        uploadButton.disabled = false;
+      }
+    };
+  }
 
-      chooseExistingButton.onclick = async () => {
-        const selectedPath = select.value.trim();
-        if (!selectedPath) {
-          alert('Choose an uploaded photo from the list first.');
-          return;
-        }
-        try {
-          await finishAdd(selectedPath);
-        } catch (error) {
-          alert(error.message);
-        }
-      };
-
-      uploadButton.onclick = async () => {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) {
-          alert('Choose a photo file to upload first.');
-          return;
-        }
-        uploadButton.disabled = true;
-        try {
-          const uploadedPath = await uploadAdminImage(file, '');
-          await finishAdd(uploadedPath);
-        } catch (error) {
-          alert(error.message);
-        } finally {
-          uploadButton.disabled = false;
-        }
-      };
-    }
+  function ensureAlbumViewerModal() {
     if (state.albumViewerModal) return state.albumViewerModal;
 
     const backdrop = document.createElement('div');
