@@ -2110,6 +2110,116 @@ if (countdownElements.days) {
   }
 
   function ensureAlbumViewerModal() {
+    function ensureAlbumPhotoPickerModal() {
+      let modal = document.getElementById('admin-album-photo-picker-modal');
+      if (modal) return modal;
+
+      modal = document.createElement('div');
+      modal.id = 'admin-album-photo-picker-modal';
+      modal.className = 'admin-editor-backdrop';
+      modal.innerHTML = `
+        <div class="admin-editor-modal" role="dialog" aria-modal="true" aria-labelledby="admin-album-photo-picker-title">
+          <h2 id="admin-album-photo-picker-title">Add photo to album</h2>
+          <p class="section-intro">Upload a new photo from your computer, or choose one you have already uploaded.</p>
+          <div style="display:flex;flex-direction:column;gap:1rem;margin:0.75rem 0;">
+            <label style="display:flex;flex-direction:column;gap:0.4rem;">Upload a new photo
+              <input type="file" id="album-photo-picker-file" accept="image/*" />
+            </label>
+            <label style="display:flex;flex-direction:column;gap:0.4rem;">Or choose an existing uploaded photo
+              <select id="album-photo-picker-existing"><option value="">Select an uploaded photo</option></select>
+            </label>
+          </div>
+          <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+            <button type="button" data-action="album-photo-cancel">Cancel</button>
+            <button type="button" data-action="album-photo-choose-existing">Add selected</button>
+            <button type="button" data-action="album-photo-upload">Upload &amp; add</button>
+          </div>
+        </div>
+      `;
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal || event.target.dataset.action === 'album-photo-cancel') {
+          modal.style.display = 'none';
+        }
+      });
+      document.body.appendChild(modal);
+      return modal;
+    }
+
+    async function openAlbumPhotoPicker(albumId, options) {
+      const opts = options || {};
+      const modal = ensureAlbumPhotoPickerModal();
+      const fileInput = modal.querySelector('#album-photo-picker-file');
+      const select = modal.querySelector('#album-photo-picker-existing');
+      const chooseExistingButton = modal.querySelector('[data-action="album-photo-choose-existing"]');
+      const uploadButton = modal.querySelector('[data-action="album-photo-upload"]');
+
+      fileInput.value = '';
+      select.innerHTML = '<option value="">Loading uploaded photos...</option>';
+      modal.style.display = 'flex';
+
+      try {
+        const items = await fetchAdminImageLibrary();
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select an uploaded photo';
+        select.appendChild(placeholder);
+        items.forEach((pathValue) => {
+          const option = document.createElement('option');
+          option.value = pathValue;
+          option.textContent = pathValue;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        select.innerHTML = '<option value="">Unable to load uploaded photos</option>';
+        alert(error.message);
+      }
+
+      async function finishAdd(imagePath) {
+        if (!imagePath) return false;
+        const caption = window.prompt('Photo caption (optional):', '') || '';
+        await createAlbumImage(albumId, {
+          imagePath,
+          caption,
+          setAsCover: Boolean(opts.setAsCover),
+        });
+        modal.style.display = 'none';
+        if (typeof opts.onAdded === 'function') {
+          await opts.onAdded();
+        }
+        return true;
+      }
+
+      chooseExistingButton.onclick = async () => {
+        const selectedPath = select.value.trim();
+        if (!selectedPath) {
+          alert('Choose an uploaded photo from the list first.');
+          return;
+        }
+        try {
+          await finishAdd(selectedPath);
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+
+      uploadButton.onclick = async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          alert('Choose a photo file to upload first.');
+          return;
+        }
+        uploadButton.disabled = true;
+        try {
+          const uploadedPath = await uploadAdminImage(file, '');
+          await finishAdd(uploadedPath);
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          uploadButton.disabled = false;
+        }
+      };
+    }
     if (state.albumViewerModal) return state.albumViewerModal;
 
     const backdrop = document.createElement('div');
@@ -2266,28 +2376,13 @@ if (countdownElements.days) {
 
     uploadButton.style.display = state.isAdmin && state.editMode ? 'inline-flex' : 'none';
     uploadButton.onclick = () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = async () => {
-        const file = input.files && input.files[0];
-        if (!file) return;
-
-        try {
-          const pathValue = await uploadAdminImage(file, '');
-          const caption = window.prompt('Photo caption (optional):', '') || '';
-          await createAlbumImage(albumId, {
-            imagePath: pathValue,
-            caption,
-            setAsCover: images.length === 0,
-          });
+      openAlbumPhotoPicker(albumId, {
+        setAsCover: images.length === 0,
+        onAdded: async () => {
           await loadMediaAlbums();
-          modal.style.display = 'none';
-        } catch (error) {
-          alert(error.message);
-        }
-      };
-      input.click();
+          await renderAlbumViewer(albumId);
+        },
+      });
     };
 
     modal.style.display = 'flex';
@@ -2481,23 +2576,13 @@ if (countdownElements.days) {
         }
 
         if (action === 'add-photo') {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = async () => {
-            const file = input.files && input.files[0];
-            if (!file) return;
-
-            const pathValue = await uploadAdminImage(file, '');
-            const caption = window.prompt('Photo caption (optional):', '') || '';
-            await createAlbumImage(album.id, {
-              imagePath: pathValue,
-              caption,
-              setAsCover: Number(album.image_count || 0) === 0,
-            });
-            await loadMediaAlbums();
-          };
-          input.click();
+          openAlbumPhotoPicker(album.id, {
+            setAsCover: Number(album.image_count || 0) === 0,
+            onAdded: async () => {
+              await loadMediaAlbums();
+            },
+          });
+          return;
         }
       } catch (error) {
         alert(error.message);
