@@ -2124,9 +2124,9 @@ if (countdownElements.days) {
           <label style="display:flex;flex-direction:column;gap:0.4rem;">Upload a new photo
             <input type="file" id="album-photo-picker-file" accept="image/*" />
           </label>
-          <label style="display:flex;flex-direction:column;gap:0.4rem;">Or choose an existing uploaded photo
-            <select id="album-photo-picker-existing"><option value="">Select an uploaded photo</option></select>
-          </label>
+          <div style="display:flex;flex-direction:column;gap:0.4rem;">Or choose an existing uploaded photo
+            <div id="album-photo-picker-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:0.5rem;max-height:240px;overflow:auto;padding:0.35rem;border:1px solid rgba(255,255,255,0.12);border-radius:10px;"></div>
+          </div>
         </div>
         <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
           <button type="button" data-action="album-photo-cancel">Cancel</button>
@@ -2148,29 +2148,43 @@ if (countdownElements.days) {
     const opts = options || {};
     const modal = ensureAlbumPhotoPickerModal();
     const fileInput = modal.querySelector('#album-photo-picker-file');
-    const select = modal.querySelector('#album-photo-picker-existing');
+    const grid = modal.querySelector('#album-photo-picker-grid');
     const chooseExistingButton = modal.querySelector('[data-action="album-photo-choose-existing"]');
     const uploadButton = modal.querySelector('[data-action="album-photo-upload"]');
 
+    let selectedPath = '';
     fileInput.value = '';
-    select.innerHTML = '<option value="">Loading uploaded photos...</option>';
+    grid.innerHTML = '<div style="grid-column:1/-1;color:#9fb0d0;padding:0.5rem;">Loading uploaded photos...</div>';
     modal.style.display = 'flex';
+
+    function renderThumbnails(items) {
+      grid.innerHTML = '';
+      if (!items || items.length === 0) {
+        grid.innerHTML = '<div style="grid-column:1/-1;color:#9fb0d0;padding:0.5rem;">No uploaded photos yet. Upload one above.</div>';
+        return;
+      }
+      items.forEach((pathValue) => {
+        const thumb = document.createElement('button');
+        thumb.type = 'button';
+        thumb.className = 'album-picker-thumb';
+        thumb.dataset.path = pathValue;
+        thumb.title = pathValue;
+        thumb.style.cssText = 'padding:0;border:2px solid transparent;border-radius:8px;overflow:hidden;background:#0b1530;cursor:pointer;aspect-ratio:1 / 1;';
+        thumb.innerHTML = '<img src="' + escapeHtml(pathValue) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />';
+        thumb.addEventListener('click', () => {
+          selectedPath = pathValue;
+          grid.querySelectorAll('.album-picker-thumb').forEach((t) => { t.style.borderColor = 'transparent'; });
+          thumb.style.borderColor = '#5b8cff';
+        });
+        grid.appendChild(thumb);
+      });
+    }
 
     try {
       const items = await fetchAdminImageLibrary();
-      select.innerHTML = '';
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'Select an uploaded photo';
-      select.appendChild(placeholder);
-      items.forEach((pathValue) => {
-        const option = document.createElement('option');
-        option.value = pathValue;
-        option.textContent = pathValue;
-        select.appendChild(option);
-      });
+      renderThumbnails(items);
     } catch (error) {
-      select.innerHTML = '<option value="">Unable to load uploaded photos</option>';
+      grid.innerHTML = '<div style="grid-column:1/-1;color:#ff9b9b;padding:0.5rem;">Unable to load uploaded photos</div>';
       alert(error.message);
     }
 
@@ -2190,9 +2204,8 @@ if (countdownElements.days) {
     }
 
     chooseExistingButton.onclick = async () => {
-      const selectedPath = select.value.trim();
       if (!selectedPath) {
-        alert('Choose an uploaded photo from the list first.');
+        alert('Choose a photo from the grid first.');
         return;
       }
       try {
