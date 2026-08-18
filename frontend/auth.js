@@ -1304,15 +1304,26 @@ function renderAdminUsers(users, currentUserId) {
         const joinedCell = buildCell(new Date(user.joined_at).toLocaleDateString());
         const roleCell = buildCell(user.role || 'member');
         const isDisabled = user.role === 'disabled';
+        // A user is a brand-new "pending registration" (never approved) when they
+        // are disabled AND have no prior roles stashed. Any other disabled user is an
+        // existing account an admin turned off — re-enable via the Enable action.
+        const isPendingReg = isDisabled && (!Array.isArray(user.roles_before_disable) || user.roles_before_disable.length === 0);
+        const isDisabledExisting = isDisabled && !isPendingReg;
 
         // Status cell — clearly shows Enabled / Disabled
         const statusCell = document.createElement('td');
         statusCell.style.cssText = 'padding:0.75rem;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;';
         const statusPill = document.createElement('span');
-        statusPill.textContent = isDisabled ? 'Disabled' : 'Enabled';
-        statusPill.style.cssText = `display:inline-block;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.18rem 0.6rem;border-radius:999px;border:1px solid ${isDisabled ? 'rgba(248,113,113,0.45)' : 'rgba(74,222,128,0.45)'};background:${isDisabled ? 'rgba(248,113,113,0.12)' : 'rgba(74,222,128,0.12)'};color:${isDisabled ? '#f87171' : '#4ade80'};`;
+        const statusLabel = isPendingReg ? 'Pending' : (isDisabled ? 'Disabled' : 'Enabled');
+        statusPill.textContent = statusLabel;
+        const statusStyle = isPendingReg
+          ? { border: 'rgba(251,191,36,0.45)', bg: 'rgba(251,191,36,0.12)', fg: '#fbbf24' }
+          : isDisabled
+            ? { border: 'rgba(248,113,113,0.45)', bg: 'rgba(248,113,113,0.12)', fg: '#f87171' }
+            : { border: 'rgba(74,222,128,0.45)', bg: 'rgba(74,222,128,0.12)', fg: '#4ade80' };
+        statusPill.style.cssText = `display:inline-block;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.18rem 0.6rem;border-radius:999px;border:1px solid ${statusStyle.border};background:${statusStyle.bg};color:${statusStyle.fg};`;
         statusCell.appendChild(statusPill);
-        if (isDisabled) {
+        if (isDisabledExisting) {
           row.style.opacity = '0.6';
         }
 
@@ -1392,7 +1403,7 @@ function renderAdminUsers(users, currentUserId) {
 
         // Disable / Enable / Approve / Deny buttons directly in the list (not shown for self)
         if (user.id !== currentUserId) {
-          if (isDisabled) {
+          if (isPendingReg) {
             // Approve - enables account and emails temporary password to the user
             const approveButton = document.createElement('button');
             approveButton.type = 'button';
@@ -1461,6 +1472,30 @@ function renderAdminUsers(users, currentUserId) {
               }
             });
             actionCell.appendChild(denyButton);
+          } else if (isDisabledExisting) {
+            // Re-enable an existing account an admin previously disabled (restores its prior roles).
+            const enableButton = document.createElement('button');
+            enableButton.type = 'button';
+            enableButton.className = 'button secondary';
+            enableButton.style.marginLeft = '0.5rem';
+            enableButton.textContent = 'Enable';
+            enableButton.style.borderColor = 'rgba(74,222,128,0.45)';
+            enableButton.style.color = '#88d498';
+            enableButton.addEventListener('click', async () => {
+              enableButton.disabled = true;
+              setAdminFeedback(`Enabling ${user.email}…`, false);
+              const result = await setUserDisabled(user.id, false, user.role);
+              enableButton.disabled = false;
+              if (result.ok && result.data.user) {
+                Object.assign(user, result.data.user);
+                roleCell.textContent = user.role || 'member';
+                drawRows();
+                setAdminFeedback(`${user.email} enabled.`, false);
+              } else {
+                setAdminFeedback((result.data && result.data.error) || 'Unable to update account.', true);
+              }
+            });
+            actionCell.appendChild(enableButton);
           } else {
             // Standard Disable button for active accounts
             const disableButton = document.createElement('button');

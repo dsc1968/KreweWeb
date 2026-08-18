@@ -42,7 +42,7 @@ async function get__api_admin_users(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.joined_at, u.mfa_method, u.mfa_enrolled,
+      `SELECT u.id, u.email, u.full_name, u.role, u.roles_before_disable, u.joined_at, u.mfa_method, u.mfa_enrolled,
               p.phone,
               COALESCE(p.dues_paid,      false) AS dues_paid,
               COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
