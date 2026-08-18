@@ -31,7 +31,7 @@ function readBackupConfig() {
     provider: env.BACKUP_PROVIDER || 'local',
     localPath: rawLocal
       ? (path.isAbsolute(rawLocal) ? rawLocal : path.resolve(__dirname, rawLocal))
-      : path.join(__dirname, '_backups'),
+      : path.join(__dirname, '..', '_backups'),
     s3Bucket: env.BACKUP_S3_BUCKET || '',
     s3Prefix: (env.BACKUP_S3_PREFIX || 'krewe-backups').replace(/\/?$/, '/'),
     s3Region: env.BACKUP_S3_REGION || 'us-east-1',
@@ -364,7 +364,20 @@ async function reconcileBackupRecords(cfg) {
     if (!cfg.rcloneRemote) return [];
     manifests = await listRcloneBackupManifests(cfg);
   } else {
-    manifests = await listLocalBackupsFromDir(cfg.localPath);
+    // Local provider: surface backups from the configured path AND the canonical
+    // project-local _backups folders, so legacy/old local backups (written before
+    // BACKUP_LOCAL_PATH existed, or on a different host) are still listed. Scan a
+    // small set of candidate directories and de-duplicate by backup id.
+    const candidateDirs = new Set([
+      cfg.localPath,
+      path.join(__dirname, '..', '_backups'),
+      path.join(__dirname, '_backups'),
+    ]);
+    manifests = [];
+    for (const d of candidateDirs) {
+      const ms = await listLocalBackupsFromDir(d);
+      for (const m of ms) if (m && m.id && !manifests.some((x) => x.id === m.id)) manifests.push(m);
+    }
   }
 
   const found = (manifests || [])
