@@ -293,6 +293,120 @@ async function listS3BackupManifests(cfg) {
   return manifests.sort((a, b) => (!a.created_at ? 1 : !b.created_at ? -1 : b.created_at.localeCompare(a.created_at)));
 }
 
+// ── Persistent backup list (backup_records) ────────────────────────────────
+// The backup list lives in Postgres so it survives folder/provider changes and
+// can be reconciled against the actual backup artifacts on disk / in storage.
+async function ensureBackupRecordsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS backup_records (
+      id          TEXT PRIMARY KEY,
+      provider    TEXT NOT NULL DEFAULT 'local',
+      type        TEXT NOT NULL,
+      label       TEXT NOT NULL DEFAULT '',
+      created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+      created_by  TEXT NOT NULL DEFAULT '',
+      contains    TEXT[] NOT NULL DEFAULT '{}',
+      updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+// Insert or update a single backup record from a manifest object.
+async function upsertBackupRecord(m) {
+  const contains = Array.isArray(m.contains) ? m.contains : [];
+  await pool.query(
+    `INSERT INTO backup_records (id, provider, type, label, created_at, created_by, contains, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::text[], NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       provider = EXCLUDED.provider,
+       type = EXCLUDED.type,
+       label = EXCLUDED.label,
+       created_at = EXCLUDED.created_at,
+       created_by = EXCLUDED.created_by,
+       contains = EXCLUDED.contains,
+       updated_at = NOW()`,
+    [m.id, m.provider || 'local', m.type, m.label || '', m.created_at, m.created_by || '', contains]
+  );
+}
+
+// Remove a backup record by id (ids are globally unique by timestamp).
+async function deleteBackupRecord(id) {
+  if (!backupIdSafe(id)) return;
+  await pool.query(`DELETE FROM backup_records WHERE id = $1`, [id]);
+}
+
+// Reconstruct the manifest object the API / frontend expect from a DB row.
+function rowToManifest(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    label: row.label,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    created_by: row.created_by,
+    contains: Array.isArray(row.contains) ? row.contains : [],
+  };
+}
+
+// Reconcile the persistent backup list against the provider's actual artifacts.
+// For the CURRENT provider only:
+//   - backups found in storage but missing from the table are inserted
+//     (out-of-band files, or ones created before this feature existed);
+//   - table rows whose files no longer exist are removed (dormant).
+// Returns the reconciled manifests for the current provider, newest-first.
+async function reconcileBackupRecords(cfg) {
+  await ensureBackupRecordsTable();
+
+  let manifests;
+  if (cfg.provider === 's3') {
+    if (!cfg.s3Bucket) return [];
+    manifests = await listS3BackupManifests(cfg);
+  } else if (cfg.provider === 'rclone') {
+    if (!cfg.rcloneRemote) return [];
+    manifests = await listRcloneBackupManifests(cfg);
+  } else {
+    manifests = await listLocalBackupsFromDir(cfg.localPath);
+  }
+
+  const found = (manifests || [])
+    .filter((m) => m && m.id && backupIdSafe(m.id) && isSafeColumnName(m.type))
+    .map((m) => ({
+      id: m.id,
+      type: m.type,
+      label: m.label || '',
+      created_at: m.created_at,
+      created_by: m.created_by || '',
+      contains: Array.isArray(m.contains) ? m.contains : [],
+      provider: cfg.provider,
+    }));
+
+  const diskIds = new Set(found.map((m) => m.id));
+
+  const existing = await pool.query(`SELECT id FROM backup_records WHERE provider = $1`, [cfg.provider]);
+  const existingIds = new Set(existing.rows.map((r) => r.id));
+
+  // Add discovered backups that aren't recorded yet.
+  for (const m of found) {
+    if (!existingIds.has(m.id)) await upsertBackupRecord(m);
+  }
+
+  // Remove dormant records whose files are gone (current provider only).
+  const dormant = [...existingIds].filter((id) => !diskIds.has(id));
+  if (dormant.length) {
+    await pool.query(
+      `DELETE FROM backup_records WHERE provider = $1 AND id = ANY($2::text[])`,
+      [cfg.provider, dormant]
+    );
+  }
+
+  const res = await pool.query(
+    `SELECT id, type, label, created_at, created_by, contains
+       FROM backup_records WHERE provider = $1
+       ORDER BY created_at DESC`,
+    [cfg.provider]
+  );
+  return res.rows.map(rowToManifest);
+}
+
 const BACKUP_SCHEDULE_KEYS = [
   'BACKUP_SCHEDULE_ENABLED',
   'BACKUP_SCHEDULE_FREQUENCY',
@@ -312,6 +426,7 @@ async function createBackup({ type, label = '', createdBy = 'system' } = {}) {
     throw new Error('type must be files, database, or full');
   }
   const { pool } = require('../config/db');
+  await ensureBackupRecordsTable();
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const id = `backup_${ts}`;
   const rawLabel = typeof label === 'string' ? label.trim().slice(0, 120) : '';
@@ -385,6 +500,9 @@ async function createBackup({ type, label = '', createdBy = 'system' } = {}) {
       fs.copyFileSync(tmpZip, path.join(cfg.localPath, id + '.zip'));
       fs.writeFileSync(path.join(cfg.localPath, id + '.json'), JSON.stringify(manifest, null, 2), 'utf8');
     }
+
+    // Record this backup in the persistent list now that its artifacts exist.
+    await upsertBackupRecord({ ...manifest, provider: cfg.provider });
 
     return manifest;
   } finally {
@@ -509,6 +627,9 @@ async function deleteBackupArtifact(cfg, id) {
     if (fs.existsSync(localZip)) fs.unlinkSync(localZip);
     if (fs.existsSync(localJson)) fs.unlinkSync(localJson);
   }
+
+  // Keep the persistent backup list in sync with deleted artifacts.
+  try { await deleteBackupRecord(id); } catch (err) { console.error('Failed to remove backup record', id, err); }
 }
 
 // Enforce a retention policy: keep the most recent `retention` scheduled
@@ -583,4 +704,4 @@ async function listZipEntries(zipPath) {
   return directory.files.map((f) => f.path);
 }
 
-module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,computeRestoreInsertOrder,createBackup,DB_TABLES_INSERT_ORDER,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,removeDir,runScheduledBackupTick,pruneScheduledBackups,deleteBackupArtifact,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };
+module.exports = { appDir,BACKUP_CONFIG_KEYS,BACKUP_SCHEDULE_KEYS,backupIdSafe,collectBackupAppFiles,computeNextScheduledBackup,computeRestoreInsertOrder,createBackup,DB_TABLES_INSERT_ORDER,deleteBackupRecord,execFileAsync,extractZip,fileBackupsDir,getSiteSetting,isSafeColumnName,isSafeRclonePath,listLocalBackupsFromDir,listRcloneBackupManifests,listS3BackupManifests,listZipEntries,makeS3Client,readBackupConfig,readBackupSchedule,reconcileBackupRecords,removeDir,runScheduledBackupTick,pruneScheduledBackups,deleteBackupArtifact,rcloneDeleteFile,rcloneDownloadFile,rcloneListFiles,rcloneRun,rcloneUploadFile,setSiteSetting,zipDirectory, };

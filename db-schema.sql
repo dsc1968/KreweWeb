@@ -475,6 +475,17 @@ CREATE TABLE public.site_settings (
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
+CREATE TABLE public.backup_records (
+    id text NOT NULL,
+    provider text DEFAULT 'local'::text NOT NULL,
+    type text NOT NULL,
+    label text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    created_by text DEFAULT ''::text NOT NULL,
+    contains text[] DEFAULT '{}'::text[] NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
 
 --
 -- Name: user_profiles; Type: TABLE; Schema: public; Owner: -
@@ -741,6 +752,9 @@ ALTER TABLE ONLY public.shop_products
 
 ALTER TABLE ONLY public.site_settings
     ADD CONSTRAINT site_settings_pkey PRIMARY KEY (key);
+
+ALTER TABLE ONLY public.backup_records
+    ADD CONSTRAINT backup_records_pkey PRIMARY KEY (id);
 
 
 --

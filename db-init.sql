@@ -140,3 +140,18 @@ CREATE TABLE IF NOT EXISTS site_settings (
   value      TEXT NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+-- Persistent backup manifest list. Keeps the admin "past backups" list available
+-- even when the underlying provider/folder changes, and lets the API reconcile
+-- discovered artifacts against recorded rows (add missing / drop dormant).
+CREATE TABLE IF NOT EXISTS backup_records (
+  id          TEXT PRIMARY KEY,
+  provider    TEXT NOT NULL DEFAULT 'local',
+  type        TEXT NOT NULL,
+  label       TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_by  TEXT NOT NULL DEFAULT '',
+  contains    TEXT[] NOT NULL DEFAULT '{}',
+  updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+

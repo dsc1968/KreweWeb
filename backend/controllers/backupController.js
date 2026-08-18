@@ -9,7 +9,7 @@ const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerif
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
 const { ENV_CONFIG_ALLOWLIST, envFilePath, parseEnvFile, serializeEnvFile } = require('../utils/envConfig');
-const { appDir: _bAppDir, BACKUP_CONFIG_KEYS, BACKUP_SCHEDULE_KEYS, backupIdSafe, collectBackupAppFiles, computeNextScheduledBackup, computeRestoreInsertOrder, createBackup, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, listLocalBackupsFromDir, listRcloneBackupManifests, listS3BackupManifests, listZipEntries, makeS3Client, readBackupConfig, readBackupSchedule, removeDir, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, zipDirectory } = require('../utils/backup');
+const { appDir: _bAppDir, BACKUP_CONFIG_KEYS, BACKUP_SCHEDULE_KEYS, backupIdSafe, collectBackupAppFiles, computeNextScheduledBackup, computeRestoreInsertOrder, createBackup, DB_TABLES_INSERT_ORDER, execFileAsync, extractZip, fileBackupsDir: _bFb, isSafeColumnName, isSafeRclonePath, reconcileBackupRecords, listZipEntries, makeS3Client, readBackupConfig, readBackupSchedule, removeDir, rcloneDeleteFile, rcloneDownloadFile, rcloneListFiles, rcloneRun, rcloneUploadFile, zipDirectory } = require('../utils/backup');
 
 async function get__api_admin_backup_location(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
@@ -69,15 +69,19 @@ async function get__api_admin_backups(req, res) {
   try {
     const cfg = readBackupConfig();
     let all;
-    if (cfg.provider === 's3') {
-      if (!cfg.s3Bucket) return res.status(400).json({ error: 'S3 bucket is not configured' });
-      all = await listS3BackupManifests(cfg);
-    } else if (cfg.provider === 'rclone') {
-      if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
-      if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
-      all = await listRcloneBackupManifests(cfg);
-    } else {
-      all = await listLocalBackupsFromDir(cfg.localPath);
+    try {
+      // Reconcile the persistent backup list (backup_records) with the actual
+      // artifacts in storage: record any backups found on disk/storage that
+      // aren't yet tracked, and drop dormant rows whose files no longer exist.
+      if (cfg.provider === 's3' && !cfg.s3Bucket) return res.status(400).json({ error: 'S3 bucket is not configured' });
+      if (cfg.provider === 'rclone') {
+        if (!cfg.rcloneRemote) return res.status(400).json({ error: 'rclone remote name is not configured' });
+        if (!isSafeRclonePath(cfg.rcloneRemote)) return res.status(400).json({ error: 'Invalid rclone remote name' });
+      }
+      all = await reconcileBackupRecords(cfg);
+    } catch (reconErr) {
+      console.error('Failed to reconcile backups against storage', reconErr);
+      all = [];
     }
     const total = all.length;
     const items = all.slice((page - 1) * perPage, page * perPage);
