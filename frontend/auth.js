@@ -1508,10 +1508,16 @@ function renderAdminUsers(users, currentUserId) {
             disableButton.addEventListener('click', async () => {
               disableButton.disabled = true;
               setAdminFeedback(`Disabling ${user.email}…`, false);
+              const priorRoles = (Array.isArray(user.roles) && user.roles.length) ? user.roles : [user.role];
               const result = await setUserDisabled(user.id, true, user.role);
               disableButton.disabled = false;
               if (result.ok && result.data.user) {
                 Object.assign(user, result.data.user);
+                // Keep a non-empty stash so a freshly disabled account renders as a
+                // disabled existing account (Enable), not a pending registration (Approve/Deny).
+                if (user.role === 'disabled' && !Array.isArray(user.roles_before_disable)) {
+                  user.roles_before_disable = priorRoles;
+                }
                 roleCell.textContent = user.role || 'member';
                 drawRows();
                 setAdminFeedback(`${user.email} disabled.`, false);

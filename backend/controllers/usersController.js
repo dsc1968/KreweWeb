@@ -513,7 +513,7 @@ async function applyDisabledState(userId, disabled, restoreRole) {
     stash = null;
   }
   const result = await pool.query(
-    'UPDATE users SET role = $1, roles = $2::jsonb, roles_before_disable = $3 WHERE id = $4 RETURNING id, email, full_name, role, joined_at',
+    'UPDATE users SET role = $1, roles = $2::jsonb, roles_before_disable = $3 WHERE id = $4 RETURNING id, email, full_name, role, roles, roles_before_disable, joined_at',
     [primaryRole(roleSet), JSON.stringify(roleSet), stash ? JSON.stringify(stash) : null, userId]
   );
   return result.rows[0];
