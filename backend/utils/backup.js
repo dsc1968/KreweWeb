@@ -31,7 +31,7 @@ function readBackupConfig() {
     provider: env.BACKUP_PROVIDER || 'local',
     localPath: rawLocal
       ? (path.isAbsolute(rawLocal) ? rawLocal : path.resolve(__dirname, rawLocal))
-      : path.join(__dirname, '..', '_backups'),
+      : path.join(appDir, '_backup'),
     s3Bucket: env.BACKUP_S3_BUCKET || '',
     s3Prefix: (env.BACKUP_S3_PREFIX || 'krewe-backups').replace(/\/?$/, '/'),
     s3Region: env.BACKUP_S3_REGION || 'us-east-1',
@@ -365,11 +365,14 @@ async function reconcileBackupRecords(cfg) {
     manifests = await listRcloneBackupManifests(cfg);
   } else {
     // Local provider: surface backups from the configured path AND the canonical
-    // project-local _backups folders, so legacy/old local backups (written before
-    // BACKUP_LOCAL_PATH existed, or on a different host) are still listed. Scan a
-    // small set of candidate directories and de-duplicate by backup id.
+    // project-local _backup folder. The canonical folder is <app root>/_backup and
+    // is resolved relative to wherever the app is deployed (appDir), so the absolute
+    // path never needs to be hardcoded. A couple of legacy/spelling variants are also
+    // checked, and results are de-duplicated by backup id.
     const candidateDirs = new Set([
       cfg.localPath,
+      path.join(appDir, '_backup'),
+      path.join(appDir, '_backups'),
       path.join(__dirname, '..', '_backups'),
       path.join(__dirname, '_backups'),
     ]);
