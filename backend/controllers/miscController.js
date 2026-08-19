@@ -327,7 +327,7 @@ async function post__api_approve_user(req, res) {
 
     // Update user: set role to 'member' and update password hash
     await client.query(
-      `UPDATE users SET role = $1, password_hash = $2 WHERE id = $3`,
+      `UPDATE users SET role = $1, roles = '["member"]'::jsonb, roles_before_disable = NULL, password_hash = $2 WHERE id = $3`,
       ['member', hash, userId]
     );
 
