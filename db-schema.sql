@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict RPxgsJb1WIoCSPYhnS0hFcHPV4M10BAOJQ34WbLJuRsYINlw14XtZf6muyVKa2D
+\restrict xJ85ArGJqdb9FTbBnWuDPdQCO5VhxQyeo1ThRhIsYTuKcZoMp79L3DJCxOKcTSm
 
 -- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
@@ -67,6 +67,22 @@ CREATE SEQUENCE public.album_images_id_seq
 --
 
 ALTER SEQUENCE public.album_images_id_seq OWNED BY public.album_images.id;
+
+
+--
+-- Name: backup_records; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.backup_records (
+    id text NOT NULL,
+    provider text DEFAULT 'local'::text NOT NULL,
+    type text NOT NULL,
+    label text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    created_by text DEFAULT ''::text NOT NULL,
+    contains text[] DEFAULT '{}'::text[] NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
 
 
 --
@@ -441,7 +457,8 @@ CREATE TABLE public.shop_products (
     is_coupon boolean DEFAULT false NOT NULL,
     coupon_discount_type text,
     coupon_discount_value numeric(10,2),
-    coupon_product_ids jsonb DEFAULT '[]'::jsonb NOT NULL
+    coupon_product_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    fulfills_vendor boolean DEFAULT false NOT NULL
 );
 
 
@@ -472,17 +489,6 @@ ALTER SEQUENCE public.shop_products_id_seq OWNED BY public.shop_products.id;
 CREATE TABLE public.site_settings (
     key text NOT NULL,
     value text NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-CREATE TABLE public.backup_records (
-    id text NOT NULL,
-    provider text DEFAULT 'local'::text NOT NULL,
-    type text NOT NULL,
-    label text DEFAULT ''::text NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    created_by text DEFAULT ''::text NOT NULL,
-    contains text[] DEFAULT '{}'::text[] NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -527,7 +533,17 @@ CREATE TABLE public.user_profiles (
     float_captain boolean DEFAULT false NOT NULL,
     float_description text,
     float_captain_user_id integer,
-    float_id integer
+    float_id integer,
+    company_name text,
+    company_address text,
+    company_city text,
+    company_state text,
+    company_zip text,
+    secondary_contact_name text,
+    secondary_contact_email text,
+    secondary_contact_phone text,
+    vendor_fee_paid boolean DEFAULT false NOT NULL,
+    vendor_fee_paid_season integer
 );
 
 
@@ -651,6 +667,14 @@ ALTER TABLE ONLY public.album_images
 
 
 --
+-- Name: backup_records backup_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.backup_records
+    ADD CONSTRAINT backup_records_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: calendar_events calendar_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -752,9 +776,6 @@ ALTER TABLE ONLY public.shop_products
 
 ALTER TABLE ONLY public.site_settings
     ADD CONSTRAINT site_settings_pkey PRIMARY KEY (key);
-
-ALTER TABLE ONLY public.backup_records
-    ADD CONSTRAINT backup_records_pkey PRIMARY KEY (id);
 
 
 --
@@ -989,5 +1010,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RPxgsJb1WIoCSPYhnS0hFcHPV4M10BAOJQ34WbLJuRsYINlw14XtZf6muyVKa2D
+\unrestrict xJ85ArGJqdb9FTbBnWuDPdQCO5VhxQyeo1ThRhIsYTuKcZoMp79L3DJCxOKcTSm
 
