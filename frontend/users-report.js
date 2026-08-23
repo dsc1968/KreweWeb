@@ -135,6 +135,7 @@
   function userRowHtml(u) {
     const isDisabled = u.status === 'Disabled';
     const name = escHtml(u.full_name || '');
+    const company = escHtml(u.company_name || '');
     const email = escHtml(u.email || '');
     const phone = escHtml(u.phone || '');
     const role = escHtml(u.role || '');
@@ -147,6 +148,7 @@
     return (
       '<tr>' +
         '<td>' + name + '</td>' +
+        '<td>' + company + '</td>' +
         '<td>' + email + '</td>' +
         '<td>' + phone + '</td>' +
         '<td>' + role + '</td>' +
@@ -170,7 +172,7 @@
     const meta = group.label + '  •  ' + users.length + ' user' + (users.length === 1 ? '' : 's');
     const body = users.length
       ? '<tbody>' + users.map(userRowHtml).join('') + '</tbody>'
-      : '<tbody><tr><td colspan="15" class="ur-empty">No users in this role.</td></tr></tbody>';
+      : '<tbody><tr><td colspan="16" class="ur-empty">No users in this role.</td></tr></tbody>';
     const key = group.role || '';
     return (
       '<section class="user-report-block" data-role="' + escHtml(key) + '">' +
@@ -180,6 +182,7 @@
         '<table class="ur-table">' +
           '<thead><tr>' +
             '<th>Name</th>' +
+            '<th>Company</th>' +
             '<th>Email</th>' +
             '<th>Phone</th>' +
             '<th>Role</th>' +

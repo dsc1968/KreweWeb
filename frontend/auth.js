@@ -1296,7 +1296,7 @@ function renderAdminUsers(users, currentUserId) {
                 ? 'No disabled users found.'
                 : 'No users found.'
       );
-      emptyCell.colSpan = 6;
+      emptyCell.colSpan = 8;
       emptyRow.appendChild(emptyCell);
       tbody.appendChild(emptyRow);
       return;
@@ -1315,6 +1315,7 @@ function renderAdminUsers(users, currentUserId) {
         const emailCell = buildCell(user.email || '');
         const joinedCell = buildCell(new Date(user.joined_at).toLocaleDateString());
         const roleCell = buildCell(user.role || 'member');
+        const companyCell = buildCell(user.company_name || '');
         const isDisabled = user.role === 'disabled';
         // A user is a brand-new "pending registration" (never approved) when they
         // are disabled AND have no prior roles stashed. Any other disabled user is an
@@ -1367,6 +1368,7 @@ function renderAdminUsers(users, currentUserId) {
         row.appendChild(emailCell);
         row.appendChild(joinedCell);
         row.appendChild(roleCell);
+        row.appendChild(companyCell);
         row.appendChild(statusCell);
         row.appendChild(payCell);
         row.appendChild(actionCell);
@@ -1390,6 +1392,7 @@ function renderAdminUsers(users, currentUserId) {
               nameCell.textContent = user.full_name || '';
               emailCell.textContent = user.email || '';
               roleCell.textContent = user.role || 'member';
+              companyCell.textContent = user.company_name || '';
               // Re-render payment dots with updated values
               payCell.innerHTML = '';
               // Guests carry no dues / guest-fee / costume statuses

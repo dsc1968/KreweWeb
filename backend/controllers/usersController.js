@@ -1431,7 +1431,7 @@ async function get__api_admin_users_report(req, res) {
 
     const usersRes = await pool.query(
       `SELECT u.id, u.full_name, u.email, u.phone AS user_phone, u.role, u.roles_before_disable, u.joined_at,
-              p.phone AS profile_phone, p.sponsor_name, p.address, p.city, p.state, p.zip,
+              p.phone AS profile_phone, p.sponsor_name, p.company_name, p.address, p.city, p.state, p.zip,
               p.member_float_number, p.birthdate, p.occupation, p.organizations,
               p.float_captain,
               COALESCE(p.dues_paid,      false) AS dues_paid,
@@ -1470,6 +1470,7 @@ async function get__api_admin_users_report(req, res) {
         costume_paid: Boolean(u.costume_paid),
         float_captain: Boolean(u.float_captain),
         sponsor_name: u.sponsor_name || '',
+        company_name: u.company_name || '',
         address: u.address || '',
         city: u.city || '',
         state: u.state || '',
@@ -1493,7 +1494,7 @@ async function get__api_admin_users_report(req, res) {
 
     if (format === 'csv') {
       const header = [
-        'Role', 'Name', 'Email', 'Phone', 'Status', 'Joined',
+        'Role', 'Name', 'Company', 'Email', 'Phone', 'Status', 'Joined',
         'Dues', 'Guest Fee', 'Beads', 'Costume', 'Captain',
         'Sponsor', 'Address', 'City', 'State', 'Zip', 'Float #', 'Occupation', 'Organizations',
       ];
@@ -1502,7 +1503,7 @@ async function get__api_admin_users_report(req, res) {
         group.users.forEach((u) => {
           rows.push([
             group.label,
-            u.full_name, u.email, u.phone, u.status,
+            u.full_name, u.company_name, u.email, u.phone, u.status,
             u.joined_at ? u.joined_at.slice(0, 10) : '',
             u.dues_paid ? 'Paid' : 'Unpaid',
             u.guest_fee_paid ? 'Paid' : 'Unpaid',
