@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT UNIQUE,
   full_name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'member',
+  roles JSONB,
   password_hash TEXT,
   joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -119,11 +120,21 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   rider_float_names JSONB NOT NULL DEFAULT '[]',
   dues_paid BOOLEAN NOT NULL DEFAULT FALSE,
   guest_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
+  vendor_fee_paid BOOLEAN NOT NULL DEFAULT FALSE,
   beads_paid BOOLEAN NOT NULL DEFAULT FALSE,
   costume_paid BOOLEAN NOT NULL DEFAULT FALSE,
   float_captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   float_description TEXT,
   float_id INTEGER,
+  company_name TEXT,
+  company_address TEXT,
+  company_city TEXT,
+  company_state TEXT,
+  company_zip TEXT,
+  secondary_contact_name TEXT,
+  secondary_contact_email TEXT,
+  secondary_contact_phone TEXT,
+  vendor_fee_paid_season INTEGER,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 

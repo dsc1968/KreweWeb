@@ -4,9 +4,19 @@
   "private": true,
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "bash scripts/start.sh",
     "seed": "node seed.js",
-    "init-db": "bash scripts/init_db.sh"
+    "init-db": "bash scripts/init_db.sh",
+    "test": "jest"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/backend"],
+    "testMatch": ["**/__tests__/**/*.js"]
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",

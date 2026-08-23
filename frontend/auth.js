@@ -163,9 +163,14 @@ if (registerForm) {
 
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    // register.html submits via its own inline handler to /api/join-request
+    // (the pending-approval, vendor-capable endpoint) and has no password
+    // field. When this is that form, let the inline handler own submission so
+    // we don't double-POST from two competing listeners.
+    if (!document.getElementById('password')) return;
     const full_name = document.getElementById('full_name').value.trim();
     const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
+    const password = document.getElementById('password')?.value || '';
     const phone = (document.getElementById('reg-phone')?.value || '').trim();
 
     submitButton.disabled = true;
@@ -570,12 +575,14 @@ function updateAdminSummary(users) {
 
   const memberCount    = users.filter((user) => user.role === 'member').length;
   const storeAdminCount = users.filter((user) => user.role === 'store_admin').length;
+  const vendorCount    = users.filter((user) => user.role === 'vendor').length;
   const adminCount     = users.filter((user) => user.role === 'admin').length;
   const disabledCount  = users.filter((user) => user.role === 'disabled').length;
   const guestCount     = users.filter((user) => user.role === 'guest').length;
   const totalCount     = users.length;
   const storeAdminPart = storeAdminCount > 0 ? `, ${storeAdminCount} store admin${storeAdminCount === 1 ? '' : 's'}` : '';
-  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}${storeAdminPart}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${guestCount} guest${guestCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
+  const vendorPart     = vendorCount > 0 ? `, ${vendorCount} vendor${vendorCount === 1 ? '' : 's'}` : '';
+  summary.textContent = `${memberCount} member${memberCount === 1 ? '' : 's'}${storeAdminPart}${vendorPart}, ${adminCount} admin${adminCount === 1 ? '' : 's'}, ${guestCount} guest${guestCount === 1 ? '' : 's'}, ${disabledCount} disabled, ${totalCount} total`;
 }
 
 async function openUserEditModal(user, currentUserId, onUpdate) {
@@ -592,6 +599,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   const uemRoleSet = new Set(Array.isArray(full.roles) && full.roles.length ? full.roles : [full.role]);
   const uemBaseStatus = uemRoleSet.has('disabled') ? 'disabled'
     : uemRoleSet.has('admin') ? 'admin'
+    : uemRoleSet.has('vendor') ? 'vendor'
     : uemRoleSet.has('guest') ? 'guest'
     : 'member';
   const uemHasStore = uemRoleSet.has('store_admin');
@@ -655,6 +663,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
           <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Base Status</label>
             <select id="uem-role" ${user.id === currentUserId ? 'disabled' : ''} style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:#12203f;color:#f5f7ff;font:inherit;box-sizing:border-box;">
               <option value="member" ${uemBaseStatus==='member'?'selected':''}>Member</option>
+              <option value="vendor" ${uemBaseStatus==='vendor'?'selected':''}>Vendor</option>
               <option value="guest" ${uemBaseStatus==='guest'?'selected':''}>Guest</option>
               <option value="admin" ${uemBaseStatus==='admin'?'selected':''}>Admin (all access)</option>
               ${uemBaseStatus==='disabled'?'<option value="disabled" selected>Disabled</option>':''}
@@ -1058,6 +1067,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
     if (baseSel === 'admin') rolesPayload = ['admin'];
     else if (baseSel === 'disabled') rolesPayload = ['disabled'];
     else if (baseSel === 'guest') rolesPayload = ['guest'];
+    else if (baseSel === 'vendor') rolesPayload = ['vendor'];
     else {
       rolesPayload = ['member'];
       if (backdrop.querySelector('#uem-cap-store').checked) rolesPayload.push('store_admin');
@@ -1278,11 +1288,13 @@ function renderAdminUsers(users, currentUserId) {
       const emptyCell = buildCell(
         filterValue === 'member'
           ? 'No members found.'
-          : filterValue === 'admin'
-            ? 'No admins found.'
-            : filterValue === 'disabled'
-              ? 'No disabled users found.'
-              : 'No users found.'
+          : filterValue === 'vendor'
+            ? 'No vendors found.'
+            : filterValue === 'admin'
+              ? 'No admins found.'
+              : filterValue === 'disabled'
+                ? 'No disabled users found.'
+                : 'No users found.'
       );
       emptyCell.colSpan = 6;
       emptyRow.appendChild(emptyCell);
@@ -1683,6 +1695,25 @@ async function initProfileDetailsForm(profile) {
   set('pd-organizations', profile.organizations);
   set('pd-spouse',        profile.spouse_name);
   set('pd-guest',         profile.guest_name);
+
+  // Vendor company + secondary-contact details. Only vendor accounts see and
+  // edit these, so reveal the section for them and pre-fill from the profile.
+  const isVendorProfile = profile.role === 'vendor';
+  const vendorSection = document.getElementById('pd-vendor-section');
+  if (vendorSection) {
+    vendorSection.style.display = isVendorProfile ? 'block' : 'none';
+    if (isVendorProfile) {
+      set('pd-company-name',     profile.company_name);
+      set('pd-company-address',  profile.company_address);
+      set('pd-company-city',     profile.company_city);
+      set('pd-company-state',    profile.company_state);
+      set('pd-company-zip',      profile.company_zip);
+      set('pd-secondary-name',   profile.secondary_contact_name);
+      set('pd-secondary-email',  profile.secondary_contact_email);
+      set('pd-secondary-phone',  profile.secondary_contact_phone);
+    }
+  }
+
   // Load the floats defined by the float admin so both the member's own float
   // and each rider row can offer a constrained, consistent float picker.
   let profileFloats = [];
@@ -1852,6 +1883,16 @@ async function initProfileDetailsForm(profile) {
               float_id,
             };
           }).filter((r) => r.name || r.comment || r.float_id),
+          // Vendor company + secondary-contact details (only sent for vendors;
+          // non-vendors keep these null so an unrelated profile can't clear them).
+          company_name: isVendorProfile ? (document.getElementById('pd-company-name')?.value.trim() || null) : null,
+          company_address: isVendorProfile ? (document.getElementById('pd-company-address')?.value.trim() || null) : null,
+          company_city: isVendorProfile ? (document.getElementById('pd-company-city')?.value.trim() || null) : null,
+          company_state: isVendorProfile ? (document.getElementById('pd-company-state')?.value.trim().toUpperCase() || null) : null,
+          company_zip: isVendorProfile ? (document.getElementById('pd-company-zip')?.value.trim() || null) : null,
+          secondary_contact_name: isVendorProfile ? (document.getElementById('pd-secondary-name')?.value.trim() || null) : null,
+          secondary_contact_email: isVendorProfile ? (document.getElementById('pd-secondary-email')?.value.trim() || null) : null,
+          secondary_contact_phone: isVendorProfile ? (document.getElementById('pd-secondary-phone')?.value.trim() || null) : null,
           float_captain: !!profile.captain_of,
         }),
       });
@@ -1978,8 +2019,8 @@ async function initDashboard() {
     .slice(0, 2)
     .join('');
 
-  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : 'db-badge--member';
-  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : profile.role === 'guest' ? 'Guest' : 'Member';
+  const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : profile.role === 'vendor' ? 'db-badge--vendor' : 'db-badge--member';
+  const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : profile.role === 'vendor' ? 'Vendor' : profile.role === 'guest' ? 'Guest' : 'Member';
 
   function payBadgeHtml(paid, label) {
     const c = paid ? '#4ade80' : '#f87171';
@@ -1999,7 +2040,7 @@ async function initDashboard() {
         <li><strong>Member since:</strong> ${new Date(profile.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</li>
         <li><span class="db-badge ${badgeClass}">${badgeLabel}</span></li>
         <li id="db-payment-status-li" style="display:${profile.role !== 'guest' ? 'flex' : 'none'};gap:0.75rem;flex-wrap:wrap;align-items:center;">
-          ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.dues_paid), 'Dues') : ''}
+          ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.role === 'vendor' ? profile.vendor_fee_paid : profile.dues_paid), profile.role === 'vendor' ? 'Vendor Fee' : 'Dues') : ''}
           ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.guest_fee_paid), 'Guest Fee') : ''}
           ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.costume_paid), 'Costume') : ''}
         </li>

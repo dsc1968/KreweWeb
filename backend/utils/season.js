@@ -94,20 +94,24 @@ function ashWednesdayISO(year) {
 }
 
 // ── Season reset ──────────────────────────────────────────────────────────
-// Sets dues_paid, guest_fee_paid, beads_paid, and costume_paid to FALSE for
-// all members and records the reset date in site_settings so the scheduler
-// does not double-reset if the server restarts on the same day.
+// Clears the recurring per-season fee flags — dues_paid, guest_fee_paid and
+// vendor_fee_paid — for every member and records the reset date in
+// site_settings so the scheduler does not double-reset if the server restarts
+// on the same day. The matching *_season columns are left intact so the
+// history of which season each fee was last paid in is preserved.
 async function performSeasonReset() {
   const { pool } = require('../config/db');
   const today = new Date().toISOString().slice(0, 10);
   console.log(`[Season Reset] Running season reset for ${today}`);
   await pool.query(`
     UPDATE user_profiles
-    SET dues_paid      = FALSE,
-        guest_fee_paid = FALSE,
-        updated_at     = NOW()
+    SET dues_paid       = FALSE,
+        guest_fee_paid  = FALSE,
+        vendor_fee_paid = FALSE,
+        updated_at      = NOW()
     WHERE dues_paid = TRUE
        OR guest_fee_paid = TRUE
+       OR vendor_fee_paid = TRUE
   `);
   await pool.query(
     `INSERT INTO site_settings (key, value, updated_at) VALUES ('last_season_reset_date', $1, NOW())

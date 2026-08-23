@@ -15,7 +15,13 @@ async function get__api_users(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   try {
-    const result = await pool.query('SELECT id, email, full_name, role FROM users ORDER BY id ASC');
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.role, u.roles, u.roles_before_disable, u.joined_at,
+              p.company_name, p.dues_paid, p.guest_fee_paid, p.costume_paid
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id
+       ORDER BY u.id ASC`
+    );
     res.json(result.rows);
   } catch (error) {
     console.error('Failed to fetch users', error);
@@ -43,7 +49,7 @@ async function get__api_admin_users(req, res) {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.roles_before_disable, u.joined_at, u.mfa_method, u.mfa_enrolled,
-              p.phone,
+              p.phone, p.company_name,
               COALESCE(p.dues_paid,      false) AS dues_paid,
               COALESCE(p.guest_fee_paid, false) AS guest_fee_paid,
               COALESCE(p.beads_paid,     false) AS beads_paid,
@@ -74,10 +80,13 @@ async function get__api_admin_users__userId(req, res) {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
+              p.company_name, p.company_address, p.company_city, p.company_state, p.company_zip,
+              p.secondary_contact_name, p.secondary_contact_email, p.secondary_contact_phone,
               COALESCE(p.dues_paid, false)        AS dues_paid,
               COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
               COALESCE(p.beads_paid, false)       AS beads_paid,
               COALESCE(p.costume_paid, false)     AS costume_paid,
+              COALESCE(p.vendor_fee_paid, false)  AS vendor_fee_paid,
               COALESCE(p.float_captain, false)    AS float_captain
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
@@ -162,6 +171,7 @@ async function put__api_admin_users__userId_details(req, res) {
   const sponsor_name  = typeof req.body.sponsor_name  === 'string' ? req.body.sponsor_name.trim().slice(0, 100)  : null;
   const spouse_name = typeof req.body.spouse_name === 'string' ? req.body.spouse_name.trim().slice(0, 100) : null;
   const guest_name = typeof req.body.guest_name === 'string' ? req.body.guest_name.trim().slice(0, 100) : null;
+  const companyName = typeof req.body.company_name === 'string' ? req.body.company_name.trim().slice(0, 200) : null;
   const kidsRaw = Array.isArray(req.body.kids_names) ? req.body.kids_names : [];
   const ridersRaw = Array.isArray(req.body.float_riders) ? req.body.float_riders : [];
   const kids_names = kidsRaw.map((k) => String(k).trim().slice(0, 100)).filter(Boolean);
@@ -289,8 +299,8 @@ async function put__api_admin_users__userId_details(req, res) {
          guest_name, float_riders,
          member_float_number, spouse_float_number, guest_float_number,
          kids_float_numbers, rider_float_numbers, rider_float_names,
-         float_captain, float_id, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,NOW())
+         float_captain, float_id, company_name, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -307,7 +317,7 @@ async function put__api_admin_users__userId_details(req, res) {
          kids_float_numbers=EXCLUDED.kids_float_numbers,
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          rider_float_names=EXCLUDED.rider_float_names,
-         float_captain=EXCLUDED.float_captain, float_id=EXCLUDED.float_id,
+         float_captain=EXCLUDED.float_captain, float_id=EXCLUDED.float_id, company_name=EXCLUDED.company_name,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -318,7 +328,7 @@ async function put__api_admin_users__userId_details(req, res) {
         guest_name||null, JSON.stringify(float_riders),
         member_float_number||null, spouse_float_number||null, guest_float_number||null,
         JSON.stringify(kids_float_numbers), JSON.stringify(rider_float_numbers), JSON.stringify(rider_float_names),
-        float_captain, adminFloatId,
+        float_captain, adminFloatId, companyName,
       ]
     );
     // Keep a pending registration's lookup key in sync if an admin edits the
@@ -345,7 +355,8 @@ async function post__api_admin_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest', 'vendor'].includes(req.body.role) ? req.body.role : 'member';
+  const companyName = typeof req.body.company_name === 'string' ? req.body.company_name.trim().slice(0, 200) : null;
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -368,6 +379,16 @@ async function post__api_admin_users(req, res) {
        RETURNING id, email, full_name, role, joined_at`,
       [email, fullName, role, JSON.stringify(normalizeRoleSet(role)), hash]
     );
+
+    const newUserId = result.rows[0].id;
+    if (companyName) {
+      await pool.query(
+        `INSERT INTO user_profiles (user_id, company_name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET company_name = EXCLUDED.company_name`,
+        [newUserId, companyName]
+      );
+    }
 
     res.status(201).json({ user: result.rows[0], created: true });
   } catch (error) {
@@ -385,7 +406,8 @@ async function post__api_users(req, res) {
   const email = normalizeEmailAddress(req.body.email);
   const fullName = typeof req.body.full_name === 'string' ? req.body.full_name.trim() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest'].includes(req.body.role) ? req.body.role : 'member';
+  const role = ['admin', 'store_admin', 'member', 'float_admin', 'finance_admin', 'guest', 'vendor'].includes(req.body.role) ? req.body.role : 'member';
+  const companyName = typeof req.body.company_name === 'string' ? req.body.company_name.trim().slice(0, 200) : null;
 
   if (!email || !fullName || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -408,6 +430,16 @@ async function post__api_users(req, res) {
        RETURNING id, email, full_name, role, joined_at`,
       [email, fullName, role, JSON.stringify(normalizeRoleSet(role)), hash]
     );
+
+    const newUserId = result.rows[0].id;
+    if (companyName) {
+      await pool.query(
+        `INSERT INTO user_profiles (user_id, company_name)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET company_name = EXCLUDED.company_name`,
+        [newUserId, companyName]
+      );
+    }
 
     res.status(201).json({ user: result.rows[0], created: true });
   } catch (error) {
@@ -762,10 +794,15 @@ async function patch__api_admin_users__userId_payments(req, res) {
   // while also supporting the finance console's single-toggle updates without
   // wiping the other three flags.
   const fieldMap = {
-    dues_paid: req.body && req.body.dues_paid,
-    guest_fee_paid: req.body && req.body.guest_fee_paid,
-    beads_paid: req.body && req.body.beads_paid,
-    costume_paid: req.body && req.body.costume_paid,
+
+
+
+
+  dues_paid: req.body && req.body.dues_paid,
+  guest_fee_paid: req.body && req.body.guest_fee_paid,
+  beads_paid: req.body && req.body.beads_paid,
+  costume_paid: req.body && req.body.costume_paid,
+  vendor_fee_paid: req.body && req.body.vendor_fee_paid,
   };
   const updates = Object.keys(fieldMap).filter((k) => fieldMap[k] !== undefined);
   if (updates.length === 0) {

@@ -538,10 +538,14 @@ async function get__api_profile(req, res) {
               p.guest_name, p.float_riders,
               p.member_float_number, p.spouse_float_number, p.guest_float_number,
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
+              p.company_name, p.company_address, p.company_city, p.company_state,
+              p.company_zip, p.secondary_contact_name, p.secondary_contact_email,
+              p.secondary_contact_phone,
               COALESCE(p.dues_paid, false)        AS dues_paid,
               COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
               COALESCE(p.beads_paid, false)       AS beads_paid,
               COALESCE(p.costume_paid, false)     AS costume_paid,
+              COALESCE(p.vendor_fee_paid, false)  AS vendor_fee_paid,
               COALESCE(p.float_captain, false)    AS float_captain
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
@@ -584,6 +588,26 @@ async function get__api_profile(req, res) {
   }
 }
 
+// Compare two rider arrays regardless of key ordering (each rider is
+// { name, comment, float_id }); returns true when they describe the same set.
+function riderSignature(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  return list
+    .map((r) => {
+      const o = (r && typeof r === 'object') ? r : {};
+      return `${o.name || ''}|${o.comment || ''}|${o.float_id ?? ''}`;
+    })
+    .sort()
+    .join('\u0000');
+}
+function sameRiders(a, b) { return riderSignature(a) === riderSignature(b); }
+function arrEqual(a, b) {
+  const x = Array.isArray(a) ? a : [];
+  const y = Array.isArray(b) ? b : [];
+  if (x.length !== y.length) return false;
+  return x.map(String).sort().join('\u0000') === y.map(String).sort().join('\u0000');
+}
+
 async function put__api_profile_details(req, res) {
   const userId = req.user.userId;
   const phone       = typeof req.body.phone       === 'string' ? req.body.phone.trim().slice(0, 30)    : null;
@@ -597,6 +621,15 @@ async function put__api_profile_details(req, res) {
   const sponsor_name  = typeof req.body.sponsor_name  === 'string' ? req.body.sponsor_name.trim().slice(0, 100)  : null;
   const spouse_name   = typeof req.body.spouse_name   === 'string' ? req.body.spouse_name.trim().slice(0, 100)   : null;
   const guest_name    = typeof req.body.guest_name    === 'string' ? req.body.guest_name.trim().slice(0, 100)    : null;
+  // Vendor-only company + secondary-contact details (ignored for non-vendor roles).
+  const company_name            = typeof req.body.company_name            === 'string' ? req.body.company_name.trim().slice(0, 200) : null;
+  const company_address         = typeof req.body.company_address         === 'string' ? req.body.company_address.trim().slice(0, 200) : null;
+  const company_city            = typeof req.body.company_city            === 'string' ? req.body.company_city.trim().slice(0, 100) : null;
+  const company_state           = typeof req.body.company_state           === 'string' ? req.body.company_state.trim().slice(0, 50) : null;
+  const company_zip             = typeof req.body.company_zip             === 'string' ? req.body.company_zip.trim().slice(0, 20) : null;
+  const secondary_contact_name  = typeof req.body.secondary_contact_name  === 'string' ? req.body.secondary_contact_name.trim().slice(0, 100) : null;
+  const secondary_contact_email = typeof req.body.secondary_contact_email === 'string' ? req.body.secondary_contact_email.trim().slice(0, 200) : null;
+  const secondary_contact_phone = typeof req.body.secondary_contact_phone === 'string' ? req.body.secondary_contact_phone.trim().slice(0, 30) : null;
   // The member's chosen MFA method (from the profile form). Accept the values
   // the UI offers; coerce anything unexpected back to the default 'email'.
   const mfa_method = (typeof req.body.mfa_method === 'string' && ['none', 'email', 'sms', 'authenticator'].includes(req.body.mfa_method))
@@ -682,20 +715,39 @@ async function put__api_profile_details(req, res) {
 
   // When floats are locked, only the Float Admin may change float assignments.
   // Keep the member's existing float/riders data and ignore incoming changes.
+  // Track whether this request actually attempted a float change so we can tell
+  // the caller (instead of silently dropping it and returning a misleading 200).
+  let floatChangeAttempted = false;
   const floatsLocked = (await getSiteSetting('float_admin_lock')) === 'true';
   if (floatsLocked && !isFloatAdmin(req)) {
     try {
       const cur = await pool.query(
-        'SELECT float_riders, rider_float_names, rider_float_numbers, member_float_number, float_id FROM user_profiles WHERE user_id = $1',
+        'SELECT float_riders, rider_float_names, rider_float_numbers, member_float_number, float_id, float_captain FROM user_profiles WHERE user_id = $1',
         [userId]
       );
       const c = cur.rows.length ? cur.rows[0] : {};
       const asArray = (v) => (Array.isArray(v) ? v : []);
+      const currentMemberNumber = c.member_float_number != null ? c.member_float_number : null;
+      const currentFloatId = c.float_id != null ? c.float_id : null;
+      const currentCaptain = Boolean(c.float_captain);
+      // Did this request try to change any float-related field?
+      if (
+        !sameRiders(float_riders, c.float_riders) ||
+        !arrEqual(rider_float_names, c.rider_float_names) ||
+        !arrEqual(rider_float_numbers, c.rider_float_numbers) ||
+        (member_float_number || null) !== currentMemberNumber ||
+        (floatIdForProfile ?? null) !== currentFloatId ||
+        Boolean(float_captain) !== currentCaptain
+      ) {
+        floatChangeAttempted = true;
+      }
+      // Keep the member's existing float/riders data and ignore incoming changes.
       float_riders = asArray(c.float_riders);
       rider_float_names = asArray(c.rider_float_names);
       rider_float_numbers = asArray(c.rider_float_numbers);
-      member_float_number = c.member_float_number != null ? c.member_float_number : null;
-      floatIdForProfile = c.float_id != null ? c.float_id : null;
+      member_float_number = currentMemberNumber;
+      floatIdForProfile = currentFloatId;
+      float_captain = currentCaptain;
     } catch (_e) { /* keep computed values if lookup fails */ }
   }
 
@@ -715,8 +767,12 @@ async function put__api_profile_details(req, res) {
          user_id, phone, address, city, state, zip, birthdate, occupation, organizations,
          sponsor_name, spouse_name, kids_names, kids_birthdays,
          grandchildren_names, grandchildren_birthdays,
-         guest_name, float_riders, rider_float_names, rider_float_numbers, float_captain, member_float_number, float_id, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,NOW())
+
+
+         guest_name, float_riders, rider_float_names, rider_float_numbers, float_captain, member_float_number, float_id,
+         company_name, company_address, company_city, company_state, company_zip,
+         secondary_contact_name, secondary_contact_email, secondary_contact_phone, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          phone=EXCLUDED.phone, address=EXCLUDED.address,
          city=EXCLUDED.city, state=EXCLUDED.state, zip=EXCLUDED.zip,
@@ -731,6 +787,12 @@ async function put__api_profile_details(req, res) {
          rider_float_numbers=EXCLUDED.rider_float_numbers,
          float_captain=EXCLUDED.float_captain,
          member_float_number=EXCLUDED.member_float_number, float_id=EXCLUDED.float_id,
+         company_name=EXCLUDED.company_name, company_address=EXCLUDED.company_address,
+         company_city=EXCLUDED.company_city, company_state=EXCLUDED.company_state,
+         company_zip=EXCLUDED.company_zip,
+         secondary_contact_name=EXCLUDED.secondary_contact_name,
+         secondary_contact_email=EXCLUDED.secondary_contact_email,
+         secondary_contact_phone=EXCLUDED.secondary_contact_phone,
          updated_at=NOW()`,
       [
         userId, phone||null, address||null, city||null, state||null, zip||null,
@@ -741,6 +803,9 @@ async function put__api_profile_details(req, res) {
         guest_name||null, JSON.stringify(float_riders),
         JSON.stringify(rider_float_names), JSON.stringify(rider_float_numbers), float_captain,
         member_float_number||null, floatIdForProfile,
+        company_name||null, company_address||null, company_city||null, company_state||null,
+        company_zip||null, secondary_contact_name||null, secondary_contact_email||null,
+        secondary_contact_phone||null,
       ]
     );
     // For the authenticator app we defer committing mfa_method until the
@@ -786,7 +851,16 @@ async function put__api_profile_details(req, res) {
       }
     }
 
-    res.json({ ok: true, mfaChallenge });
+    const responseBody = { ok: true, mfaChallenge };
+    // When floats are locked and a non-float-admin tried to change float data,
+    // be explicit about it rather than returning a misleading success.
+    if (floatChangeAttempted) {
+      responseBody.floatLocked = true;
+      responseBody.floatChangesIgnored = true;
+      responseBody.message =
+        'Floats are locked by the Float Admin, so your float assignment changes were not saved.';
+    }
+    res.json(responseBody);
   } catch (error) {
     console.error('Failed to update profile details', error);
     res.status(500).json({ error: 'Unable to update profile details' });

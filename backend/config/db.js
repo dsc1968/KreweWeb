@@ -446,6 +446,18 @@ async function ensureContentTable() {
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_description TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_captain_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS float_id INTEGER REFERENCES floats(id) ON DELETE SET NULL',
+    // Vendor account type: company details + a secondary contact, plus a
+    // per-season vendor-fee paid flag (mirrors dues_paid / guest_fee_paid).
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_name TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_address TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_city TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_state TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS company_zip TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS secondary_contact_name TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS secondary_contact_email TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS secondary_contact_phone TEXT',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS vendor_fee_paid BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS vendor_fee_paid_season INTEGER',
     'ALTER TABLE floats ADD COLUMN IF NOT EXISTS capacity INTEGER',
     "ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending'",
   ]) {
@@ -536,6 +548,9 @@ async function ensureContentTable() {
   // membership dues or guest fee as paid on their profile.
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_membership BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_guest BOOLEAN NOT NULL DEFAULT FALSE`);
+  // Products that, when paid for, mark the buyer's (or a chosen vendor's)
+  // vendor fee as paid on their profile.
+  await pool.query(`ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS fulfills_vendor BOOLEAN NOT NULL DEFAULT FALSE`);
   // Coupon products: when added to the cart, they discount the eligible
   // products (coupon_product_ids) by either a percentage or a fixed dollar
   // amount (coupon_discount_type / coupon_discount_value).

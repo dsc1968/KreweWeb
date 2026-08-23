@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool, JWT_SECRET, REGISTRATION_CODE_TTL_MINUTES, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO, CONTACT_RECIPIENT, JOIN_REQUEST_RECIPIENTS, APPROVAL_EMAIL_SUBJECT, APPROVAL_EMAIL_BODY, DENIAL_EMAIL_SUBJECT, DENIAL_EMAIL_BODY } = require('../config/db');
-const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager } = require('../utils/validation');
+const { ADMIN_EDIT_EXCLUDED_PAGES, HEX_COLOR_PATTERN, LENGTH_VALUE_PATTERN, BORDER_STYLE_VALUES, normalizePagePath, isAdminEditablePagePath, validateEditablePagePath, normalizeHexColor, normalizeLengthValue, normalizeBorderStyle, normalizePositionMode, normalizeCoordinate, normalizeOpacityValue, isAdmin, isShopManager, primaryRole, normalizeRoleSet } = require('../utils/validation');
 const { smtpTransport, normalizeEmailAddress, isValidEmailAddress, generateVerificationCode, maskVerificationTarget, sendVerificationMail, dispatchVerificationCode } = require('../utils/email');
 const { appDir, fileBackupsDir, imagesDir, listImagesInDirectory, resolveEditableFilePath, storage, upload } = require('../utils/files');
 const { ashWednesdayDate, ashWednesdayISO, checkAndRunSeasonReset, currentSeasonYear, easterDate, parseSeasonEndConfig, performSeasonReset, resolveSeasonEndDate, seasonEndISO } = require('../utils/season');
@@ -146,7 +146,10 @@ async function delete__api_admin_calendar_events(req, res) {
   }
 }
 async function post__api_join_request(req, res) {
-  const { full_name, email, phone, birthdate, occupation, sponsor_name, address, city, state, zip } = req.body;
+  const { full_name, email, phone, birthdate, occupation, sponsor_name, address, city, state, zip,
+          company_name, company_address, company_city, company_state, company_zip,
+          secondary_contact_name, secondary_contact_email, secondary_contact_phone,
+          is_vendor } = req.body;
 
   // Validate required fields
   if (!full_name || !email) {
@@ -191,21 +194,29 @@ async function post__api_join_request(req, res) {
     // Clean up any pending registration for this email
     await client.query('DELETE FROM pending_registrations WHERE email = $1', [normEmail]);
 
+    const requestedRole = is_vendor ? 'vendor' : 'member';
     // Insert disabled user with empty password hash (login blocked by role)
     const userResult = await client.query(
-      `INSERT INTO users (email, full_name, role, password_hash)
-       VALUES ($1, $2, 'disabled', '')
+      `INSERT INTO users (email, full_name, role, roles, password_hash)
+       VALUES ($1, $2, 'disabled', to_jsonb(ARRAY[$3]::text[]), '')
        RETURNING id, email, full_name`,
-      [normEmail, full_name]
+      [normEmail, full_name, requestedRole]
     );
     const user = userResult.rows[0];
 
     // Insert basic profile (optional fields)
     await client.query(
       `INSERT INTO user_profiles (
-         user_id, phone, address, city, state, zip, birthdate, occupation, sponsor_name
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [user.id, normPhone, address || null, city || null, state || null, zip || null, birthdate || null, occupation || null, sponsor_name || null]
+
+
+
+         user_id, phone, address, city, state, zip, birthdate, occupation, sponsor_name,
+         company_name, company_address, company_city, company_state, company_zip,
+         secondary_contact_name, secondary_contact_email, secondary_contact_phone
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+      [user.id, normPhone, address || null, city || null, state || null, zip || null, birthdate || null, occupation || null, sponsor_name || null,
+       company_name || null, company_address || null, company_city || null, company_state || null, company_zip || null,
+       secondary_contact_name || null, secondary_contact_email || null, secondary_contact_phone || null]
     );
 
     await client.query('COMMIT');
@@ -231,7 +242,13 @@ async function post__api_join_request(req, res) {
             City: ${city || 'Not provided'}
             State: ${state || 'Not provided'}
             Zip: ${zip || 'Not provided'}
-          `;
+
+            ${is_vendor ? `Account Type: Vendor (company)
+            Company: ${company_name || 'Not provided'}
+            Company Address: ${[company_address, company_city, company_state, company_zip].filter(Boolean).join(', ') || 'Not provided'}
+            Secondary Contact: ${secondary_contact_name || 'Not provided'}${secondary_contact_email ? ' (' + secondary_contact_email + ')' : ''}
+            ` : `Account Type: Member
+            `}          `;
           await smtpTransport.sendMail({
             from: SMTP_FROM,
             to: recipients.join(', '),
@@ -277,7 +294,9 @@ async function get__api_pending_users(req, res) {
 
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.joined_at, p.phone
+      `SELECT u.id, u.email, u.full_name, u.joined_at, u.roles, p.phone,
+               p.company_name, p.company_address, p.company_city, p.company_state, p.company_zip,
+               p.secondary_contact_name, p.secondary_contact_email, p.secondary_contact_phone
        FROM users u
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE u.role = $1
@@ -309,7 +328,7 @@ async function post__api_approve_user(req, res) {
 
     // Fetch user info
     const userResult = await client.query(
-      `SELECT u.id, u.email, u.full_name
+      `SELECT u.id, u.email, u.full_name, u.roles
        FROM users u
        WHERE u.id = $1`,
       [userId]
@@ -319,16 +338,17 @@ async function post__api_approve_user(req, res) {
       return res.status(404).json({ error: 'User not found' });
     }
     const user = userResult.rows[0];
-
     // Generate temporary password
     const tempPassword = crypto.randomBytes(4).toString('hex'); // 8 hex chars
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync(tempPassword, salt);
+    const hash = bcrypt.hashSync(tempPassword, 10);
 
-    // Update user: set role to 'member' and update password hash
+    // Restore the role the registrant requested (e.g. member or vendor) instead
+    // of always forcing 'member'. The role was stored at join-request time.
+    const approvalRole = primaryRole(normalizeRoleSet(Array.isArray(user.roles) ? user.roles : (user.role ? [user.role] : []))) || 'member';
+    const approvalRoles = normalizeRoleSet(Array.isArray(user.roles) ? user.roles : [approvalRole]);
     await client.query(
-      `UPDATE users SET role = $1, roles = '["member"]'::jsonb, roles_before_disable = NULL, password_hash = $2 WHERE id = $3`,
-      ['member', hash, userId]
+      `UPDATE users SET role = $1, roles = $4, roles_before_disable = NULL, password_hash = $2 WHERE id = $3`,
+      [approvalRole, hash, userId, JSON.stringify(approvalRoles)]
     );
 
     // Optionally, we could also clear any pending registration flags, but not needed.

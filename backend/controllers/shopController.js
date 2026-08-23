@@ -96,7 +96,7 @@ async function get__api_shop_payment_mode(req, res) {
 async function get__api_shop_products(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest,
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest, fulfills_vendor,
               is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids
        FROM shop_products WHERE active = TRUE
        ORDER BY position ASC, id ASC`
@@ -112,7 +112,7 @@ async function get__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await pool.query(
-      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest, active, position, created_at,
+      `SELECT id, name, description, price, image_path, category, stock_qty, sizes, size_label, is_donation, fulfills_membership, fulfills_guest, fulfills_vendor, active, position, created_at,
               is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids
        FROM shop_products ORDER BY position ASC, id ASC`
     );
@@ -125,7 +125,7 @@ async function get__api_admin_shop_products(req, res) {
 
 async function post__api_admin_shop_products(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
-  const { name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, fulfills_vendor, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -143,8 +143,8 @@ async function post__api_admin_shop_products(req, res) {
   }
   try {
     const result = await pool.query(
-      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      `INSERT INTO shop_products (name, description, price, image_path, category, stock_qty, active, sizes, size_label, fulfills_membership, fulfills_guest, fulfills_vendor, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -157,6 +157,7 @@ async function post__api_admin_shop_products(req, res) {
         normalizeSizeLabel(size_label),
         fulfills_membership === true,
         fulfills_guest === true,
+        fulfills_vendor === true,
         isCoupon,
         isCoupon ? couponType : null,
         couponValue,
@@ -174,7 +175,7 @@ async function post__api_admin_shop_products(req, res) {
 async function put__api_admin_shop_products__id___d__(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
-  const { name, description, price, image_path, category, stock_qty, active, position, sizes, size_label, fulfills_membership, fulfills_guest, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
+  const { name, description, price, image_path, category, stock_qty, active, position, sizes, size_label, fulfills_membership, fulfills_guest, fulfills_vendor, is_coupon, coupon_discount_type, coupon_discount_value, coupon_product_ids } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required' });
   }
@@ -195,10 +196,10 @@ async function put__api_admin_shop_products__id___d__(req, res) {
       `UPDATE shop_products
        SET name=$1, description=$2, price=$3, image_path=$4, category=$5,
            stock_qty=$6, active=$7, position=COALESCE($8, position), sizes=$9, size_label=$10,
-           fulfills_membership=$11, fulfills_guest=$12,
-           is_coupon=$13, coupon_discount_type=$14, coupon_discount_value=$15, coupon_product_ids=$16,
+           fulfills_membership=$11, fulfills_guest=$12, fulfills_vendor=$13,
+           is_coupon=$14, coupon_discount_type=$15, coupon_discount_value=$16, coupon_product_ids=$17,
            updated_at=NOW()
-       WHERE id=$17 RETURNING *`,
+       WHERE id=$18 RETURNING *`,
       [
         name.trim(),
         description ? description.trim() : null,
@@ -212,6 +213,7 @@ async function put__api_admin_shop_products__id___d__(req, res) {
         normalizeSizeLabel(size_label),
         fulfills_membership === true,
         fulfills_guest === true,
+        fulfills_vendor === true,
         isCoupon,
         isCoupon ? couponType : null,
         couponValue,
@@ -422,7 +424,7 @@ async function post__api_shop_donation(req, res) {
 // entirely of such lines is marked completed; anything shippable stays
 // 'processing' until an admin fulfills it.
 function orderStatusForCart(cartRows) {
-  const allFees = cartRows.length > 0 && cartRows.every((r) => r.fulfills_membership || r.fulfills_guest);
+  const allFees = cartRows.length > 0 && cartRows.every((r) => r.fulfills_membership || r.fulfills_guest || r.fulfills_vendor);
   return allFees ? 'completed' : 'processing';
 }
 
@@ -432,7 +434,7 @@ function orderStatusForCart(cartRows) {
 async function applyMembershipFulfillment(client, buyerUserId, cartRows) {  const seasonYear = currentSeasonYear();
   const done = new Set();
   for (const row of cartRows) {
-    if (!row.fulfills_membership && !row.fulfills_guest) continue;
+    if (!row.fulfills_membership && !row.fulfills_guest && !row.fulfills_vendor) continue;
     const targetId = row.beneficiary_user_id || buyerUserId;
     const key = `${targetId}:${row.fulfills_membership ? 'm' : ''}${row.fulfills_guest ? 'g' : ''}`;
     if (done.has(key)) continue;
@@ -453,6 +455,12 @@ async function applyMembershipFulfillment(client, buyerUserId, cartRows) {  cons
         [targetId, seasonYear]
       );
     }
+    if (row.fulfills_vendor) {
+      await client.query(
+        'UPDATE user_profiles SET vendor_fee_paid = TRUE, vendor_fee_paid_season = $2 WHERE user_id = $1',
+        [targetId, seasonYear]
+      );
+    }
   }
 }
 
@@ -464,7 +472,7 @@ async function post__api_shop_checkout(req, res) {
     const cartResult = await client.query(
       `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
               COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
-              p.fulfills_membership, p.fulfills_guest,
+              p.fulfills_membership, p.fulfills_guest, p.fulfills_vendor,
               p.is_coupon, p.coupon_discount_type, p.coupon_discount_value, p.coupon_product_ids
        FROM shop_cart_items c
        JOIN shop_products p ON p.id = c.product_id

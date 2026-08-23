@@ -30,6 +30,12 @@
       <div class="auth-card container">
         <h1>Request to Join the Krewe</h1>
         <form id="register-form">
+          <!-- Vendor registration question (compact single-line checkbox) -->
+          <div class="register-vendor-question" style="margin:0.75rem 0 1rem; display:flex; align-items:center; gap:0.5rem; font-size:0.9rem; line-height:1.2;">
+            <input type="checkbox" id="reg-is-vendor" name="is_vendor" value="true" style="width:auto; margin:0; flex:0 0 auto;" />
+            <label for="reg-is-vendor" style="cursor:pointer; font-weight:600;">Registering as a Vendor? (I represent a business or company)</label>
+          </div>
+
           <label for="full_name">Full name</label>
           <input id="full_name" name="full_name" required />
 
@@ -70,6 +76,43 @@
             </div>
           </div>
 
+          <!-- Vendor & company details (revealed when the box above is checked) -->
+          <fieldset id="vendor-fields" hidden style="margin:0.5rem 0 0; border:1px solid rgba(255,255,255,0.15); border-radius:12px; padding:1rem;">
+            <legend style="padding:0 0.5rem; font-weight:600;">Vendor &amp; Company Information</legend>
+            <p style="font-size:0.85rem; color:var(--muted); margin:0 0 0.75rem;">The fields above (name, email, phone) are the primary login for this account. Below, add your company details and a secondary contact.</p>
+
+            <label for="reg-company-name">Company Name</label>
+            <input id="reg-company-name" name="company_name" type="text" placeholder="e.g. Bayou Beads LLC" disabled />
+
+            <label for="reg-company-address">Company Address</label>
+            <input id="reg-company-address" name="company_address" type="text" placeholder="123 Business Dr" disabled />
+
+            <div style="display:grid;grid-template-columns:1fr 4rem 7rem;gap:0.5rem;">
+              <div>
+                <label for="reg-company-city">City</label>
+                <input id="reg-company-city" name="company_city" type="text" style="width:100%;" disabled />
+              </div>
+              <div>
+                <label for="reg-company-state">State</label>
+                <input id="reg-company-state" name="company_state" type="text" maxlength="2" style="width:100%;text-transform:uppercase;" disabled />
+              </div>
+              <div>
+                <label for="reg-company-zip">Zip</label>
+                <input id="reg-company-zip" name="company_zip" type="text" maxlength="10" style="width:100%;" disabled />
+              </div>
+            </div>
+
+            <p style="font-weight:600; margin:0.9rem 0 0.5rem;">Secondary Contact</p>
+            <label for="reg-secondary-name">Contact Name</label>
+            <input id="reg-secondary-name" name="secondary_contact_name" type="text" placeholder="Full name of secondary contact" disabled />
+
+            <label for="reg-secondary-email">Contact Email</label>
+            <input id="reg-secondary-email" name="secondary_contact_email" type="email" placeholder="secondary@example.com" disabled />
+
+            <label for="reg-secondary-phone">Contact Phone</label>
+            <input id="reg-secondary-phone" name="secondary_contact_phone" type="tel" placeholder="555-867-5309" disabled />
+          </fieldset>
+
           <div id="verification-code-group" hidden>
             <label for="verification_code">Verification code</label>
             <input id="verification_code" name="verification_code" inputmode="numeric" autocomplete="one-time-code" />
@@ -101,6 +144,23 @@
 
     <script src="script.js?v=20250720e"></script>
     <script src="auth.js?v=20260809b"></script>
+    <script>
+      // Reveal (and enable) the vendor/company fields only when the vendor box
+      // is checked. Disabled inputs are excluded from FormData, so an unchecked
+      // box means no vendor data is submitted to the server.
+      (function () {
+        const box = document.getElementById('reg-is-vendor');
+        const fieldset = document.getElementById('vendor-fields');
+        if (!box || !fieldset) return;
+        const inputs = fieldset.querySelectorAll('input');
+        function sync() {
+          fieldset.hidden = !box.checked;
+          inputs.forEach((el) => { el.disabled = !box.checked; });
+        }
+        box.addEventListener('change', sync);
+        sync();
+      })();
+    </script>
     <script>
       document.getElementById('register-form').addEventListener('submit', function(e) {
         e.preventDefault();

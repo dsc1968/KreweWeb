@@ -88,11 +88,11 @@ function normalizeOpacityValue(value) {
 // A user holds one base status plus, for members, any additive admin
 // capabilities. `admin` implies every capability. The legacy single `role`
 // column is kept as the derived "primary" role for backward compatibility.
-const BASE_ROLES = ['member', 'guest', 'admin', 'disabled'];
+const BASE_ROLES = ['member', 'guest', 'admin', 'disabled', 'vendor'];
 const CAPABILITY_ROLES = ['store_admin', 'float_admin', 'finance_admin'];
 const ALL_ROLES = [...BASE_ROLES, ...CAPABILITY_ROLES];
 // Highest-privilege-first ordering used to pick a single primary role.
-const ROLE_PRIORITY = ['disabled', 'admin', 'store_admin', 'float_admin', 'finance_admin', 'member', 'guest'];
+const ROLE_PRIORITY = ['disabled', 'admin', 'store_admin', 'float_admin', 'finance_admin', 'member', 'guest', 'vendor'];
 
 // Normalize an arbitrary roles input (an array, or a legacy single-role string)
 // into the canonical set: exactly one base status plus, for members, any
@@ -106,6 +106,7 @@ function normalizeRoleSet(input) {
   let base;
   if (set.has('disabled')) base = 'disabled';
   else if (set.has('admin')) base = 'admin';
+  else if (set.has('vendor')) base = 'vendor';
   else if (set.has('guest') && !set.has('member')) base = 'guest';
   else base = 'member';
   const result = [base];
