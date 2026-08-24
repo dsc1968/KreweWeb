@@ -2793,8 +2793,8 @@ if (countdownElements.days) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2.8rem;
-        height: 2.8rem;
+        width: 2.2rem;
+        height: 2.2rem;
         padding: 0;
         border-radius: 999px;
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -3075,8 +3075,8 @@ if (countdownElements.days) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2.8rem;
-        height: 2.8rem;
+        width: 2.2rem;
+        height: 2.2rem;
         padding: 0;
         border-radius: 999px;
         border: 1px solid rgba(255, 255, 255, 0.16);

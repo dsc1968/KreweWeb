@@ -358,6 +358,14 @@ h1 {
   box-shadow: 0 18px 38px rgba(255, 179, 72, 0.18);
 }
 
+/* Compact command buttons inside dashboard admin apps — sized to hug the text
+   (just slightly larger than the text itself) rather than the default 3rem pill */
+.admin-app .button {
+  min-height: 1.6rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.9rem;
+}
+
 .secondary,
 .outline {
   color: var(--text);
