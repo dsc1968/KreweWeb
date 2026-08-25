@@ -1363,6 +1363,7 @@ function renderAdminUsers(users, currentUserId) {
           payCell.appendChild(cap);
         }
         const actionCell = buildCell('');
+        actionCell.style.whiteSpace = 'nowrap'; // keep Approve/Deny/Edit on one line
 
         row.appendChild(nameCell);
         row.appendChild(emailCell);
