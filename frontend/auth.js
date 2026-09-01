@@ -2257,19 +2257,20 @@ function initChangePasswordForm() {
 // admin can see a live preview of the next reset date as they configure it.
 // Shows only the fields for the payment processor chosen in the dropdown.
 function setupPaymentProcessorUI(form) {
-  const sel = document.getElementById('cfg-payment-processor');
+  // A single PAYMENT_PROCESSOR select chooses which card processor's
+  // credential/fee fields are shown. Zelle (manual / offline) is always
+  // shown, so it is intentionally left untouched here.
+  const select = document.getElementById('cfg-payment-processor');
   const paypal = document.getElementById('cfg-provider-paypal');
   const stripe = document.getElementById('cfg-provider-stripe');
-  if (!sel || !paypal || !stripe) return;
-
-  function updateVisibility() {
-    const p = sel.value;
-    paypal.style.display = p === 'paypal' ? '' : 'none';
-    stripe.style.display = p === 'stripe' ? '' : 'none';
-  }
-
-  sel.addEventListener('change', updateVisibility);
-  updateVisibility();
+  if (!select) return;
+  const apply = () => {
+    const v = select.value;
+    if (paypal) paypal.style.display = (v === 'paypal') ? '' : 'none';
+    if (stripe) stripe.style.display = (v === 'stripe') ? '' : 'none';
+  };
+  select.addEventListener('change', apply);
+  apply();
 }
 
 function setupSeasonEndDateUI(form) {
@@ -2482,6 +2483,38 @@ async function initSiteConfig() {
     setFeedback('Network error loading config.', true);
     return;
   }
+
+  // Zelle QR image (manual payment): upload to the image endpoint and store the
+  // returned URL in the hidden ZELLE_QR field that gets saved with the config.
+  (function setupZelleQrUI() {
+    const fileInput = form.querySelector('#cfg-zelle-qr-upload');
+    const hidden = form.querySelector('#cfg-zelle-qr');
+    const preview = form.querySelector('#cfg-zelle-qr-preview');
+    const feedback = form.querySelector('#cfg-zelle-qr-feedback');
+    if (!fileInput || !hidden) return;
+    function renderPreview() {
+      const url = hidden.value || '';
+      if (preview) preview.innerHTML = url
+        ? '<img src="' + escHtml(url) + '" alt="Zelle QR code" style="max-width:160px;max-height:160px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:#fff;" />'
+        : '';
+    }
+    renderPreview();
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (feedback) feedback.textContent = 'Uploading…';
+      try {
+        const fd = new FormData();
+        fd.append('image', file);
+        const res = await fetch('/api/admin/upload-image', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
+        const data = await parseJSONResponse(res);
+        if (!res.ok || !data.path) { if (feedback) feedback.textContent = data.error || 'Upload failed'; return; }
+        hidden.value = data.path;
+        renderPreview();
+        if (feedback) feedback.textContent = 'QR image uploaded.';
+      } catch (_e) { if (feedback) feedback.textContent = 'Upload failed.'; }
+    });
+  })();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3405,6 +3438,8 @@ async function initShopPage() {
   let simulatePayment = false;
   let paypalConfigured = false;
   let stripeConfigured = false;
+  let zelleConfigured = false;
+  let zelleConfig = {};
   let activeMethod = 'paypal';
   let paymentMode = false;
   // Set by setupStripePayment so the payment-mode handlers can mount/tear down
@@ -3450,7 +3485,7 @@ async function initShopPage() {
 
   checkoutBtn.addEventListener('click', async () => {
     if (cartItems.length === 0) { cartFeedEl.textContent = 'Your cart is empty.'; return; }
-    if (!simulatePayment && (paypalConfigured || stripeConfigured)) {
+    if (!simulatePayment && (paypalConfigured || stripeConfigured || zelleConfigured)) {
       enterPaymentMode();
       return;
     }
@@ -3895,29 +3930,59 @@ async function initShopPage() {
     console.warn('Stripe setup skipped:', err && err.message);
   }
 
+  // ── Zelle setup (manual/offline; only when not simulating and configured) ──
+  if (!simulatePayment) try {
+    const zRes = await fetch('/api/shop/zelle/config', { headers: { Authorization: 'Bearer ' + token } });
+    const zData = await zRes.json();
+    if (zData && zData.configured) { zelleConfigured = true; zelleConfig = zData; }
+  } catch { /* Zelle not configured */ }
+
   // Reveals the payment UI (chooser + the appropriate provider panel) plus a
   // Cancel control, and hides the plain Checkout button.
   function enterPaymentMode() {
-    if (simulatePayment || !(paypalConfigured || stripeConfigured)) return;
+    if (simulatePayment || !(paypalConfigured || stripeConfigured || zelleConfigured)) return;
     paymentMode = true;
     const chooser = document.getElementById('payment-method-chooser');
     const cancelBtn = document.getElementById('shop-pay-cancel-btn');
     const ppContainer = document.getElementById('paypal-button-container');
     const spContainer = document.getElementById('stripe-payment-container');
+    const zContainer = document.getElementById('zelle-payment-container');
     if (checkoutBtn) checkoutBtn.style.display = 'none';
     if (cancelBtn) cancelBtn.style.display = '';
-    if (paypalConfigured && stripeConfigured) {
-      if (chooser) chooser.style.display = '';
-      showPaymentMethod(activeMethod || 'paypal');
+    const multi = (paypalConfigured ? 1 : 0) + (stripeConfigured ? 1 : 0) + (zelleConfigured ? 1 : 0) > 1;
+    if (multi) {
+      if (chooser) {
+        chooser.style.display = '';
+        // Only show chooser buttons for providers that are actually configured.
+        chooser.querySelectorAll('.shop-pay-method-btn').forEach((b) => {
+          const m = b.dataset.method;
+          const avail = (m === 'paypal' && paypalConfigured) || (m === 'card' && stripeConfigured) || (m === 'zelle' && zelleConfigured);
+          b.style.display = avail ? '' : 'none';
+        });
+      }
+      const valid = [];
+      if (paypalConfigured) valid.push('paypal');
+      if (stripeConfigured) valid.push('card');
+      if (zelleConfigured) valid.push('zelle');
+      if (!valid.includes(activeMethod)) activeMethod = valid[0];
+      showPaymentMethod(activeMethod);
     } else if (paypalConfigured) {
       if (chooser) chooser.style.display = 'none';
       if (ppContainer) ppContainer.style.display = '';
       if (spContainer) spContainer.style.display = 'none';
+      if (zContainer) zContainer.style.display = 'none';
     } else if (stripeConfigured) {
       if (chooser) chooser.style.display = 'none';
       if (spContainer) spContainer.style.display = '';
       if (ppContainer) ppContainer.style.display = 'none';
+      if (zContainer) zContainer.style.display = 'none';
       if (mountStripeCardEl) mountStripeCardEl();
+    } else if (zelleConfigured) {
+      if (chooser) chooser.style.display = 'none';
+      if (zContainer) zContainer.style.display = '';
+      if (ppContainer) ppContainer.style.display = 'none';
+      if (spContainer) spContainer.style.display = 'none';
+      renderZelleDetails();
     }
   }
 
@@ -3928,20 +3993,102 @@ async function initShopPage() {
     const cancelBtn = document.getElementById('shop-pay-cancel-btn');
     const ppContainer = document.getElementById('paypal-button-container');
     const spContainer = document.getElementById('stripe-payment-container');
+    const zContainer = document.getElementById('zelle-payment-container');
     if (chooser) chooser.style.display = 'none';
     if (cancelBtn) cancelBtn.style.display = 'none';
     if (ppContainer) ppContainer.style.display = 'none';
     if (spContainer) spContainer.style.display = 'none';
+    if (zContainer) zContainer.style.display = 'none';
     if (checkoutBtn) { checkoutBtn.style.display = ''; checkoutBtn.disabled = false; }
     if (cartFeedEl) { cartFeedEl.innerHTML = ''; cartFeedEl.style.color = ''; }
     if (unmountStripeCardEl) unmountStripeCardEl();
   }
 
+  function renderZelleDetails() {
+    const details = document.getElementById('zelle-details');
+    if (!details) return;
+    if (!zelleConfig || (!zelleConfig.email && !zelleConfig.phone && !zelleConfig.qr)) {
+      details.innerHTML = '<p class="shop-zelle-note">Zelle payee details are not configured yet. You can still place your order and the store will verify your payment.</p>';
+      const err = document.getElementById('zelle-errors');
+      if (err) err.textContent = '';
+      return;
+    }
+    let html = '<ul class="shop-zelle-list">';
+    if (zelleConfig.email) html += '<li><span class="shop-zelle-key">Zelle Email:</span> ' + escHtml(zelleConfig.email) + '</li>';
+    if (zelleConfig.phone) html += '<li><span class="shop-zelle-key">Zelle Phone:</span> ' + escHtml(zelleConfig.phone) + '</li>';
+    html += '</ul>';
+    if (zelleConfig.qr) html += '<div class="shop-zelle-qr"><img alt="Krewe Zelle QR code" src="' + escHtml(zelleConfig.qr) + '" /></div>';
+    details.innerHTML = html;
+    const err = document.getElementById('zelle-errors');
+    if (err) err.textContent = '';
+  }
+
+  async function submitZelleOrder() {
+    const zellePlaceBtn = document.getElementById('zelle-place-btn');
+    const refEl = document.getElementById('zelle-ref');
+    const bankEl = document.getElementById('zelle-bank');
+    const errEl = document.getElementById('zelle-errors');
+    const ref = refEl ? refEl.value.trim() : '';
+    const bank = bankEl ? bankEl.value.trim() : '';
+    if (!ref && !bank) {
+      if (errEl) errEl.textContent = 'Please enter the Zelle confirmation number (or your sending bank) so we can match your payment.';
+      return;
+    }
+    if (zellePlaceBtn) zellePlaceBtn.disabled = true;
+    if (errEl) errEl.textContent = '';
+    if (cartFeedEl) { cartFeedEl.style.color = 'var(--muted)'; cartFeedEl.textContent = 'Placing order…'; }
+    try {
+      const res = await fetch('/api/shop/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ payment_method: 'zelle', zelle_reference: ref, zelle_bank_name: bank }),
+      });
+      const data = await parseJSONResponse(res);
+      if (!res.ok) {
+        if (errEl) errEl.textContent = data.error || 'Unable to place order.';
+        if (zellePlaceBtn) zellePlaceBtn.disabled = false;
+        return;
+      }
+      if (cartFeedEl) {
+        cartFeedEl.style.color = '#4ade80';
+        cartFeedEl.textContent = `Order ${data.order_number || ('#' + data.order_id)} placed! It will be confirmed once your Zelle payment is verified.`;
+      }
+      if (zellePlaceBtn) zellePlaceBtn.disabled = false;
+      paymentMode = false;
+      const cancelBtn = document.getElementById('shop-pay-cancel-btn');
+      const chooser = document.getElementById('payment-method-chooser');
+      const zContainer = document.getElementById('zelle-payment-container');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      if (checkoutBtn) { checkoutBtn.style.display = ''; checkoutBtn.disabled = false; }
+      if (chooser) chooser.style.display = 'none';
+      if (zContainer) zContainer.style.display = 'none';
+      await loadCart();
+      document.querySelectorAll('.shop-tab-btn').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('.shop-panel').forEach((p) => p.classList.remove('is-active'));
+      const ordersBtn = document.querySelector('[data-shop-tab="orders"]');
+      const ordersPanel = document.querySelector('[data-shop-panel="orders"]');
+      if (ordersBtn) ordersBtn.classList.add('is-active');
+      if (ordersPanel) ordersPanel.classList.add('is-active');
+      closeCart();
+      loadOrders();
+    } catch (_e) {
+      if (errEl) errEl.textContent = 'Network error. Please try again.';
+      if (zellePlaceBtn) zellePlaceBtn.disabled = false;
+    }
+  }
+
   // ── Payment provider visibility / chooser ───────────────────────────────
-  if (!simulatePayment && (paypalConfigured || stripeConfigured)) {
-    // Wire the method chooser (only meaningful when both providers are enabled).
+  const zellePlaceBtn = document.getElementById('zelle-place-btn');
+  if (zellePlaceBtn) zellePlaceBtn.addEventListener('click', () => submitZelleOrder());
+
+  if (!simulatePayment && (paypalConfigured || stripeConfigured || zelleConfigured)) {
+    // Wire the method chooser (buttons for unconfigured providers are hidden).
     document.querySelectorAll('.shop-pay-method-btn').forEach((b) => {
-      b.addEventListener('click', () => showPaymentMethod(b.dataset.method));
+      const m = b.dataset.method;
+      if (m === 'paypal' && !paypalConfigured) return;
+      if (m === 'card' && !stripeConfigured) return;
+      if (m === 'zelle' && !zelleConfigured) return;
+      b.addEventListener('click', () => showPaymentMethod(m));
     });
     // Wire the Cancel control that returns the panel to the neutral state.
     const cancelBtn = document.getElementById('shop-pay-cancel-btn');
@@ -4175,9 +4322,12 @@ async function initShopPage() {
     });
     const ppContainer = document.getElementById('paypal-button-container');
     const spContainer = document.getElementById('stripe-payment-container');
+    const zContainer = document.getElementById('zelle-payment-container');
     if (ppContainer) ppContainer.style.display = method === 'paypal' ? '' : 'none';
     if (spContainer) spContainer.style.display = method === 'card' ? '' : 'none';
+    if (zContainer) zContainer.style.display = method === 'zelle' ? '' : 'none';
     if (method === 'card' && mountStripeCardEl) mountStripeCardEl();
+    if (method === 'zelle') renderZelleDetails();
   }
 
 }
@@ -4544,10 +4694,16 @@ async function initShopAdminPage() {
 
   // ── Orders table ──────────────────────────────────────────────────────────
   function payBadge(ps) {
-    const map = { succeeded: 'Paid', declined: 'Declined', unpaid: 'Unpaid' };
-    const cls = ['succeeded', 'declined', 'unpaid'].includes(ps) ? ps : 'pending';
-    const text = map[cls] || 'Pending';
-    return '<span class="sa-pay-status ' + cls + '">' + escHtml(text) + '</span>';
+    if (ps === 'declined') return '<span class="sa-pay-status declined">Declined</span>';
+    const paid = ps === 'paid' || ps === 'succeeded';
+    return '<span class="sa-pay-status ' + (paid ? 'succeeded' : 'unpaid') + '">' + escHtml(paid ? 'Paid' : 'Unpaid') + '</span>';
+  }
+
+  function methodBadge(m) {
+    const map = { paypal: 'PayPal', stripe: 'Stripe', zelle: 'Zelle' };
+    const text = map[m];
+    if (!text) return '';
+    return '<span class="sa-method-badge ' + escHtml(m) + '">' + escHtml(text) + '</span>';
   }
 
   async function loadAdminOrders(page) {
@@ -4570,6 +4726,13 @@ async function initShopAdminPage() {
       const statusOptions = ['pending','processing','shipped','completed','cancelled'];
       data.orders.forEach((o) => {
         const itemSummary = (o.items || []).map((i) => `${escHtml(i.product_name)}${i.size ? ` (${escHtml(i.size)})` : ''} ×${i.quantity}`).join(', ');
+        const isZellePending = o.payment_method === 'zelle' && o.payment_status === 'pending';
+        const zelleBlock = isZellePending ? `
+          <div class="sa-zelle-info" style="margin-top:0.35rem;font-size:0.76rem;color:var(--muted);">
+            Zelle ref: ${o.zelle_reference ? escHtml(o.zelle_reference) : '(none)'}${o.zelle_bank_name ? ' · ' + escHtml(o.zelle_bank_name) : ''}
+          </div>
+          <button class="sa-action-btn sa-verify-zelle" data-order-id="${o.id}">Verify Zelle</button>
+        ` : '';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>#${o.id}</td>
@@ -4582,8 +4745,17 @@ async function initShopAdminPage() {
               ${statusOptions.map((s) => `<option value="${s}" ${s===o.status?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
             </select>
             <button class="sa-action-btn danger sa-order-delete" data-order-id="${o.id}" title="Remove order">Remove</button>
+            ${zelleBlock}
           </td>
-          <td>${payBadge(o.payment_status)}</td>
+          <td>
+            <select class="sa-pay-status-select" data-order-id="${o.id}" title="Payment status">
+              ${['unpaid','pending','paid','succeeded','declined'].map((s) => `<option value="${s}" ${s===o.payment_status?'selected':''}>${s}</option>`).join('')}
+            </select>
+            <div style="margin-top:0.3rem;display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;">
+              ${payBadge(o.payment_status)}
+              ${methodBadge(o.payment_method)}
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -4617,6 +4789,39 @@ async function initShopAdminPage() {
               btn.disabled = false;
             }
           } catch { alert('Network error.'); btn.disabled = false; }
+        });
+      });
+      tbody.querySelectorAll('.sa-verify-zelle').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`Mark the Zelle payment for order #${btn.dataset.orderId} as verified / paid?`)) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/admin/shop/orders/${btn.dataset.orderId}/zelle-verify`, {
+              method: 'PUT',
+              headers: { Authorization: 'Bearer ' + token },
+            });
+            const d = await parseJSONResponse(res);
+            if (!res.ok) { alert(d.error || 'Verify failed'); btn.disabled = false; return; }
+            loadAdminOrders(data.page);
+          } catch { alert('Network error.'); btn.disabled = false; }
+        });
+      });
+      // Payment status change (admin override). The processor is shown as a
+      // read-only badge (methodBadge) and is no longer editable from this screen.
+      tbody.querySelectorAll('.sa-pay-status-select').forEach((sel) => {
+        sel.addEventListener('change', async () => {
+          const ordId = sel.dataset.orderId;
+          sel.disabled = true;
+          try {
+            const res = await fetch(`/api/admin/shop/orders/${ordId}/payment`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ payment_status: sel.value }),
+            });
+            const d = await parseJSONResponse(res);
+            if (!res.ok) { alert(d.error || 'Update failed'); loadAdminOrders(data.page); return; }
+            loadAdminOrders(data.page);
+          } catch { alert('Network error.'); loadAdminOrders(data.page); }
         });
       });
       // Pagination

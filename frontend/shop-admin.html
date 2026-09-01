@@ -128,6 +128,23 @@
       .sa-pay-status.unpaid    { background: var(--overlay-medium); border:1px solid var(--border-strong); color: var(--muted); }
       .sa-pay-status.pending   { background: rgba(255,210,98,0.14); border:1px solid rgba(255,210,98,0.3); color: var(--accent); }
 
+      .sa-method-badge {
+        display: inline-block; padding: 0.15rem 0.55rem;
+        border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        background: var(--overlay-medium); border:1px solid var(--border-strong); color: var(--muted);
+      }
+      .sa-method-badge.zelle { background: rgba(255,210,98,0.16); border:1px solid rgba(255,210,98,0.4); color: var(--accent); }
+      .sa-method-badge.stripe { background: rgba(139,92,246,0.16); border:1px solid rgba(139,92,246,0.4); color: #c4b5fd; }
+      .sa-method-badge.paypal { background: rgba(59,130,246,0.16); border:1px solid rgba(59,130,246,0.4); color: #93c5fd; }
+
+      .sa-pay-status-select, .sa-pay-method-select {
+        padding: 0.3rem 0.6rem; border-radius: 8px;
+        border: 1px solid var(--border-medium);
+        background: var(--select-bg); color: var(--text);
+        font: inherit; font-size: 0.82rem; cursor: pointer; width: 100%;
+      }
+
 
       .sa-status-select {
         padding: 0.3rem 0.6rem; border-radius: 8px;

@@ -465,7 +465,7 @@ async function applyMembershipFulfillment(client, buyerUserId, cartRows) {  cons
 }
 
 async function post__api_shop_checkout(req, res) {
-  const { notes } = req.body;
+  const { notes, payment_method, zelle_reference, zelle_bank_name } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -508,14 +508,24 @@ async function post__api_shop_checkout(req, res) {
     // simulation this endpoint is the no-provider fallback and stays unpaid.
     const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
     const simulatePaid = env.PAYMENT_SIMULATE === 'true';
-    const paymentStatus = simulatePaid ? 'succeeded' : 'unpaid';
+    const isZelle = payment_method === 'zelle';
+    const feeMethod = isZelle ? 'zelle' : (payment_method || null);
+    const { feePct, feeFixed, fee } = getPaymentFee(feeMethod, total);
+    const grandTotal = Math.round((total + fee) * 100) / 100;
+    // Zelle is a manual, out-of-band payment: the order is created in a pending
+    // state and only marked paid once an admin verifies the transfer.
+    const paymentStatus = isZelle ? 'pending' : (simulatePaid ? 'succeeded' : 'unpaid');
     const orderStatus = simulatePaid ? orderStatusForCart(cartResult.rows) : 'pending';
     const orderResult = await client.query(
-      `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [req.user.userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus, paymentStatus]
+      `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, payment_fee, notes, status, payment_status, payment_method, zelle_reference, zelle_bank_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [req.user.userId, buyer.full_name, buyer.email, grandTotal.toFixed(2), fee.toFixed(2), notes || null, orderStatus, paymentStatus,
+       isZelle ? 'zelle' : (payment_method || null), zelle_reference || null, zelle_bank_name || null]
     );
     const orderId = orderResult.rows[0].id;
+    // Human-friendly, trackable order number (KM-#######) derived from the id.
+    const orderNumber = 'KM-' + String(orderId).padStart(7, '0');
+    await client.query('UPDATE shop_orders SET order_number=$1 WHERE id=$2', [orderNumber, orderId]);
     for (const item of cartResult.rows) {
       const isCouponLine = item.is_coupon === true;
       const unitPrice = isCouponLine ? -(pricing.discountByCartId.get(item.cart_id) || 0) : item.price;
@@ -533,12 +543,13 @@ async function post__api_shop_checkout(req, res) {
       }
     }
     // Membership/guest fees are only credited when the order is actually paid.
+    // Zelle orders are fulfilled later, when an admin verifies the transfer.
     if (simulatePaid) {
       await applyMembershipFulfillment(client, req.user.userId, cartResult.rows);
     }
     await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [req.user.userId]);
     await client.query('COMMIT');
-    res.json({ ok: true, order_id: orderId, total: total.toFixed(2) });
+    res.json({ ok: true, order_id: orderId, order_number: orderNumber, payment_method: isZelle ? 'zelle' : null, subtotal: total.toFixed(2), payment_fee: fee.toFixed(2), total: grandTotal.toFixed(2) });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Checkout failed', err);
@@ -551,7 +562,7 @@ async function post__api_shop_checkout(req, res) {
 async function get__api_shop_orders(req, res) {
   try {
     const orders = await pool.query(
-      `SELECT id, total_amount, status, payment_status, notes, created_at
+      `SELECT id, order_number, total_amount, payment_fee, status, payment_status, payment_method, zelle_reference, zelle_bank_name, notes, created_at
        FROM shop_orders WHERE user_id=$1 ORDER BY created_at DESC`,
       [req.user.userId]
     );
@@ -590,7 +601,7 @@ async function get__api_admin_shop_orders(req, res) {
     if (usePayFilter) params.push(payFilter);
     const whereSql = usePayFilter ? 'WHERE payment_status = $1' : '';
     const orders = await pool.query(
-      `SELECT id, buyer_name, buyer_email, total_amount, status, payment_status, notes, created_at
+      `SELECT id, order_number, buyer_name, buyer_email, total_amount, payment_fee, status, payment_status, payment_method, zelle_reference, zelle_bank_name, notes, created_at
        FROM shop_orders ${whereSql} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     );
@@ -629,7 +640,7 @@ async function get__api_admin_shop_orders_report(req, res) {
   if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const orders = await pool.query(
-      `SELECT id, buyer_name, buyer_email, total_amount, status, payment_status, notes, created_at
+      `SELECT id, order_number, buyer_name, buyer_email, total_amount, payment_fee, status, payment_status, payment_method, zelle_reference, zelle_bank_name, notes, created_at
        FROM shop_orders ORDER BY created_at DESC`
     );
     const orderIds = orders.rows.map((r) => r.id);
@@ -695,12 +706,71 @@ async function put__api_admin_shop_orders__id___d___status(req, res) {
   }
 }
 
+// Lets a store admin update an order's payment status and/or payment method
+// (e.g. marking a Zelle order paid once the transfer is confirmed in the bank,
+// or correcting the recorded payment type). When a Zelle order transitions from
+// a non-paid state to a paid state, membership/guest/vendor fees are credited,
+// mirroring the Zelle verify flow.
+async function put__api_admin_shop_orders__id___d___payment(req, res) {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  const { payment_status, payment_method } = req.body || {};
+  const validStatuses = ['unpaid', 'pending', 'paid', 'succeeded', 'declined'];
+  const validMethods = ['paypal', 'stripe', 'zelle', ''];
+  if (payment_status != null && !validStatuses.includes(payment_status)) {
+    return res.status(400).json({ error: 'Invalid payment status' });
+  }
+  if (payment_method != null && !validMethods.includes(payment_method)) {
+    return res.status(400).json({ error: 'Invalid payment method' });
+  }
+  try {
+    const orderRes = await pool.query(
+      'SELECT id, user_id, payment_method, payment_status FROM shop_orders WHERE id=$1',
+      [id]
+    );
+    if (orderRes.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRes.rows[0];
+
+    const updates = ['updated_at=NOW()'];
+    const params = [];
+    let pi = 1;
+    if (payment_status != null) { updates.push(`payment_status=$${pi++}`); params.push(payment_status); }
+    if (payment_method != null) { updates.push(`payment_method=$${pi++}`); params.push(payment_method || null); }
+    params.push(id);
+    const result = await pool.query(
+      `UPDATE shop_orders SET ${updates.join(', ')} WHERE id=$${pi} RETURNING *`,
+      params
+    );
+
+    // Credit membership/guest/vendor fees when a Zelle order is marked paid
+    // (moving from a non-paid state). Mirrors the Zelle verify flow.
+    const newStatus = payment_status != null ? payment_status : order.payment_status;
+    const oldStatus = order.payment_status;
+    const effectiveMethod = (payment_method != null ? payment_method : order.payment_method) || '';
+    const isPaid = ['paid', 'succeeded'].includes(newStatus);
+    const wasPaid = ['paid', 'succeeded'].includes(oldStatus);
+    if (effectiveMethod === 'zelle' && isPaid && !wasPaid) {
+      const itemsRes = await pool.query(
+        `SELECT oi.beneficiary_user_id, p.fulfills_membership, p.fulfills_guest, p.fulfills_vendor
+         FROM shop_order_items oi JOIN shop_products p ON p.id = oi.product_id WHERE oi.order_id=$1`,
+        [id]
+      );
+      await applyMembershipFulfillment(pool, order.user_id, itemsRes.rows);
+    }
+
+    res.json({ order: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to update order payment', err);
+    res.status(500).json({ error: 'Unable to update payment' });
+  }
+}
+
 // Records a fully-paid order (PayPal/Stripe) from the user's cart inside an
 // existing transaction: creates the order and line items (coupon lines are
 // recorded as negative discount amounts), decrements tracked stock, credits
 // membership/guest fees, and clears the cart. Returns one of
 // { empty: true }, { soldOut: [names] }, or { orderId, total }.
-async function recordPaidCartOrder(client, userId, notes) {
+async function recordPaidCartOrder(client, userId, notes, method) {
   const cartResult = await client.query(
     `SELECT c.id AS cart_id, c.quantity, c.size, c.beneficiary_user_id, p.id AS product_id, p.name,
             COALESCE(c.custom_amount, p.price) AS price, p.stock_qty, p.active,
@@ -717,13 +787,17 @@ async function recordPaidCartOrder(client, userId, notes) {
   const buyer = userResult.rows[0];
   const pricing = computeCartPricing(cartResult.rows);
   const total = pricing.total;
+  const { fee } = getPaymentFee(method || '', total);
+  const grandTotal = Math.round((total + fee) * 100) / 100;
   const orderStatus = orderStatusForCart(cartResult.rows);
   const orderResult = await client.query(
-    `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, notes, status, payment_status)
-     VALUES ($1,$2,$3,$4,$5,$6,'succeeded') RETURNING id`,
-    [userId, buyer.full_name, buyer.email, total.toFixed(2), notes || null, orderStatus]
+    `INSERT INTO shop_orders (user_id, buyer_name, buyer_email, total_amount, payment_fee, payment_method, notes, status, payment_status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'succeeded') RETURNING id`,
+    [userId, buyer.full_name, buyer.email, grandTotal.toFixed(2), fee.toFixed(2), method || null, notes || null, orderStatus]
   );
   const orderId = orderResult.rows[0].id;
+  const orderNumber = 'KM-' + String(orderId).padStart(7, '0');
+  await client.query('UPDATE shop_orders SET order_number=$1 WHERE id=$2', [orderNumber, orderId]);
   for (const item of cartResult.rows) {
     const isCouponLine = item.is_coupon === true;
     const unitPrice = isCouponLine ? -(pricing.discountByCartId.get(item.cart_id) || 0) : item.price;
@@ -738,17 +812,22 @@ async function recordPaidCartOrder(client, userId, notes) {
   }
   await applyMembershipFulfillment(client, userId, cartResult.rows);
   await client.query('DELETE FROM shop_cart_items WHERE user_id=$1', [userId]);
-  return { orderId, total };
+  return { orderId, total: grandTotal, fee };
 }
 
 async function get__api_shop_paypal_config(req, res) {
   const cfg = getPayPalConfig();
-  const selected = getSelectedProcessor();
-  const active = selected === '' || selected === 'paypal';
+  const enabled = getProcessorEnabled('paypal');
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  const feePct = parseFloat(env.PAYPAL_FEE_PCT) || 0;
+  const feeFixed = parseFloat(env.PAYPAL_FEE_FIXED) || 0;
   res.json({
     client_id: cfg.clientId,
     mode: cfg.mode,
-    configured: active && !!(cfg.clientId && cfg.clientSecret),
+    enabled,
+    feePct,
+    feeFixed,
+    configured: enabled && !!(cfg.clientId && cfg.clientSecret),
   });
 }
 
@@ -769,11 +848,13 @@ async function post__api_shop_paypal_create_order(req, res) {
     const total = computeCartPricing(cartResult.rows).total;
     const accessToken = await getPayPalAccessToken(cfg);
     const hostname = cfg.mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+    const { fee } = getPaymentFee('paypal', total);
+    const chargeTotal = Math.round((total + fee) * 100) / 100;
     const ppOrder = await paypalHttpRequest(hostname, '/v2/checkout/orders', 'POST', {
       'Authorization': 'Bearer ' + accessToken,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-    }, { intent: 'CAPTURE', purchase_units: [{ amount: { currency_code: 'USD', value: total.toFixed(2) }, description: 'Krewe Mystique Shop' }] });
+    }, { intent: 'CAPTURE', purchase_units: [{ amount: { currency_code: 'USD', value: chargeTotal.toFixed(2) }, description: 'Krewe Mystique Shop' }] });
     if (ppOrder.status !== 201) {
       console.error('PayPal create-order failed', ppOrder.body);
       return res.status(502).json({ error: 'Payment provider error. Please try again.' });
@@ -813,7 +894,7 @@ async function post__api_shop_paypal_capture_order(req, res) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const rec = await recordPaidCartOrder(client, req.user.userId, notes);
+      const rec = await recordPaidCartOrder(client, req.user.userId, notes, 'paypal');
       if (rec.empty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
       if (rec.soldOut) { await client.query('ROLLBACK'); return res.status(400).json({ error: `Some items are sold out: ${rec.soldOut.join(', ')}` }); }
       await client.query('COMMIT');
@@ -846,6 +927,26 @@ function getSelectedProcessor() {
   return v === 'paypal' || v === 'stripe' ? v : '';
 }
 
+function getProcessorEnabled(name) {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  const v = (env[name + '_ENABLED'] || '').toLowerCase();
+  return v !== 'false';
+}
+
+function getPaymentFee(method, subtotal) {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  let feePct = 0, feeFixed = 0;
+  if (method === 'paypal') {
+    feePct = parseFloat(env.PAYPAL_FEE_PCT) || 0;
+    feeFixed = parseFloat(env.PAYPAL_FEE_FIXED) || 0;
+  } else if (method === 'stripe') {
+    feePct = parseFloat(env.STRIPE_FEE_PCT) || 0;
+    feeFixed = parseFloat(env.STRIPE_FEE_FIXED) || 0;
+  }
+  const fee = Math.round((subtotal * (feePct / 100) + feeFixed) * 100) / 100;
+  return { feePct, feeFixed, fee };
+}
+
 // Raw HTTPS helper for the Stripe REST API (no external SDK dependency, mirroring
 // the existing PayPal helper so nothing new is introduced to the dependency tree).
 function stripeHttpRequest(method, urlPath, body) {
@@ -875,13 +976,74 @@ function stripeHttpRequest(method, urlPath, body) {
 
 async function get__api_shop_stripe_config(req, res) {
   const cfg = getStripeConfig();
-  const selected = getSelectedProcessor();
-  const active = selected === '' || selected === 'stripe';
+  const enabled = getProcessorEnabled('stripe');
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  const feePct = parseFloat(env.STRIPE_FEE_PCT) || 0;
+  const feeFixed = parseFloat(env.STRIPE_FEE_FIXED) || 0;
   res.json({
     publishable_key: cfg.publishableKey,
     mode: cfg.mode,
-    configured: active && !!(cfg.secretKey && cfg.publishableKey),
+    enabled,
+    feePct,
+    feeFixed,
+    configured: enabled && !!(cfg.secretKey && cfg.publishableKey),
   });
+}
+
+// Reads the Zelle payee details from .env (email, phone, QR image URL).
+function getZelleConfig() {
+  const env = parseEnvFile(fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '');
+  return {
+    email: (env.ZELLE_EMAIL || '').trim(),
+    phone: (env.ZELLE_PHONE || '').trim(),
+    qr: (env.ZELLE_QR || '').trim(),
+  };
+}
+
+// Public endpoint consumed by the checkout UI to render Zelle payment details.
+async function get__api_shop_zelle_config(req, res) {
+  const cfg = getZelleConfig();
+  const enabled = getProcessorEnabled('zelle');
+  res.json({ ...cfg, enabled, feePct: 0, feeFixed: 0, configured: enabled && !!(cfg.email || cfg.phone) });
+}
+
+// Admin verifies a pending Zelle payment: marks the order paid and credits any
+// membership/guest/vendor fees that the order fulfills.
+async function put__api_admin_shop_orders__id___d___zelle_verify(req, res) {
+  if (!isShopManager(req)) return res.status(403).json({ error: 'Forbidden' });
+  const id = parseInt(req.params.id, 10);
+  const { zelle_reference, zelle_bank_name } = req.body || {};
+  try {
+    const orderRes = await pool.query(
+      'SELECT id, user_id, payment_method, payment_status FROM shop_orders WHERE id=$1',
+      [id]
+    );
+    if (orderRes.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRes.rows[0];
+    if (order.payment_method && order.payment_method !== 'zelle') {
+      return res.status(400).json({ error: 'This order was not paid with Zelle' });
+    }
+    const updates = ['payment_status=\'paid\'', 'updated_at=NOW()'];
+    const params = [];
+    let pi = 1;
+    if (zelle_reference != null) { updates.push(`zelle_reference=$${pi++}`); params.push(String(zelle_reference).trim()); }
+    if (zelle_bank_name != null) { updates.push(`zelle_bank_name=$${pi++}`); params.push(String(zelle_bank_name).trim()); }
+    params.push(id);
+    const result = await pool.query(`UPDATE shop_orders SET ${updates.join(', ')} WHERE id=$${pi} RETURNING *`, params);
+    // Credit fees only when moving from a non-paid state.
+    if (order.payment_status !== 'paid') {
+      const itemsRes = await pool.query(
+        `SELECT oi.beneficiary_user_id, p.fulfills_membership, p.fulfills_guest, p.fulfills_vendor
+         FROM shop_order_items oi JOIN shop_products p ON p.id = oi.product_id WHERE oi.order_id=$1`,
+        [id]
+      );
+      await applyMembershipFulfillment(pool, order.user_id, itemsRes.rows);
+    }
+    res.json({ order: result.rows[0] });
+  } catch (err) {
+    console.error('Failed to verify Zelle payment', err);
+    res.status(500).json({ error: 'Unable to verify payment' });
+  }
 }
 
 async function post__api_shop_stripe_create_payment_intent(req, res) {
@@ -899,7 +1061,9 @@ async function post__api_shop_stripe_create_payment_intent(req, res) {
     const inactive = cartResult.rows.filter((r) => !r.active);
     if (inactive.length) return res.status(400).json({ error: `Items unavailable: ${inactive.map((r) => r.name).join(', ')}` });
     const total = computeCartPricing(cartResult.rows).total;
-    const amountCents = Math.round(total * 100);
+    const { fee } = getPaymentFee('stripe', total);
+    const chargeTotal = Math.round((total + fee) * 100) / 100;
+    const amountCents = Math.round(chargeTotal * 100);
     // Restrict to card, which also carries the Apple Pay / Google Pay wallets;
     // this excludes US bank transfer, Cash App Pay, Klarna, and other methods.
     const form = `amount=${amountCents}&currency=usd&description=${encodeURIComponent('Krewe Mystique Shop')}&metadata[source]=shop&payment_method_types[0]=card`;
@@ -938,7 +1102,7 @@ async function post__api_shop_stripe_confirm(req, res) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const rec = await recordPaidCartOrder(client, req.user.userId, notes);
+      const rec = await recordPaidCartOrder(client, req.user.userId, notes, 'stripe');
       if (rec.empty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cart is empty' }); }
       if (rec.soldOut) { await client.query('ROLLBACK'); return res.status(400).json({ error: `Some items are sold out: ${rec.soldOut.join(', ')}` }); }
       await client.query('COMMIT');
@@ -1066,4 +1230,4 @@ async function get__api_shop_members(req, res) {
   }
 }
 
-module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_orders_report,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_products__id___d__,put__api_admin_shop_products_reorder,put__api_shop_cart__itemId___d__, };
+module.exports = { delete__api_admin_shop_orders__id___d__,delete__api_admin_shop_products__id___d__,delete__api_shop_cart__itemId___d__,get__api_admin_shop_orders,get__api_admin_shop_orders_report,get__api_admin_shop_products,get__api_shop_cart,get__api_shop_members,get__api_shop_orders,get__api_shop_payment_mode,get__api_shop_paypal_config,get__api_shop_products,getPayPalAccessToken,getPayPalConfig,paypalHttpRequest,getStripeConfig,stripeHttpRequest,get__api_shop_stripe_config,post__api_shop_stripe_create_payment_intent,post__api_shop_stripe_confirm,post__api_shop_stripe_declined,post__api_shop_donation,post__api_admin_shop_products,post__api_shop_cart,post__api_shop_checkout,post__api_shop_paypal_capture_order,post__api_shop_paypal_create_order,get__api_shop_zelle_config,put__api_admin_shop_orders__id___d___zelle_verify,put__api_admin_shop_orders__id___d___status,put__api_admin_shop_orders__id___d___payment,put__api_admin_shop_products__id___d__,put__api_admin_shop_products_reorder,put__api_shop_cart__itemId___d__, };

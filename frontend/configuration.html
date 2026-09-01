@@ -141,6 +141,23 @@
                     <input type="password" id="cfg-paypal-secret" name="PAYPAL_CLIENT_SECRET" placeholder="••••" autocomplete="new-password" />
                   </div>
                 </div>
+                <p class="db-config-section-label" style="margin-top:0.75rem;">PayPal Fees</p>
+                <div class="db-form-grid">
+                  <div class="form-group">
+                    <label for="cfg-paypal-fee-pct">Fee Percentage (%)</label>
+                    <input type="number" id="cfg-paypal-fee-pct" name="PAYPAL_FEE_PCT" step="0.01" min="0" placeholder="0" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cfg-paypal-fee-fixed">Transaction Fee ($)</label>
+                    <input type="number" id="cfg-paypal-fee-fixed" name="PAYPAL_FEE_FIXED" step="0.01" min="0" placeholder="0" />
+                  </div>
+                  <div class="form-group" style="grid-column:1/-1;">
+                    <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+                      <input type="checkbox" id="cfg-paypal-fee-add" name="PAYPAL_FEE_ADD" style="accent-color:#ffd262;width:1rem;height:1rem;flex-shrink:0;" />
+                      Add fee to payment at checkout as a separate charge (like a tax)
+                    </label>
+                  </div>
+                </div>
                 <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain credentials from <a href="https://developer.paypal.com/dashboard/" target="_blank" rel="noopener">developer.paypal.com</a>. After saving, restart the server.</p>
               </div>
 
@@ -162,7 +179,45 @@
                     <input type="password" id="cfg-stripe-secret" name="STRIPE_SECRET_KEY" placeholder="sk_test_… / sk_live_…" autocomplete="new-password" />
                   </div>
                 </div>
+                <p class="db-config-section-label" style="margin-top:0.75rem;">Stripe Fees</p>
+                <div class="db-form-grid">
+                  <div class="form-group">
+                    <label for="cfg-stripe-fee-pct">Fee Percentage (%)</label>
+                    <input type="number" id="cfg-stripe-fee-pct" name="STRIPE_FEE_PCT" step="0.01" min="0" placeholder="0" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cfg-stripe-fee-fixed">Transaction Fee ($)</label>
+                    <input type="number" id="cfg-stripe-fee-fixed" name="STRIPE_FEE_FIXED" step="0.01" min="0" placeholder="0" />
+                  </div>
+                  <div class="form-group" style="grid-column:1/-1;">
+                    <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-size:0.9rem;">
+                      <input type="checkbox" id="cfg-stripe-fee-add" name="STRIPE_FEE_ADD" style="accent-color:#ffd262;width:1rem;height:1rem;flex-shrink:0;" />
+                      Add fee to payment at checkout as a separate charge (like a tax)
+                    </label>
+                  </div>
+                </div>
                 <p style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Obtain API keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">Stripe dashboard</a>. After saving, restart the server. Leave the keys blank to disable Stripe at checkout.</p>
+              </div>
+
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.12);margin:1rem 0;" />
+              <p class="db-config-section-label">Zelle (manual / offline)</p>
+              <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Enable Zelle as a checkout option. Buyers send payment manually from their bank's Zelle app and enter the confirmation; orders stay <em>pending</em> until an admin verifies the transfer. Zelle works alongside (or instead of) a card processor. The Zelle email is required to enable it.</p>
+              <div class="db-form-grid">
+                <div class="form-group">
+                  <label for="cfg-zelle-email">Zelle Email (required)</label>
+                  <input type="text" id="cfg-zelle-email" name="ZELLE_EMAIL" placeholder="treasurer@krewe.org" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="cfg-zelle-phone">Zelle Phone (optional)</label>
+                  <input type="text" id="cfg-zelle-phone" name="ZELLE_PHONE" placeholder="(555) 555-5555" autocomplete="off" />
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                  <label for="cfg-zelle-qr-upload">Zelle QR Code Image (optional)</label>
+                  <input type="file" id="cfg-zelle-qr-upload" accept="image/*" />
+                  <input type="hidden" id="cfg-zelle-qr" name="ZELLE_QR" />
+                  <div id="cfg-zelle-qr-preview" style="margin-top:0.5rem;"></div>
+                  <p id="cfg-zelle-qr-feedback" style="font-size:0.8rem;color:var(--muted);margin-top:0.35rem;"></p>
+                </div>
               </div>
 
               <div class="db-form-grid" style="margin-top:0.75rem;">
@@ -173,9 +228,7 @@
                   </label>
                 </div>
               </div>
-            </div>
-
-            <!-- Registration -->
+            </div>            <!-- Registration -->
             <div class="tab-panel" data-tab="registration">
               <p class="db-config-section-label">Registration</p>
               <div class="db-form-grid">

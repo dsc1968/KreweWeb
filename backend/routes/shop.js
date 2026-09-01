@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middlewares/auth');
 const { upload } = require('../utils/files');
-const { get__api_shop_payment_mode, get__api_shop_products, get__api_shop_members, get__api_admin_shop_products, post__api_admin_shop_products, put__api_admin_shop_products__id___d__, put__api_admin_shop_products_reorder, delete__api_admin_shop_products__id___d__, get__api_shop_cart, post__api_shop_cart, post__api_shop_donation, put__api_shop_cart__itemId___d__, delete__api_shop_cart__itemId___d__, post__api_shop_checkout, get__api_shop_orders, get__api_admin_shop_orders, get__api_admin_shop_orders_report, delete__api_admin_shop_orders__id___d__, put__api_admin_shop_orders__id___d___status, get__api_shop_paypal_config, post__api_shop_paypal_create_order, post__api_shop_paypal_capture_order, get__api_shop_stripe_config, post__api_shop_stripe_create_payment_intent, post__api_shop_stripe_confirm, post__api_shop_stripe_declined } = require('../controllers/shopController');
+const { get__api_shop_payment_mode, get__api_shop_products, get__api_shop_members, get__api_admin_shop_products, post__api_admin_shop_products, put__api_admin_shop_products__id___d__, put__api_admin_shop_products_reorder, delete__api_admin_shop_products__id___d__, get__api_shop_cart, post__api_shop_cart, post__api_shop_donation, put__api_shop_cart__itemId___d__, delete__api_shop_cart__itemId___d__, post__api_shop_checkout, get__api_shop_orders, get__api_admin_shop_orders, get__api_admin_shop_orders_report, delete__api_admin_shop_orders__id___d__, put__api_admin_shop_orders__id___d___status, get__api_shop_paypal_config, post__api_shop_paypal_create_order, post__api_shop_paypal_capture_order, get__api_shop_stripe_config, post__api_shop_stripe_create_payment_intent, post__api_shop_stripe_confirm, post__api_shop_stripe_declined, get__api_shop_zelle_config, put__api_admin_shop_orders__id___d___zelle_verify, put__api_admin_shop_orders__id___d___payment } = require('../controllers/shopController');
 
 router.get('/api/shop/payment-mode', authenticateToken, get__api_shop_payment_mode);
 router.get('/api/shop/products', authenticateToken, get__api_shop_products);
@@ -26,9 +26,12 @@ router.put('/api/admin/shop/orders/:id(\\d+)/status', authenticateToken, put__ap
 router.get('/api/shop/paypal/config', authenticateToken, get__api_shop_paypal_config);
 router.post('/api/shop/paypal/create-order', authenticateToken, post__api_shop_paypal_create_order);
 router.post('/api/shop/paypal/capture-order', authenticateToken, post__api_shop_paypal_capture_order);
+router.get('/api/shop/zelle/config', authenticateToken, get__api_shop_zelle_config);
 router.get('/api/shop/stripe/config', authenticateToken, get__api_shop_stripe_config);
 router.post('/api/shop/stripe/create-payment-intent', authenticateToken, post__api_shop_stripe_create_payment_intent);
 router.post('/api/shop/stripe/confirm', authenticateToken, post__api_shop_stripe_confirm);
 router.post('/api/shop/stripe/declined', authenticateToken, post__api_shop_stripe_declined);
+router.put('/api/admin/shop/orders/:id(\\d+)/zelle-verify', authenticateToken, put__api_admin_shop_orders__id___d___zelle_verify);
+router.put('/api/admin/shop/orders/:id(\\d+)/payment', authenticateToken, put__api_admin_shop_orders__id___d___payment);
 
 module.exports = router;

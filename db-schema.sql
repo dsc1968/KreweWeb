@@ -6,10 +6,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict xJ85ArGJqdb9FTbBnWuDPdQCO5VhxQyeo1ThRhIsYTuKcZoMp79L3DJCxOKcTSm
+\restrict 3PcqaijFmvpnJZFpF9KmfVnY5PKgiDLdTa3S4dgB6rbXIx08uHD9chWWVY8Mzdo
 
--- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
--- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+-- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -408,7 +408,12 @@ CREATE TABLE public.shop_orders (
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    payment_status text DEFAULT 'pending'::text NOT NULL
+    payment_status text DEFAULT 'pending'::text NOT NULL,
+    order_number text,
+    payment_method text,
+    zelle_reference text,
+    zelle_bank_name text,
+    payment_fee numeric(10,2) DEFAULT 0 NOT NULL
 );
 
 
@@ -755,6 +760,14 @@ ALTER TABLE ONLY public.shop_order_items
 
 
 --
+-- Name: shop_orders shop_orders_order_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shop_orders
+    ADD CONSTRAINT shop_orders_order_number_key UNIQUE (order_number);
+
+
+--
 -- Name: shop_orders shop_orders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1010,5 +1023,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xJ85ArGJqdb9FTbBnWuDPdQCO5VhxQyeo1ThRhIsYTuKcZoMp79L3DJCxOKcTSm
+\unrestrict 3PcqaijFmvpnJZFpF9KmfVnY5PKgiDLdTa3S4dgB6rbXIx08uHD9chWWVY8Mzdo
 

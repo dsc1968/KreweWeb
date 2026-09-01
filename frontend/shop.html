@@ -552,6 +552,78 @@
         margin-top: 0.45rem;
       }
 
+      /* Zelle (manual / offline) checkout flow */
+      .shop-zelle-wrap {
+        padding: 0.9rem;
+        border-radius: 12px;
+        border: 1px solid rgba(255,210,98,0.45);
+        background: rgba(255,210,98,0.06);
+      }
+      .shop-zelle-hint {
+        margin: 0 0 0.7rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .shop-zelle-details {
+        margin-bottom: 0.75rem;
+      }
+      .shop-zelle-list {
+        margin: 0 0 0.5rem;
+        padding-left: 1.1rem;
+        font-size: 0.88rem;
+        color: var(--text);
+        line-height: 1.7;
+      }
+      .shop-zelle-key { font-weight: 700; color: var(--accent); }
+      .shop-zelle-note {
+        margin: 0 0 0.5rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+        background: var(--overlay-medium);
+        border: 1px solid var(--border-medium);
+        border-radius: 8px;
+        padding: 0.55rem 0.7rem;
+      }
+      .shop-zelle-qr {
+        margin: 0.5rem 0 0.25rem;
+      }
+      .shop-zelle-qr img {
+        max-width: 180px;
+        max-height: 180px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: #fff;
+      }
+      .shop-zelle-field {
+        margin-top: 0.55rem;
+      }
+      .shop-zelle-field label {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+      }
+      .shop-zelle-input {
+        width: 100%;
+        padding: 0.5rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid var(--field-border);
+        background: var(--field-bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+      }
+      .shop-zelle-input:focus { outline: none; border-color: var(--accent); }
+      .shop-zelle-errors {
+        color: #f87171;
+        font-size: 0.78rem;
+        min-height: 1em;
+        margin-top: 0.45rem;
+      }
+
       /* ── Orders tab ──────────────────────────────────────────────── */
       .shop-order-card {
         background: var(--db-card-bg, linear-gradient(180deg, rgba(10,19,44,0.98), rgba(15,26,56,0.95)));
@@ -692,6 +764,7 @@
         <div id="payment-method-chooser" class="shop-pay-methods" style="display:none;margin-top:0.5rem;">
           <button type="button" class="shop-pay-method-btn is-active" data-method="paypal">PayPal</button>
           <button type="button" class="shop-pay-method-btn" data-method="card">Credit Card</button>
+          <button type="button" class="shop-pay-method-btn" data-method="zelle">Zelle</button>
         </div>
 
         <div id="paypal-button-container" style="margin-top:0.5rem;"></div>
@@ -702,6 +775,24 @@
             <div id="stripe-payment-element" class="shop-stripe-element"></div>
             <div id="stripe-payment-errors" class="shop-stripe-errors" role="alert"></div>
             <button id="stripe-pay-btn" class="button" style="width:100%;margin-top:0.6rem;">Pay</button>
+          </div>
+        </div>
+
+        <!-- Zelle (manual / offline) checkout flow -->
+        <div id="zelle-payment-container" style="margin-top:0.5rem;display:none;">
+          <div class="shop-zelle-wrap">
+            <p class="shop-zelle-hint">Send the total from your bank's Zelle app to the Krewe's Zelle account below, then enter the confirmation so we can match your payment. Orders stay <em>pending</em> until an admin verifies the transfer.</p>
+            <div id="zelle-details" class="shop-zelle-details"></div>
+            <div class="form-group shop-zelle-field">
+              <label for="zelle-ref">Confirmation / Reference (from your bank)</label>
+              <input type="text" id="zelle-ref" class="shop-zelle-input" placeholder="e.g. Zelle receipt number" />
+            </div>
+            <div class="form-group shop-zelle-field">
+              <label for="zelle-bank">Sending Bank (optional)</label>
+              <input type="text" id="zelle-bank" class="shop-zelle-input" placeholder="e.g. Chase, Bank of America" />
+            </div>
+            <div id="zelle-errors" class="shop-zelle-errors" role="alert"></div>
+            <button id="zelle-place-btn" class="button" style="width:100%;margin-top:0.6rem;">Place Order via Zelle</button>
           </div>
         </div>
 
