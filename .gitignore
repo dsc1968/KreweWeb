@@ -9,3 +9,10 @@ tmp/
 # Editor/generated file backups (not source)
 _file_backups/
 backend/_file_backups/
+
+# Generated backup artifacts — never commit these
+_backups/
+*.bak
+*.backup
+*.old
+*~
