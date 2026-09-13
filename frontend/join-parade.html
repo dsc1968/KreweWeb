@@ -276,6 +276,15 @@
           Questions about parade entry? <a href="/contact.html">Contact us</a>
         </p>
       </div>
+
+      <div id="parade-success" class="auth-card container" hidden>
+        <h1>Application Submitted</h1>
+        <p>Thank you! Your parade entry application has been received. The parade committee will review it and contact you using the email you provided. A confirmation copy of your application has also been sent to that address.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="/">Return Home</a>
+          <a class="button secondary" href="/parade.html">View the Parade</a>
+        </div>
+      </div>
     </main>
 
     <script src="script.js?v=20250720e"></script>
@@ -328,6 +337,8 @@
         form.addEventListener('submit', function (e) {
           e.preventDefault();
           clearInvalid();
+          var submitBtn = document.getElementById('parade-submit-button');
+          if (submitBtn) submitBtn.disabled = true;
           var missing = [];
 
           form.querySelectorAll('input[required], textarea[required]').forEach(function (el) {
@@ -355,6 +366,7 @@
             var firstInvalid = form.querySelector('.pf-invalid');
             if (firstInvalid) firstInvalid.focus();
             feedback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (submitBtn) submitBtn.disabled = false;
             return;
           }
 
@@ -371,17 +383,23 @@
             if (res && res.error) {
               feedback.style.color = '#ff6b6b';
               feedback.textContent = res.error;
+              if (submitBtn) submitBtn.disabled = false;
             } else {
-              feedback.style.color = '#7CFC9B';
-              feedback.textContent = 'Your parade application has been submitted. The parade committee will review it and contact you.';
-              form.reset();
-              var w = document.getElementById('pf-welcome');
-              if (w) w.hidden = true;
+              // Swap the form for an unmistakable success panel so the user
+              // knows the application went through.
+              var formCard = form.closest('.auth-card');
+              if (formCard) formCard.hidden = true;
+              var successPanel = document.getElementById('parade-success');
+              if (successPanel) {
+                successPanel.hidden = false;
+                successPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
             }
           })
           .catch(function (err) {
             feedback.style.color = '#ff6b6b';
             feedback.textContent = 'We could not submit your application right now. Please try again in a moment.';
+            if (submitBtn) submitBtn.disabled = false;
             console.error(err);
           });
         });

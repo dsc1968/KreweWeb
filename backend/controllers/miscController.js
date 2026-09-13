@@ -483,10 +483,12 @@ async function post__api_parade_application(req, res) {
     return res.status(400).json({ error: 'You must agree to the release to submit your application' });
   }
 
-  const recipients = (JOIN_REQUEST_RECIPIENTS ? JOIN_REQUEST_RECIPIENTS.split(',').map((s) => s.trim()).filter(Boolean) : []);
-  if (recipients.length === 0 && CONTACT_RECIPIENT) recipients.push(CONTACT_RECIPIENT);
-
   const normEmail = normalizeEmailAddress(email);
+  // Route the notification to the same addresses used for registration requests,
+  // and CC the applicant a copy of the submitted details.
+  const recipients = joinRequestRecipients();
+  const toList = recipients.length ? recipients : [normEmail];
+  const ccList = (normEmail && !toList.includes(normEmail)) ? [normEmail] : [];
   const EOL = String.fromCharCode(10);
   const lines = [];
   const add = (label, val) => {
@@ -530,21 +532,12 @@ async function post__api_parade_application(req, res) {
   try {
     await smtpTransport.sendMail({
       from: SMTP_FROM,
-      to: recipients.join(', ') || normEmail,
+      to: toList.join(', '),
+      cc: ccList.join(', '),
       replyTo: normEmail,
       subject: 'New Parade Entry Application' + (data.organization ? ' - ' + data.organization : ''),
       text: emailBody.trim()
     });
-    try {
-      await smtpTransport.sendMail({
-        from: SMTP_FROM,
-        to: normEmail,
-        subject: 'Krewe Mystique Parade Application Received',
-        text: 'Thank you for your parade entry application. The parade committee will review it and contact you.' + EOL + EOL + 'Please do not reply to this automated message.'
-      });
-    } catch (confirmErr) {
-      console.error('Failed to send parade applicant confirmation email:', confirmErr);
-    }
     res.json({ message: 'Parade application submitted successfully' });
   } catch (error) {
     console.error('Failed to process parade application:', error);
