@@ -105,6 +105,8 @@
     <script>
       document.getElementById('register-form').addEventListener('submit', function(e) {
         e.preventDefault();
+        const submitBtn = document.getElementById('register-submit-button');
+        if (submitBtn) submitBtn.disabled = true;
         const formData = new FormData(this);
         const data = {};
         formData.forEach((value, key) => { data[key] = value; });
@@ -115,20 +117,20 @@
         })
         .then(response => response.json())
         .then(result => {
-          const feedback = document.getElementById('register-feedback');
           if (result.error) {
+            const feedback = document.getElementById('register-feedback');
             feedback.style.color = 'red';
             feedback.textContent = result.error;
+            if (submitBtn) submitBtn.disabled = false;
           } else {
-            feedback.style.color = 'green';
-            feedback.textContent = 'Your request has been submitted. We will review it and contact you via email.';
-            this.reset();
+            window.location.href = '/submission-complete.html?type=krewe';
           }
         })
         .catch(err => {
           const feedback = document.getElementById('register-feedback');
           feedback.style.color = 'red';
           feedback.textContent = 'An error occurred. Please try again.';
+          if (submitBtn) submitBtn.disabled = false;
           console.error(err);
         });
       });
