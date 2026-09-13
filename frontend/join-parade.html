@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Join the Parade - Krewe Mystique</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">
+          <img class="brand-logo" src="assets/images/Krewe%20Mystique%20Logo%20-%20Color1%20-%20nobg.png" alt="">
+          <span class="brand-text">Krewe Mystique</span>
+        </a>
+        <div id="nav-mount"></div>
+      </div>
+    </header>
+
+    <section class="hero join-hero" data-admin-background-var="--admin-bg-image" data-admin-static-section-key="static-section:0" data-admin-section-type="static" data-admin-image-path="/assets/images/MardiGras_Pic22.jpg" style="--admin-bg-image: url(&quot;/assets/images/MardiGras_Pic22.jpg&quot;);">
+      <div class="hero-overlay"></div>
+      <div class="container">
+        <p class="eyebrow">Krewe Mystique de la Capitale</p>
+        <h1>Join the Parade</h1>
+        <p class="hero-copy">Apply to ride with Baton Rouge's oldest parading krewe</p>
+      </div>
+    </section>
+
+    <main class="auth-page">
+      <div class="auth-card container">
+        <h1>Parade Entry Application</h1>
+        <div id="pf-welcome" class="pf-welcome" hidden></div>
+        <form id="parade-form">
+
+        <fieldset class="parade-fs">
+          <legend>Applicant Information</legend>
+          <label for="pf-org">Organization / Business Name</label>
+          <input id="pf-org" name="organization" type="text" placeholder="e.g. Bayou Beads LLC" />
+
+          <label for="pf-entry_name">Name of Parade Entry</label>
+          <input id="pf-entry_name" name="entry_name" type="text" placeholder="What your entry will be called" />
+
+          <label for="pf-contact_person">Contact Person</label>
+          <input id="pf-contact_person" name="contact_person" type="text" required placeholder="Full name" />
+
+          <label for="pf-title">Title</label>
+          <input id="pf-title" name="title" type="text" placeholder="e.g. Parade Coordinator" />
+
+          <label for="pf-phone">Phone</label>
+          <input id="pf-phone" name="phone" type="tel" placeholder="e.g. 555-867-5309" />
+
+          <label for="pf-email">Email</label>
+          <input id="pf-email" name="email" type="email" required />
+
+          <label for="pf-website">Website</label>
+          <input id="pf-website" name="website" type="url" placeholder="https://" />
+
+          <label for="pf-facebook">Facebook</label>
+          <input id="pf-facebook" name="facebook" type="text" placeholder="Facebook page/url" />
+
+          <label for="pf-instagram">Instagram</label>
+          <input id="pf-instagram" name="instagram" type="text" placeholder="Instagram handle/url" />
+
+          <label for="pf-address">Business / Organization Address</label>
+          <input id="pf-address" name="address" type="text" placeholder="123 Main St" />
+          <div style="display:grid;grid-template-columns:1fr 4rem 7rem;gap:0.5rem;">
+            <div><label for="pf-city">City</label><input id="pf-city" name="city" type="text" style="width:100%;" /></div>
+            <div><label for="pf-state">State</label><input id="pf-state" name="state" type="text" maxlength="2" style="width:100%;text-transform:uppercase;" /></div>
+            <div><label for="pf-zip">Zip</label><input id="pf-zip" name="zip" type="text" maxlength="10" style="width:100%;" /></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Participation Type</legend>
+          <p class="pf-note">Please select the primary type of entry you are requesting.</p>
+          <p style="font-weight:600;margin:0.25rem 0;">What type of organization or group are you?</p>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Veteran / Military Organization</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Corporate / Business</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Corporate Sponsor</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Dance Krewe / Dance Group</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Band / Musical Group</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Marching Band</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Car / Motorcycle Club</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Military / Veterans Organization</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Nonprofit / Charity</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> School / University / JROTC</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Civic / Community Organization</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Youth Organization</label>
+              <label class="pf-check"><input type="checkbox" name="org_type" value="true" /> Other</label>
+
+          <label for="est_participants">Estimated Number of Participants</label>
+          <input id="est_participants" name="est_participants" type="number" min="0" />
+
+          <label for="est_vehicles">Estimated Number of Vehicles</label>
+          <input id="est_vehicles" name="est_vehicles" type="number" min="0" />
+
+          <label for="est_riders">Estimated Number of Riders</label>
+          <input id="est_riders" name="est_riders" type="number" min="0" />
+
+          <label for="est_walkers">Estimated Number of Walkers</label>
+          <input id="est_walkers" name="est_walkers" type="number" min="0" />
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Parade Entry Description</legend>
+          <p style="font-weight:600;margin:0.25rem 0;">What are you planning to bring to the parade?</p>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Float</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Trailer(s)</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Vehicle(s)</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Walking Group</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Performers</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Band / Musical Group</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Dance Group</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Combination of the above</label>
+              <label class="pf-check"><input type="checkbox" name="bring" value="true" /> Other</label>
+
+          <label for="entry_description">Describe your parade entry</label>
+          <textarea id="entry_description" name="entry_description" rows="5" placeholder="Tell us what you would like to bring, what it will look like, and what spectators can expect to see &mdash; decorations, music, or other elements."></textarea>
+        </fieldset>
+
+
+        <fieldset class="parade-fs">
+          <legend>Entry Requirements</legend>
+          <p class="pf-note">Please check all that apply.</p>
+            <div class="pf-field">
+              <label>Will your entry include a vehicle?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_vehicle" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_vehicle" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will your entry include a float or trailer?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_float" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_float" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will your entry include music or amplified sound?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_music" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_music" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will your group perform during the parade?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_perform" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_perform" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will you distribute beads, throws, promotional items, or other materials?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_distribute" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_distribute" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will you promote a business, organization, product, service, or cause?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_promote" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_promote" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Will you sell merchandise, food, or other products?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_sell" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_sell" value="no" /> No</label>
+              </div>
+            </div>
+            <div class="pf-field">
+              <label>Do you have any special equipment or requirements?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="req_special" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="req_special" value="no" /> No</label>
+              </div>
+            </div>
+
+          <label for="req_special_explain">If yes, please explain</label>
+          <textarea id="req_special_explain" name="req_special_explain" rows="3"></textarea>
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Vehicle / Float Information</legend>
+          <p class="pf-note">Complete only if applicable.</p>
+          <label for="vf_type">Type / Description</label>
+          <input id="vf_type" name="vf_type" type="text" />
+          <label for="vf_units">Number of Units</label>
+          <input id="vf_units" name="vf_units" type="number" min="0" />
+          <label for="vf_length">Approximate Length (ft)</label>
+          <input id="vf_length" name="vf_length" type="number" min="0" step="0.1" />
+          <label for="vf_width">Approximate Width (ft)</label>
+          <input id="vf_width" name="vf_width" type="number" min="0" step="0.1" />
+          <label for="vf_height">Approximate Height (ft)</label>
+          <input id="vf_height" name="vf_height" type="number" min="0" step="0.1" />
+          <label for="vf_riders">Number of Riders</label>
+          <input id="vf_riders" name="vf_riders" type="number" min="0" />
+          <label for="vf_spotters">Number of Safety Walkers / Spotters</label>
+          <input id="vf_spotters" name="vf_spotters" type="number" min="0" />
+          <label for="vf_driver">Driver / Responsible Operator</label>
+          <input id="vf_driver" name="vf_driver" type="text" />
+          <label for="vf_special">Special Requirements</label>
+          <textarea id="vf_special" name="vf_special" rows="3"></textarea>
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Corporate / Sponsorship Interest</legend>
+          <p style="font-weight:600;margin:0.25rem 0;">Would you or your organization like to support the parade as a sponsor?</p>
+              <label class="pf-check"><input type="checkbox" name="sponsor" value="true" /> Sponsor the Veteran Float (Supporting Those that Served)</label>
+              <label class="pf-check"><input type="checkbox" name="sponsor" value="true" /> Sponsor the Parade</label>
+              <label class="pf-check"><input type="checkbox" name="sponsor" value="true" /> Corporate Sponsor - Float Rental</label>
+              <label class="pf-check"><input type="checkbox" name="sponsor" value="true" /> Corporate Sponsor - Owned Float</label>
+
+          <label for="sponsor_amount">Sponsorship Amount, if known</label>
+          <input id="sponsor_amount" name="sponsor_amount" type="text" placeholder="$" />
+            <div class="pf-field">
+              <label>Would you be interested in providing an in-kind donation or service?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="inkind" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="inkind" value="no" /> No</label>
+              </div>
+            </div>
+
+          <label for="inkind_desc">If yes, please describe</label>
+          <textarea id="inkind_desc" name="inkind_desc" rows="3"></textarea>
+            <div class="pf-field">
+              <label>Would you like your organization recognized in parade marketing and promotional materials?</label>
+              <div class="pf-radio-row">
+                <label class="pf-radio"><input type="radio" name="recognized" value="yes" required /> Yes</label>
+                <label class="pf-radio"><input type="radio" name="recognized" value="no" /> No</label>
+              </div>
+            </div>
+
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Authorized Representative</legend>
+          <label for="rep_org">Organization / Business</label>
+          <input id="rep_org" name="rep_org" type="text" />
+          <label for="rep_name">Authorized Representative</label>
+          <input id="rep_name" name="rep_name" type="text" />
+          <label for="rep_title">Title</label>
+          <input id="rep_title" name="rep_title" type="text" />
+          <label for="rep_signature">Signature</label>
+          <input id="rep_signature" name="rep_signature" type="text" placeholder="Type full name as signature" />
+          <label for="rep_date">Date</label>
+          <input id="rep_date" name="rep_date" type="date" />
+          <label for="rep_phone">Best Contact Phone</label>
+          <input id="rep_phone" name="rep_phone" type="tel" />
+          <label for="rep_email">Best Contact Email</label>
+          <input id="rep_email" name="rep_email" type="email" />
+        </fieldset>
+
+        <fieldset class="parade-fs">
+          <legend>Agreement &amp; Release</legend>
+          <p class="pf-note">
+            I certify that the information provided in this application is true and complete to the best of my knowledge.
+            I understand that submission of this application does not guarantee acceptance into the Krewe Mystique de la Capitale Mardi Gras Parade.
+            If approved, I agree that my organization, participants, representatives, drivers, performers, and volunteers will comply with all parade rules, safety requirements, instructions, deadlines, and applicable laws.
+            I understand that Krewe Mystique de la Capitale reserves the right to deny participation, modify an entry, remove an entry, or take other action when necessary to protect the safety, quality, reputation, or orderly operation of the parade.
+            I further acknowledge that the organization submitting this application is responsible for its participants, vehicles, equipment, property, licenses, insurance, and activities associated with its participation in the parade.
+          </p>
+          <div class="pf-radio-row">
+            <label class="pf-radio"><input type="radio" name="agree" value="agree" required /> I Agree</label>
+            <label class="pf-radio"><input type="radio" name="agree" value="disagree" /> I Disagree</label>
+          </div>
+        </fieldset>
+
+          <p id="parade-feedback" aria-live="polite"></p>
+          <button class="button primary" type="submit" id="parade-submit-button">Submit Application</button>
+        </form>
+        <p>
+          Questions about parade entry? <a href="/contact.html">Contact us</a>
+        </p>
+      </div>
+    </main>
+
+    <script src="script.js?v=20250720e"></script>
+    <script src="auth.js?v=20260809b"></script>
+    <script>
+      // Prefill applicant info for a logged-in member (collect only the extra parade details).
+      (function () {
+        function getMember() {
+          try { if (window.KreweAuth && typeof window.KreweAuth.getCurrentUser === 'function') return window.KreweAuth.getCurrentUser(); } catch (e) {}
+          try { if (window.state && window.state.user) return window.state.user; } catch (e) {}
+          return null;
+        }
+        var m = getMember();
+        if (!m) return;
+        var map = {
+          contact_person: m.full_name || m.name,
+          email: m.email,
+          phone: m.phone,
+          org: m.company_name || m.organization,
+          address: m.address,
+          city: m.city,
+          state: m.state,
+          zip: m.zip
+        };
+        Object.keys(map).forEach(function (k) {
+          var el = document.getElementById('pf-' + k);
+          if (el && map[k]) el.value = map[k];
+        });
+        var w = document.getElementById('pf-welcome');
+        if (w) {
+          w.hidden = false;
+          var first = (m.full_name || m.name || '').split(' ')[0];
+          w.textContent = 'Welcome back' + (first ? ', ' + first : '') + ' \u2014 we pre-filled your details. Please review them and complete the parade entry information below.';
+        }
+      })();
+
+      (function () {
+        var form = document.getElementById('parade-form');
+        var feedback = document.getElementById('parade-feedback');
+        function labelFor(el) {
+          if (el.id) {
+            var l = form.querySelector('label[for="' + el.id + '"]');
+            if (l) return l.textContent.trim();
+          }
+          return '';
+        }
+        function clearInvalid() {
+          form.querySelectorAll('.pf-invalid').forEach(function (n) { n.classList.remove('pf-invalid'); });
+        }
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          clearInvalid();
+          var missing = [];
+
+          form.querySelectorAll('input[required], textarea[required]').forEach(function (el) {
+            if (el.type === 'radio' || el.type === 'checkbox') return;
+            if (!el.value.trim()) {
+              missing.push(labelFor(el) || el.name || el.id);
+              el.classList.add('pf-invalid');
+            }
+          });
+
+          var radioNames = {};
+          form.querySelectorAll('input[type="radio"][required]').forEach(function (rd) { radioNames[rd.name] = true; });
+          Object.keys(radioNames).forEach(function (name) {
+            if (!form.querySelector('input[type="radio"][name="' + name + '"]:checked')) {
+              var first = form.querySelector('input[type="radio"][name="' + name + '"]');
+              var wrap = first ? first.closest('.pf-field') : null;
+              var lab = wrap ? wrap.querySelector('label:not(.pf-radio)') : null;
+              missing.push(lab ? lab.textContent.trim() : name);
+            }
+          });
+
+          if (missing.length) {
+            feedback.style.color = '#ff6b6b';
+            feedback.textContent = 'Please complete the required field(s): ' + missing.join(', ') + '.';
+            var firstInvalid = form.querySelector('.pf-invalid');
+            if (firstInvalid) firstInvalid.focus();
+            feedback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+
+          var formData = new FormData(form);
+          var data = {};
+          formData.forEach(function (value, key) { data[key] = value; });
+          fetch('/api/parade-application', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          })
+          .then(function (rsp) { return rsp.json().catch(function () { return {}; }); })
+          .then(function (res) {
+            if (res && res.error) {
+              feedback.style.color = '#ff6b6b';
+              feedback.textContent = res.error;
+            } else {
+              feedback.style.color = '#7CFC9B';
+              feedback.textContent = 'Your parade application has been submitted. The parade committee will review it and contact you.';
+              form.reset();
+              var w = document.getElementById('pf-welcome');
+              if (w) w.hidden = true;
+            }
+          })
+          .catch(function (err) {
+            feedback.style.color = '#ff6b6b';
+            feedback.textContent = 'We could not submit your application right now. Please try again in a moment.';
+            console.error(err);
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

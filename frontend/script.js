@@ -468,7 +468,7 @@ if (countdownElements.days) {
   }
 
   function isAlbumEnabledPage() {
-    return state.pagePath === '/photos.html' || state.pagePath === '/royal-court.html';
+    return state.pagePath === '/photos.html' || state.pagePath === '/royal-court.html' || state.pagePath === '/parade.html';
   }
 
   async function fetchAlbums() {
@@ -863,11 +863,84 @@ if (countdownElements.days) {
     '<a href="/history.html">History</a>' +
     '<a href="/royal-court.html">Royal Court</a>' +
     '<a href="/photos.html">Photos</a>' +
+    '<a href="/parade.html">Parade</a>' +
+    '<a href="/veterans.html">Veterans</a>' +
+    '<a href="/board.html">Board</a>' +
+    '<a href="/ball.html">Ball</a>' +
     '<a href="/events.html">Events</a>' +
     '<a href="/contact.html">Contact</a>' +
-    '<a href="/register.html" style="display: none;">Join</a>' +
+    '<div class="nav-dropdown">' +
+    '<button type="button" class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">Join</button>' +
+    '<div class="nav-dropdown-menu" role="menu">' +
+    '<a href="/register.html" role="menuitem">Join The Krewe</a>' +
+    '<a href="/join-parade.html" role="menuitem">Join the Parade</a>' +
+    '</div>' +
+    '</div>' +
     '<a href="/shop.html" id="nav-shop-link" style="display:none;">Shop</a>' +
     '</nav>';
+
+  function bindNavDropdown() {
+    if (window.__navDropdownBound) return;
+    window.__navDropdownBound = true;
+
+    function positionMenu(dropdown) {
+      const toggle = dropdown.querySelector('.nav-dropdown-toggle');
+      const menu = dropdown.querySelector('.nav-dropdown-menu');
+      if (!toggle || !menu) return;
+      if (window.matchMedia('(min-width: 901px)').matches) {
+        const rect = toggle.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.top = (rect.bottom + 8) + 'px';
+        menu.style.left = Math.max(8, rect.left) + 'px';
+        menu.style.right = 'auto';
+      } else {
+        menu.style.position = '';
+        menu.style.top = '';
+        menu.style.left = '';
+        menu.style.right = '';
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const toggle = event.target.closest('.nav-dropdown-toggle');
+      if (toggle) {
+        event.preventDefault();
+        const dropdown = toggle.closest('.nav-dropdown');
+        const open = dropdown.classList.toggle('is-open');
+        toggle.setAttribute('aria-expanded', String(open));
+        if (open) positionMenu(dropdown);
+        return;
+      }
+      const dropdown = event.target.closest('.nav-dropdown');
+      if (dropdown && event.target.closest('a')) {
+        dropdown.classList.remove('is-open');
+        const t = dropdown.querySelector('.nav-dropdown-toggle');
+        if (t) t.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      if (!dropdown) {
+        document.querySelectorAll('.nav-dropdown.is-open').forEach((d) => {
+          d.classList.remove('is-open');
+          const t = d.querySelector('.nav-dropdown-toggle');
+          if (t) t.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        document.querySelectorAll('.nav-dropdown.is-open').forEach((d) => {
+          d.classList.remove('is-open');
+          const t = d.querySelector('.nav-dropdown-toggle');
+          if (t) t.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      document.querySelectorAll('.nav-dropdown.is-open').forEach((d) => positionMenu(d));
+    });
+  }
 
   function initHeaderState() {
     // Inject the single-source navigation markup into the placeholder.
@@ -982,6 +1055,10 @@ if (countdownElements.days) {
 
     // Build the mobile hamburger toggle now that #nav-mount is populated.
     initHamburgerNav();
+
+    // Wire the "Join" dropdown (click-to-open on desktop; renders inline
+    // inside the hamburger panel on mobile).
+    bindNavDropdown();
   }
 
   async function fetchCurrentProfile() {

@@ -467,4 +467,89 @@ async function post__api_deny_user(req, res) {
   }
 }
 
-module.exports = { delete__api_admin_calendar_events,get__api_admin_images,get__api_calendar_events,post__api_admin_upload_image,put__api_admin_calendar_events,post__api_join_request,get__api_pending_users,post__api_approve_user,post__api_deny_user };
+async function post__api_parade_application(req, res) {
+  const data = req.body || {};
+  const contact_person = (data.contact_person || '').toString().trim();
+  const email = (data.email || '').toString().trim();
+  const agree = data.agree;
+
+  if (!contact_person || !email) {
+    return res.status(400).json({ error: 'Contact person and email are required' });
+  }
+  if (!isValidEmailAddress(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address' });
+  }
+  if (agree !== 'agree') {
+    return res.status(400).json({ error: 'You must agree to the release to submit your application' });
+  }
+
+  const recipients = (JOIN_REQUEST_RECIPIENTS ? JOIN_REQUEST_RECIPIENTS.split(',').map((s) => s.trim()).filter(Boolean) : []);
+  if (recipients.length === 0 && CONTACT_RECIPIENT) recipients.push(CONTACT_RECIPIENT);
+
+  const normEmail = normalizeEmailAddress(email);
+  const EOL = String.fromCharCode(10);
+  const lines = [];
+  const add = (label, val) => {
+    if (val === undefined || val === null || val === '') return;
+    lines.push(label + ': ' + (Array.isArray(val) ? val.join(', ') : val));
+  };
+  add('Organization / Business', data.organization);
+  add('Name of Parade Entry', data.entry_name);
+  add('Contact Person', contact_person);
+  add('Title', data.title);
+  add('Phone', data.phone);
+  add('Email', normEmail);
+  add('Website', data.website);
+  add('Facebook', data.facebook);
+  add('Instagram', data.instagram);
+  add('Address', [data.address, data.city, data.state, data.zip].filter(Boolean).join(', '));
+  add('Organization Type', data.org_type);
+  add('Est. Participants', data.est_participants);
+  add('Est. Vehicles', data.est_vehicles);
+  add('Est. Riders', data.est_riders);
+  add('Est. Walkers', data.est_walkers);
+  add('Bringing', data.bring);
+  add('Entry Description', data.entry_description);
+  add('Requirements', [data.req_vehicle, data.req_float, data.req_music, data.req_perform, data.req_distribute, data.req_promote, data.req_sell, data.req_special].filter(Boolean).join(', '));
+  add('Special Requirements Notes', data.req_special_explain);
+  add('Vehicle / Float Info', [data.vf_type, data.vf_units, data.vf_length, data.vf_width, data.vf_height, data.vf_riders, data.vf_spotters, data.vf_driver].filter(Boolean).join(' | '));
+  add('Special Vehicle Requirements', data.vf_special);
+  add('Sponsorship Interest', data.sponsor);
+  add('Sponsorship Amount', data.sponsor_amount);
+  add('In-kind Donation', data.inkind);
+  add('In-kind Description', data.inkind_desc);
+  add('Recognized in Marketing', data.recognized);
+  add('Authorized Representative', [data.rep_org, data.rep_name, data.rep_title].filter(Boolean).join(' | '));
+  add('Rep Signature', data.rep_signature);
+  add('Rep Date', data.rep_date);
+  add('Rep Phone', data.rep_phone);
+  add('Rep Email', data.rep_email);
+
+  const emailBody = 'New Krewe Mystique Parade Entry Application' + EOL + EOL + lines.join(EOL) + EOL;
+
+  try {
+    await smtpTransport.sendMail({
+      from: SMTP_FROM,
+      to: recipients.join(', ') || normEmail,
+      replyTo: normEmail,
+      subject: 'New Parade Entry Application' + (data.organization ? ' - ' + data.organization : ''),
+      text: emailBody.trim()
+    });
+    try {
+      await smtpTransport.sendMail({
+        from: SMTP_FROM,
+        to: normEmail,
+        subject: 'Krewe Mystique Parade Application Received',
+        text: 'Thank you for your parade entry application. The parade committee will review it and contact you.' + EOL + EOL + 'Please do not reply to this automated message.'
+      });
+    } catch (confirmErr) {
+      console.error('Failed to send parade applicant confirmation email:', confirmErr);
+    }
+    res.json({ message: 'Parade application submitted successfully' });
+  } catch (error) {
+    console.error('Failed to process parade application:', error);
+    res.status(500).json({ error: 'Unable to submit parade application' });
+  }
+}
+
+module.exports = { delete__api_admin_calendar_events,get__api_admin_images,get__api_calendar_events,post__api_admin_upload_image,put__api_admin_calendar_events,post__api_join_request,get__api_pending_users,post__api_approve_user,post__api_deny_user, post__api_parade_application };
