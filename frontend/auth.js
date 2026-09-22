@@ -2076,9 +2076,11 @@ async function initDashboard() {
   const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : profile.role === 'vendor' ? 'db-badge--vendor' : 'db-badge--member';
   const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : profile.role === 'vendor' ? 'Vendor' : profile.role === 'guest' ? 'Guest' : 'Member';
   // A member who also submitted a parade/vendor application holds both roles, so
-  // show a Vendor badge alongside the primary Member badge.
+  // show a Vendor badge alongside their primary badge. Check the roles array
+  // directly (not profileHasRole, which treats admin as holding every role) and
+  // require company info so the badge only appears for real parade applicants.
   const badgesHtml = [`<span class="db-badge ${badgeClass}">${badgeLabel}</span>`]
-    .concat(profile.role !== 'vendor' && profileHasRole(profile, 'vendor')
+    .concat(profile.role !== 'vendor' && profileRoles(profile).includes('vendor') && (profile.company_name || '').trim()
       ? [`<span class="db-badge db-badge--vendor">Vendor</span>`]
       : [])
     .join(' ');
