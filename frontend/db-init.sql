@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   secondary_contact_name TEXT,
   secondary_contact_email TEXT,
   secondary_contact_phone TEXT,
+  parade_application JSONB,
   vendor_fee_paid_season INTEGER,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

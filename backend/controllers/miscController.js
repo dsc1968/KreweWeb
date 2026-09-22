@@ -170,8 +170,48 @@ async function post__api_join_request(req, res) {
     await client.query('BEGIN');
 
     // Check if email already exists
-    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [normEmail]);
+    const existingUser = await client.query('SELECT id, role, roles FROM users WHERE email = $1', [normEmail]);
     if (existingUser.rowCount > 0) {
+      const u = existingUser.rows[0];
+      const existingRoles = normalizeRoleSet(Array.isArray(u.roles) && u.roles.length ? u.roles : u.role);
+      // A vendor applying to join the krewe keeps the same profile but gains the
+      // member role (true dual member+vendor). Everyone else reusing an email is
+      // a genuine conflict.
+      if (existingRoles.includes('vendor') && !existingRoles.includes('member')) {
+        const mergedRoles = normalizeRoleSet([...existingRoles, 'member']);
+        await client.query('UPDATE users SET roles = $1::jsonb, role = $2 WHERE id = $3', [JSON.stringify(mergedRoles), primaryRole(mergedRoles), u.id]);
+        await client.query(
+          `UPDATE user_profiles
+              SET phone = COALESCE(NULLIF($1, ''), phone), address = COALESCE(NULLIF($2, ''), address),
+                  city = COALESCE(NULLIF($3, ''), city), state = COALESCE(NULLIF($4, ''), state),
+                  zip = COALESCE(NULLIF($5, ''), zip)
+            WHERE user_id = $6`,
+          [phone || '', address || '', city || '', state || '', zip || '', u.id]
+        );
+        await client.query('COMMIT');
+        try {
+          const recipients = JOIN_REQUEST_RECIPIENTS
+            ? JOIN_REQUEST_RECIPIENTS.split(',').map((s) => s.trim()).filter(Boolean)
+            : (CONTACT_RECIPIENT ? [CONTACT_RECIPIENT] : []);
+          if (recipients.length) {
+            await smtpTransport.sendMail({
+              from: SMTP_FROM,
+              to: recipients.join(', '),
+              subject: 'Vendor Requesting Krewe Membership',
+              text: `A vendor has requested krewe membership.\n\nEmail: ${normEmail}\nFull Name: ${full_name}\nPhone: ${normPhone || 'Not provided'}`
+            });
+          }
+          try {
+            await smtpTransport.sendMail({
+              from: SMTP_FROM,
+              to: normEmail,
+              subject: 'Krewe Membership Request Received',
+              text: `Thank you for requesting krewe membership, ${full_name}. We have received your request and will review it and contact you via email.`
+            });
+          } catch (uErr) { console.error('Failed to send vendor membership confirmation:', uErr); }
+        } catch (emailErr) { console.error('Failed to send vendor membership notification:', emailErr); }
+        return res.json({ message: 'Your membership request has been received. We will review it and contact you via email.' });
+      }
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Email already in use' });
     }
@@ -529,6 +569,71 @@ async function post__api_parade_application(req, res) {
 
   const emailBody = 'New Krewe Mystique Parade Entry Application' + EOL + EOL + lines.join(EOL) + EOL;
 
+  // Create or update the vendor account tied to this application. A logged-in
+  // member (matched by email) is badged as a vendor (dual member+vendor); a
+  // brand-new submitter gets a pending vendor login; an existing vendor is left
+  // as-is. The submitted application is stored on the profile so the dashboard
+  // can surface it under the Vendor tab.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT id, role, roles FROM users WHERE email = $1', [normEmail]);
+    let userRoles;
+    let targetUserId;
+    if (existing.rowCount > 0) {
+      const u = existing.rows[0];
+      targetUserId = u.id;
+      userRoles = normalizeRoleSet(Array.isArray(u.roles) && u.roles.length ? u.roles : u.role);
+      if (!userRoles.includes('vendor')) userRoles = normalizeRoleSet([...userRoles, 'vendor']);
+      await client.query(
+        'UPDATE users SET roles = $1::jsonb, role = $2 WHERE id = $3',
+        [JSON.stringify(userRoles), primaryRole(userRoles), u.id]
+      );
+      await client.query(
+        `UPDATE user_profiles
+            SET phone = COALESCE(NULLIF($1, ''), phone),
+                address = COALESCE(NULLIF($2, ''), address),
+                city = COALESCE(NULLIF($3, ''), city),
+                state = COALESCE(NULLIF($4, ''), state),
+                zip = COALESCE(NULLIF($5, ''), zip),
+                company_name = COALESCE(NULLIF($6, ''), company_name)
+          WHERE user_id = $7`,
+        [data.phone || '', data.address || '', data.city || '', data.state || '', data.zip || '', data.organization || '', u.id]
+      );
+    } else {
+      const tempPassword = crypto.randomBytes(4).toString('hex');
+      const hash = bcrypt.hashSync(tempPassword, 10);
+      const vRoles = normalizeRoleSet(['vendor']);
+      const ins = await client.query(
+        `INSERT INTO users (email, full_name, role, roles, password_hash)
+         VALUES ($1, $2, 'disabled', $3::jsonb, $4) RETURNING id`,
+        [normEmail, contact_person, JSON.stringify(vRoles), hash]
+      );
+      targetUserId = ins.rows[0].id;
+      await client.query(
+        `INSERT INTO user_profiles (user_id, phone, address, city, state, zip, company_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [ins.rows[0].id, data.phone || null, data.address || null, data.city || null, data.state || null, data.zip || null, data.organization || null]
+      );
+    }
+    await client.query(
+      `INSERT INTO user_profiles (user_id, parade_application)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (user_id) DO UPDATE SET parade_application = $2::jsonb`,
+      [targetUserId, JSON.stringify(data)]
+    );
+    await client.query('COMMIT');
+  } catch (dbErr) {
+    await client.query('ROLLBACK');
+    console.error('Failed to record parade vendor account:', dbErr);
+    return res.status(500).json({ error: 'Unable to submit parade application' });
+  } finally {
+    client.release();
+  }
+
+  // Best-effort notification: route to the registration addresses and CC the
+  // applicant. The vendor account + application were already saved above, so a
+  // mail failure must not roll back a successful submission.
   try {
     await smtpTransport.sendMail({
       from: SMTP_FROM,
@@ -538,11 +643,10 @@ async function post__api_parade_application(req, res) {
       subject: 'New Parade Entry Application' + (data.organization ? ' - ' + data.organization : ''),
       text: emailBody.trim()
     });
-    res.json({ message: 'Parade application submitted successfully' });
-  } catch (error) {
-    console.error('Failed to process parade application:', error);
-    res.status(500).json({ error: 'Unable to submit parade application' });
+  } catch (emailErr) {
+    console.error('Failed to send parade application email:', emailErr);
   }
+  res.json({ message: 'Parade application submitted successfully' });
 }
 
 module.exports = { delete__api_admin_calendar_events,get__api_admin_images,get__api_calendar_events,post__api_admin_upload_image,put__api_admin_calendar_events,post__api_join_request,get__api_pending_users,post__api_approve_user,post__api_deny_user, post__api_parade_application };

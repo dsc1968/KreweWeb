@@ -866,7 +866,6 @@ if (countdownElements.days) {
     '<a href="/parade.html">Parade</a>' +
     '<a href="/veterans.html">Veterans</a>' +
     '<a href="/board.html">Board</a>' +
-    '<a href="/ball.html">Ball</a>' +
     '<a href="/events.html">Events</a>' +
     '<a href="/contact.html">Contact</a>' +
     '<div class="nav-dropdown">' +

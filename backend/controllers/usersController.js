@@ -82,6 +82,7 @@ async function get__api_admin_users__userId(req, res) {
               p.kids_float_numbers, p.rider_float_numbers, p.rider_float_names,
               p.company_name, p.company_address, p.company_city, p.company_state, p.company_zip,
               p.secondary_contact_name, p.secondary_contact_email, p.secondary_contact_phone,
+              p.parade_application,
               COALESCE(p.dues_paid, false)        AS dues_paid,
               COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
               COALESCE(p.beads_paid, false)       AS beads_paid,
@@ -125,6 +126,7 @@ async function get__api_admin_users__userId(req, res) {
       kids_float_numbers: row.kids_float_numbers || [],
       rider_float_numbers: row.rider_float_numbers || [],
       rider_float_names: row.rider_float_names || [],
+      parade_application: row.parade_application || null,
     });
   } catch (error) {
     console.error('Failed to fetch user details', error);
@@ -331,6 +333,38 @@ async function put__api_admin_users__userId_details(req, res) {
         float_captain, adminFloatId, companyName,
       ]
     );
+    // Vendor-specific fields managed by the admin "Vendor" tab: company address
+    // fields and the parade-entry application. Only fields explicitly included in
+    // the request are updated (hasOwnProperty), so saving other admin tabs never
+    // disturbs these.
+    {
+      const compAddr = typeof req.body.company_address === 'string' ? req.body.company_address.trim().slice(0, 200) : null;
+      const compCity = typeof req.body.company_city === 'string' ? req.body.company_city.trim().slice(0, 100) : null;
+      const compState = typeof req.body.company_state === 'string' ? req.body.company_state.trim().slice(0, 50) : null;
+      const compZip = typeof req.body.company_zip === 'string' ? req.body.company_zip.trim().slice(0, 20) : null;
+      const secName = typeof req.body.secondary_contact_name === 'string' ? req.body.secondary_contact_name.trim().slice(0, 100) : null;
+      const secEmail = typeof req.body.secondary_contact_email === 'string' ? req.body.secondary_contact_email.trim().slice(0, 200) : null;
+      const secPhone = typeof req.body.secondary_contact_phone === 'string' ? req.body.secondary_contact_phone.trim().slice(0, 30) : null;
+      const vendorSets = [];
+      const vendorParams = [userId];
+      const addVendorSet = (col, val) => { vendorParams.push(val); vendorSets.push(col + ' = $' + vendorParams.length); };
+      if (Object.prototype.hasOwnProperty.call(req.body, 'company_address')) addVendorSet('company_address', compAddr);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'company_city')) addVendorSet('company_city', compCity);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'company_state')) addVendorSet('company_state', compState);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'company_zip')) addVendorSet('company_zip', compZip);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'secondary_contact_name')) addVendorSet('secondary_contact_name', secName);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'secondary_contact_email')) addVendorSet('secondary_contact_email', secEmail);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'secondary_contact_phone')) addVendorSet('secondary_contact_phone', secPhone);
+      if (req.body.parade_application && typeof req.body.parade_application === 'object' && !Array.isArray(req.body.parade_application)) {
+        vendorParams.push(JSON.stringify(req.body.parade_application));
+        vendorSets.push('parade_application = $' + vendorParams.length + '::jsonb');
+      }
+      if (vendorSets.length) {
+        vendorSets.push('updated_at = NOW()');
+        await client.query('UPDATE user_profiles SET ' + vendorSets.join(', ') + ' WHERE user_id = $1', vendorParams);
+      }
+    }
+
     // Keep a pending registration's lookup key in sync if an admin edits the
     // email of a still-disabled (pending) account before approving it.
     if (prevRole === 'disabled' && prevEmail && prevEmail !== email) {

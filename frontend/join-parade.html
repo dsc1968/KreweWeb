@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Join the Parade - Krewe Mystique</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260819c" />
   </head>
   <body>
     <header class="site-header">
@@ -102,8 +102,9 @@
         </fieldset>
 
         <fieldset class="parade-fs">
-          <legend>Parade Entry Description</legend>
+          <legend>What Are You Bringing</legend>
           <p style="font-weight:600;margin:0.25rem 0;">What are you planning to bring to the parade?</p>
+              <div class="pf-check-grid">
               <label class="pf-check"><input type="checkbox" name="bring" value="Float" /> Float</label>
               <label class="pf-check"><input type="checkbox" name="bring" value="Trailer(s)" /> Trailer(s)</label>
               <label class="pf-check"><input type="checkbox" name="bring" value="Vehicle(s)" /> Vehicle(s)</label>
@@ -113,6 +114,7 @@
               <label class="pf-check"><input type="checkbox" name="bring" value="Dance Group" /> Dance Group</label>
               <label class="pf-check"><input type="checkbox" name="bring" value="Combination of the above" /> Combination of the above</label>
               <label class="pf-check"><input type="checkbox" name="bring" value="Other" /> Other</label>
+              </div>
 
           <label for="entry_description">Describe your parade entry</label>
           <textarea id="entry_description" name="entry_description" rows="5" placeholder="Tell us what you would like to bring, what it will look like, and what spectators can expect to see &mdash; decorations, music, or other elements."></textarea>
@@ -122,20 +124,6 @@
         <fieldset class="parade-fs">
           <legend>Entry Requirements</legend>
           <p class="pf-note">Please check all that apply.</p>
-            <div class="pf-field">
-              <label>Will your entry include a vehicle?</label>
-              <div class="pf-radio-row">
-                <label class="pf-radio"><input type="radio" name="req_vehicle" value="yes" required /> Yes</label>
-                <label class="pf-radio"><input type="radio" name="req_vehicle" value="no" /> No</label>
-              </div>
-            </div>
-            <div class="pf-field">
-              <label>Will your entry include a float or trailer?</label>
-              <div class="pf-radio-row">
-                <label class="pf-radio"><input type="radio" name="req_float" value="yes" required /> Yes</label>
-                <label class="pf-radio"><input type="radio" name="req_float" value="no" /> No</label>
-              </div>
-            </div>
             <div class="pf-field">
               <label>Will your entry include music or amplified sound?</label>
               <div class="pf-radio-row">
@@ -278,8 +266,8 @@
       </div>
     </main>
 
-    <script src="script.js?v=20250720e"></script>
-    <script src="auth.js?v=20260809b"></script>
+    <script src="script.js?v=20260819d"></script>
+    <script src="auth.js?v=20260819c"></script>
     <script>
       // Prefill applicant info for a logged-in member (collect only the extra parade details).
       (function () {

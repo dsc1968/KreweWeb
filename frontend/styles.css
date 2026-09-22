@@ -1645,6 +1645,40 @@ body.admin-edit-mode .album-tools {
 .uem-panel { display: none; }
 .uem-panel.is-active { display: block; }
 
+/* Dark-theme styling for the editable parade application in the admin Vendor tab.
+   The parade editor is built from shared classes that default to the light form;
+   scope dark surfaces here so it matches the modal. Light theme overrides these
+   via the !important rules further down. */
+#admin-user-edit-modal #uem-parade-app-view .parade-fs {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+}
+#admin-user-edit-modal #uem-parade-app-view .parade-fs > legend {
+  color: #ffd262;
+  font-size: 0.9rem;
+}
+#admin-user-edit-modal #uem-parade-app-view .form-group { margin-bottom: 0.75rem; }
+#admin-user-edit-modal #uem-parade-app-view .form-group > label {
+  font-size: 0.8rem;
+  color: #b8c4e0;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+#admin-user-edit-modal #uem-parade-app-view input:not([type="checkbox"]):not([type="radio"]),
+#admin-user-edit-modal #uem-parade-app-view textarea {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f7ff;
+  font: inherit;
+  box-sizing: border-box;
+}
+#admin-user-edit-modal #uem-parade-app-view .pf-subhead { color: #b8c4e0; }
+#admin-user-edit-modal #uem-parade-app-view .pf-check,
+#admin-user-edit-modal #uem-parade-app-view .pf-radio { color: #f5f7ff; }
+
 /* Admin user-edit modal CSS grids (responsive via classes) */
 .uem-grid-2 {
   display: grid;
@@ -2189,6 +2223,9 @@ body.admin-edit-mode .album-tools {
 :root[data-theme="light"] #admin-user-edit-modal label {
   color: var(--text) !important;
 }
+:root[data-theme="light"] #admin-user-edit-modal .pf-subhead {
+  color: var(--muted) !important;
+}
 :root[data-theme="light"] #admin-user-edit-modal > div > p,
 :root[data-theme="light"] #admin-user-edit-modal .uem-panel > p {
   color: var(--muted) !important;
@@ -2449,6 +2486,18 @@ body.admin-edit-mode .album-tools {
 .pf-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem; margin: 0.3rem 0; cursor: pointer; }
 .pf-radio-row { display: flex; gap: 1.25rem; margin-top: 0.35rem; flex-wrap: wrap; }
 .pf-radio { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; cursor: pointer; }
+/* Keep the form-wide `.auth-card input{width:100%}` rule from stretching the
+   native checkboxes/radios in the parade form: scope them back to a sane size
+   and align the label text with the control. */
+.pf-check, .pf-radio { width: auto; }
+.pf-check input, .pf-radio input { width: 1.1rem; height: 1.1rem; min-width: 1.1rem; margin: 0; flex: 0 0 auto; accent-color: #ffd262; background: transparent; border: none; padding: 0; }
+.pf-check { align-items: flex-start; }
+.pf-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.2rem 1.25rem; margin: 0.25rem 0 0.5rem; }
+.pf-subhead { font-weight: 600; font-size: 0.9rem; margin: 0.6rem 0 0.15rem; color: var(--muted); }
+.pd-parade-dl { display: grid; grid-template-columns: minmax(150px, 30%) 1fr; gap: 0.35rem 1rem; margin: 0; }
+.pd-parade-dl dt { color: #b8c4e0; font-size: 0.82rem; }
+.pd-parade-dl dd { margin: 0; font-size: 0.9rem; word-break: break-word; }
+
 .pf-note { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.75rem; }
 .pf-welcome {
   background: rgba(255, 210, 98, 0.12);

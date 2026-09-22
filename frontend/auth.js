@@ -651,6 +651,7 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         <button type="button" class="uem-tab-btn" data-uem-tab="payment">Payments</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="orders">Orders</button>
         <button type="button" class="uem-tab-btn" data-uem-tab="security">Security</button>
+        <button type="button" class="uem-tab-btn" data-uem-tab="vendor">Vendor</button>
       </div>
 
       <!-- Panel: Personal -->
@@ -766,6 +767,33 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
         </div>
       </div>
 
+      <!-- Panel: Vendor -->
+      <div class="uem-panel" data-uem-panel="vendor">
+        <p style="color:#b8c4e0;font-size:0.88rem;margin:0 0 0.75rem;">Company &amp; secondary-contact details for this vendor:</p>
+        <div class="uem-grid-2">
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Company Name</label>
+            <input id="uem-company-name" type="text" value="${escHtml(full.company_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Company Address</label>
+            <input id="uem-company-address" type="text" value="${escHtml(full.company_address||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Company City</label>
+            <input id="uem-company-city" type="text" value="${escHtml(full.company_city||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Company State</label>
+            <input id="uem-company-state" type="text" value="${escHtml(full.company_state||'')}" maxlength="2" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;text-transform:uppercase;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Company Zip</label>
+            <input id="uem-company-zip" type="text" value="${escHtml(full.company_zip||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Secondary Contact Name</label>
+            <input id="uem-secondary-name" type="text" value="${escHtml(full.secondary_contact_name||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Secondary Contact Email</label>
+            <input id="uem-secondary-email" type="email" value="${escHtml(full.secondary_contact_email||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+          <div class="form-group"><label style="font-size:0.8rem;color:#b8c4e0;display:block;margin-bottom:0.3rem;">Secondary Contact Phone</label>
+            <input id="uem-secondary-phone" type="tel" value="${escHtml(full.secondary_contact_phone||'')}" style="width:100%;padding:0.65rem 0.9rem;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f5f7ff;font:inherit;box-sizing:border-box;" /></div>
+        </div>
+        <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);">
+          <p style="font-size:0.8rem;color:#b8c4e0;margin:0 0 0.5rem;">Parade Entry Application:</p>
+          <div id="uem-parade-app-view" style="font-size:0.88rem;"></div>
+        </div>
+      </div>
+
       <!-- Always-visible footer -->
       <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
         <button type="button" id="uem-save" class="button">Save Changes</button>
@@ -777,6 +805,12 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
   document.body.appendChild(backdrop);
 
   attachPhoneFormatter(backdrop.querySelector('#uem-phone'));
+  // Render the editable parade-entry application (if any) inside the Vendor panel.
+  try {
+    const paView = backdrop.querySelector('#uem-parade-app-view');
+    if (paView) renderParadeAppEditor(paView, full.parade_application);
+  } catch (_e) { console.error('Failed to render parade application editor', _e); }
+
 
   // Wire the close controls first — before any await or DOM step below that
   // could throw — so the overlay can always be dismissed and never traps the
@@ -1097,6 +1131,15 @@ async function openUserEditModal(user, currentUserId, onUpdate) {
       member_float_number: full.member_float_number || '',
       mfa_method: (backdrop.querySelector('#uem-mfa-method')?.value) || 'email',
       mfa_enrolled: backdrop.querySelector('#uem-mfa-method')?.value !== 'none',
+      company_name: backdrop.querySelector('#uem-company-name')?.value.trim() || null,
+      company_address: backdrop.querySelector('#uem-company-address')?.value.trim() || null,
+      company_city: backdrop.querySelector('#uem-company-city')?.value.trim() || null,
+      company_state: (backdrop.querySelector('#uem-company-state')?.value.trim() || '').toUpperCase() || null,
+      company_zip: backdrop.querySelector('#uem-company-zip')?.value.trim() || null,
+      secondary_contact_name: backdrop.querySelector('#uem-secondary-name')?.value.trim() || null,
+      secondary_contact_email: backdrop.querySelector('#uem-secondary-email')?.value.trim() || null,
+      secondary_contact_phone: backdrop.querySelector('#uem-secondary-phone')?.value.trim() || null,
+      parade_application: baseSel === 'vendor' ? collectParadeAppEditor(backdrop.querySelector('#uem-parade-app-view')) : null,
     };
     // Read current payment state from checkboxes (managed exclusively by PATCH /payments)
     const currentPayments = {
@@ -1702,7 +1745,7 @@ async function initProfileDetailsForm(profile) {
 
   // Vendor company + secondary-contact details. Only vendor accounts see and
   // edit these, so reveal the section for them and pre-fill from the profile.
-  const isVendorProfile = profile.role === 'vendor';
+  const isVendorProfile = profile.role === 'vendor' || (Array.isArray(profile.roles) && profile.roles.includes('vendor'));
   const vendorSection = document.getElementById('pd-vendor-section');
   if (vendorSection) {
     vendorSection.style.display = isVendorProfile ? 'block' : 'none';
@@ -1717,6 +1760,12 @@ async function initProfileDetailsForm(profile) {
       set('pd-secondary-phone',  profile.secondary_contact_phone);
     }
   }
+  // Vendor parade-entry application: only vendors see/edit it.
+  const paradeSection = document.getElementById('pd-parade-section');
+  if (paradeSection) paradeSection.style.display = isVendorProfile ? 'block' : 'none';
+  const pdPaEl = document.getElementById('pd-parade-app');
+  if (pdPaEl) renderParadeAppEditor(pdPaEl, isVendorProfile ? (profile.parade_application || {}) : {});
+
 
   // Load the floats defined by the float admin so both the member's own float
   // and each rider row can offer a constrained, consistent float picker.
@@ -1896,6 +1945,7 @@ async function initProfileDetailsForm(profile) {
           company_zip: isVendorProfile ? (document.getElementById('pd-company-zip')?.value.trim() || null) : null,
           secondary_contact_name: isVendorProfile ? (document.getElementById('pd-secondary-name')?.value.trim() || null) : null,
           secondary_contact_email: isVendorProfile ? (document.getElementById('pd-secondary-email')?.value.trim() || null) : null,
+          parade_application: isVendorProfile ? collectParadeAppEditor() : null,
           secondary_contact_phone: isVendorProfile ? (document.getElementById('pd-secondary-phone')?.value.trim() || null) : null,
           float_captain: !!profile.captain_of,
         }),
@@ -2025,6 +2075,14 @@ async function initDashboard() {
 
   const badgeClass = profile.role === 'admin' ? 'db-badge--admin' : profile.role === 'store_admin' ? 'db-badge--store-admin' : profile.role === 'float_admin' ? 'db-badge--float-admin' : profile.role === 'finance_admin' ? 'db-badge--finance-admin' : profile.role === 'vendor' ? 'db-badge--vendor' : 'db-badge--member';
   const badgeLabel = profile.role === 'admin' ? 'Admin' : profile.role === 'store_admin' ? 'Store Admin' : profile.role === 'float_admin' ? 'Float Admin' : profile.role === 'finance_admin' ? 'Finance Admin' : profile.role === 'vendor' ? 'Vendor' : profile.role === 'guest' ? 'Guest' : 'Member';
+  // A member who also submitted a parade/vendor application holds both roles, so
+  // show a Vendor badge alongside the primary Member badge.
+  const badgesHtml = [`<span class="db-badge ${badgeClass}">${badgeLabel}</span>`]
+    .concat(profile.role !== 'vendor' && profileHasRole(profile, 'vendor')
+      ? [`<span class="db-badge db-badge--vendor">Vendor</span>`]
+      : [])
+    .join(' ');
+
 
   function payBadgeHtml(paid, label) {
     const c = paid ? '#4ade80' : '#f87171';
@@ -2042,7 +2100,7 @@ async function initDashboard() {
       <ul class="db-hero-meta">
         <li><strong>Email:</strong> ${profile.email}</li>
         <li><strong>Member since:</strong> ${new Date(profile.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</li>
-        <li><span class="db-badge ${badgeClass}">${badgeLabel}</span></li>
+        <li style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">${badgesHtml}</li>
         <li id="db-payment-status-li" style="display:${profile.role !== 'guest' ? 'flex' : 'none'};gap:0.75rem;flex-wrap:wrap;align-items:center;">
           ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.role === 'vendor' ? profile.vendor_fee_paid : profile.dues_paid), profile.role === 'vendor' ? 'Vendor Fee' : 'Dues') : ''}
           ${profile.role !== 'guest' ? payBadgeHtml(Boolean(profile.guest_fee_paid), 'Guest Fee') : ''}
@@ -5211,3 +5269,220 @@ function initAuthPages() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAuthPages);
 else initAuthPages();
 
+/* ============ Parade Entry Application — dashboard editor + admin read-only ============ */
+/* Mirrors the public "Join the Parade" form so a vendor can review/edit everything
+   and an admin can see the full submission inline. */
+const PARADE_APP_SCHEMA = [
+  { legend: 'Applicant Information', fields: [
+    { name: 'organization', label: 'Organization / Business Name', type: 'text' },
+    { name: 'entry_name', label: 'Name of Parade Entry', type: 'text' },
+    { name: 'contact_person', label: 'Contact Person', type: 'text' },
+    { name: 'title', label: 'Title', type: 'text' },
+    { name: 'phone', label: 'Phone', type: 'tel' },
+    { name: 'email', label: 'Email', type: 'email' },
+    { name: 'website', label: 'Website', type: 'url' },
+    { name: 'facebook', label: 'Facebook', type: 'text' },
+    { name: 'instagram', label: 'Instagram', type: 'text' },
+    { name: 'address', label: 'Business / Organization Address', type: 'text' },
+    { name: 'city', label: 'City', type: 'text' },
+    { name: 'state', label: 'State', type: 'text' },
+    { name: 'zip', label: 'Zip', type: 'text' }
+  ]},
+  { legend: 'Participation Type', fields: [
+    { name: 'org_type', label: 'Organization / Group Type', type: 'checkbox', options: ['Veteran / Military Organization','Corporate / Business','Corporate Sponsor','Dance Krewe / Dance Group','Band / Musical Group','Marching Band','Car / Motorcycle Club','Military / Veterans Organization','Nonprofit / Charity','School / University / JROTC','Civic / Community Organization','Youth Organization','Other'] },
+    { name: 'est_participants', label: 'Estimated Participants', type: 'number' },
+    { name: 'est_vehicles', label: 'Estimated Vehicles', type: 'number' },
+    { name: 'est_riders', label: 'Estimated Riders', type: 'number' },
+    { name: 'est_walkers', label: 'Estimated Walkers', type: 'number' }
+  ]},
+  { legend: 'What Are You Bringing', fields: [
+    { name: 'bring', label: 'Bringing', type: 'checkbox', options: ['Float','Trailer(s)','Vehicle(s)','Walking Group','Performers','Band / Musical Group','Dance Group','Combination of the above','Other'] },
+    { name: 'entry_description', label: 'Describe your parade entry', type: 'textarea' }
+  ]},
+  { legend: 'Vehicle / Float Information', fields: [
+    { name: 'vf_type', label: 'Type / Description', type: 'text' },
+    { name: 'vf_units', label: 'Number of Units', type: 'number' },
+    { name: 'vf_length', label: 'Approximate Length (ft)', type: 'number' },
+    { name: 'vf_width', label: 'Approximate Width (ft)', type: 'number' },
+    { name: 'vf_height', label: 'Approximate Height (ft)', type: 'number' },
+    { name: 'vf_riders', label: 'Number of Riders', type: 'number' },
+    { name: 'vf_spotters', label: 'Number of Safety Walkers / Spotters', type: 'number' },
+    { name: 'vf_driver', label: 'Driver / Responsible Operator', type: 'text' },
+    { name: 'vf_special', label: 'Special Requirements', type: 'textarea' }
+  ]},
+  { legend: 'Sponsorship', fields: [
+    { name: 'sponsor', label: 'Sponsorship Interest', type: 'checkbox', options: ['Sponsor the Veteran Float (Supporting Those that Served)','Sponsor the Parade','Corporate Sponsor - Float Rental','Corporate Sponsor - Owned Float'] },
+    { name: 'sponsor_amount', label: 'Sponsorship Amount', type: 'text' },
+    { name: 'inkind', label: 'In-kind donation interest', type: 'radio', options: ['yes','no'] },
+    { name: 'inkind_desc', label: 'In-kind description', type: 'textarea' },
+    { name: 'recognized', label: 'Recognized in marketing', type: 'radio', options: ['yes','no'] }
+  ]},
+  { legend: 'Entry Requirements', fields: [
+    { name: 'req_music', label: 'Include music or amplified sound?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_perform', label: 'Perform during the parade?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_distribute', label: 'Distribute beads / throws / materials?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_promote', label: 'Promote a business / cause?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_sell', label: 'Sell merchandise / food?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_special', label: 'Special equipment or requirements?', type: 'radio', options: ['yes','no'] },
+    { name: 'req_special_explain', label: 'If yes, please explain', type: 'textarea' }
+  ]},
+  { legend: 'Authorized Representative', fields: [
+    { name: 'rep_org', label: 'Organization / Business', type: 'text' },
+    { name: 'rep_name', label: 'Authorized Representative', type: 'text' },
+    { name: 'rep_title', label: 'Title', type: 'text' },
+    { name: 'rep_signature', label: 'Signature', type: 'text' },
+    { name: 'rep_date', label: 'Date', type: 'date' },
+    { name: 'rep_phone', label: 'Best Contact Phone', type: 'tel' },
+    { name: 'rep_email', label: 'Best Contact Email', type: 'email' }
+  ]}
+];
+
+function buildParadeField(f, value) {
+  if (f.type === 'checkbox') {
+    const wrap = document.createElement('div');
+    const head = document.createElement('div');
+    head.className = 'pf-subhead';
+    head.textContent = f.label;
+    wrap.appendChild(head);
+    const grid = document.createElement('div');
+    grid.className = 'pf-check-grid';
+    const vals = Array.isArray(value) ? value : (value ? [value] : []);
+    (f.options || []).forEach(function (opt) {
+      const lab = document.createElement('label');
+      lab.className = 'pf-check';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.name = f.name; cb.value = opt;
+      if (vals.indexOf(opt) !== -1) cb.checked = true;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + opt));
+      grid.appendChild(lab);
+    });
+    wrap.appendChild(grid);
+    return wrap;
+  }
+  if (f.type === 'radio') {
+    const wrap = document.createElement('div');
+    const head = document.createElement('div');
+    head.className = 'pf-subhead';
+    head.textContent = f.label;
+    wrap.appendChild(head);
+    const row = document.createElement('div');
+    row.className = 'pf-radio-row';
+    (f.options || []).forEach(function (opt) {
+      const lab = document.createElement('label');
+      lab.className = 'pf-radio';
+      const rb = document.createElement('input');
+      rb.type = 'radio'; rb.name = f.name; rb.value = opt;
+      if (value === opt) rb.checked = true;
+      lab.appendChild(rb);
+      lab.appendChild(document.createTextNode(' ' + opt));
+      row.appendChild(lab);
+    });
+    wrap.appendChild(row);
+    return wrap;
+  }
+  if (f.type === 'textarea') {
+    const wrap = document.createElement('div');
+    wrap.className = 'form-group';
+    const lbl = document.createElement('label');
+    lbl.textContent = f.label;
+    const ta = document.createElement('textarea');
+    ta.id = 'pf-' + f.name; ta.name = f.name; ta.rows = 4;
+    ta.style.width = '100%';
+    ta.value = (value == null ? '' : String(value));
+    wrap.appendChild(lbl); wrap.appendChild(ta);
+    return wrap;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'form-group';
+  const lbl = document.createElement('label');
+  lbl.textContent = f.label;
+  lbl.setAttribute('for', 'pf-' + f.name);
+  const inp = document.createElement('input');
+  inp.type = f.type; inp.id = 'pf-' + f.name; inp.name = f.name;
+  if (value != null) inp.value = value;
+  wrap.appendChild(lbl); wrap.appendChild(inp);
+  return wrap;
+}
+
+function renderParadeAppEditor(container, data) {
+  data = data || {};
+  container.innerHTML = '';
+  PARADE_APP_SCHEMA.forEach(function (section) {
+    const fs = document.createElement('fieldset');
+    fs.className = 'parade-fs';
+    const lg = document.createElement('legend');
+    lg.textContent = section.legend;
+    fs.appendChild(lg);
+    section.fields.forEach(function (f) {
+      fs.appendChild(buildParadeField(f, data[f.name]));
+    });
+    container.appendChild(fs);
+  });
+}
+
+function collectParadeAppEditor(container) {
+  container = container || document.getElementById('pd-parade-app');
+  const out = {};
+  if (!container) return out;
+  PARADE_APP_SCHEMA.forEach(function (section) {
+    section.fields.forEach(function (f) {
+      if (f.type === 'checkbox') {
+        const checked = Array.prototype.slice.call(
+          container.querySelectorAll('input[type="checkbox"][name="' + f.name + '"]:checked')
+        ).map(function (cb) { return cb.value; });
+        out[f.name] = checked;
+      } else if (f.type === 'radio') {
+        const sel = container.querySelector('input[type="radio"][name="' + f.name + '"]:checked');
+        out[f.name] = sel ? sel.value : '';
+      } else {
+        const el = container.querySelector('[name="' + f.name + '"]');
+        out[f.name] = el ? el.value.trim() : '';
+      }
+    });
+  });
+  return out;
+}
+
+function formatParadeValue(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+  return String(v);
+}
+
+function appendParadeRow(dl, label, value) {
+  if (!value) return;
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  dd.textContent = value;
+  dl.appendChild(dt);
+  dl.appendChild(dd);
+}
+
+function renderParadeAppReadonly(container, data) {
+  data = data || {};
+  container.innerHTML = '';
+  if (!data || Object.keys(data).length === 0) {
+    const p = document.createElement('p');
+    p.style.color = '#8ea0c4';
+    p.textContent = 'No parade entry application submitted yet.';
+    container.appendChild(p);
+    return;
+  }
+  const dl = document.createElement('dl');
+  dl.className = 'pd-parade-dl';
+  const seen = {};
+  PARADE_APP_SCHEMA.forEach(function (section) {
+    section.fields.forEach(function (f) {
+      seen[f.name] = true;
+      appendParadeRow(dl, f.label, formatParadeValue(data[f.name]));
+    });
+  });
+  Object.keys(data).forEach(function (k) {
+    if (seen[k]) return;
+    appendParadeRow(dl, k, formatParadeValue(data[k]));
+  });
+  container.appendChild(dl);
+}

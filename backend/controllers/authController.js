@@ -541,6 +541,7 @@ async function get__api_profile(req, res) {
               p.company_name, p.company_address, p.company_city, p.company_state,
               p.company_zip, p.secondary_contact_name, p.secondary_contact_email,
               p.secondary_contact_phone,
+              p.parade_application,
               COALESCE(p.dues_paid, false)        AS dues_paid,
               COALESCE(p.guest_fee_paid, false)   AS guest_fee_paid,
               COALESCE(p.beads_paid, false)       AS beads_paid,
@@ -566,6 +567,7 @@ async function get__api_profile(req, res) {
     res.json({
       ...row,
       captain_of,
+      parade_application: row.parade_application || null,
       roles: normalizeRoleSet(Array.isArray(row.roles) && row.roles.length ? row.roles : row.role),
       mfa_mode: mode,
       mfa_available_methods: getAvailableMfaMethods(),
@@ -630,6 +632,13 @@ async function put__api_profile_details(req, res) {
   const secondary_contact_name  = typeof req.body.secondary_contact_name  === 'string' ? req.body.secondary_contact_name.trim().slice(0, 100) : null;
   const secondary_contact_email = typeof req.body.secondary_contact_email === 'string' ? req.body.secondary_contact_email.trim().slice(0, 200) : null;
   const secondary_contact_phone = typeof req.body.secondary_contact_phone === 'string' ? req.body.secondary_contact_phone.trim().slice(0, 30) : null;
+  // Vendor parade-entry application (full object captured by the Join the Parade form).
+  // Only stored when the caller supplies a plain object, so unrelated saves
+  // never clear it.
+  let paradeApplication = null;
+  if (req.body.parade_application && typeof req.body.parade_application === 'object' && !Array.isArray(req.body.parade_application)) {
+    paradeApplication = req.body.parade_application;
+  }
   // The member's chosen MFA method (from the profile form). Accept the values
   // the UI offers; coerce anything unexpected back to the default 'email'.
   const mfa_method = (typeof req.body.mfa_method === 'string' && ['none', 'email', 'sms', 'authenticator'].includes(req.body.mfa_method))
@@ -808,6 +817,15 @@ async function put__api_profile_details(req, res) {
         secondary_contact_phone||null,
       ]
     );
+    // Persist the vendor parade-entry application (stored as JSONB). Kept as a
+    // separate statement so the large base-profile upsert above is untouched.
+    if (paradeApplication) {
+      await pool.query(
+        'UPDATE user_profiles SET parade_application = $2::jsonb, updated_at = NOW() WHERE user_id = $1',
+        [userId, JSON.stringify(paradeApplication)]
+      );
+    }
+
     // For the authenticator app we defer committing mfa_method until the
     // TOTP code is verified (enrollment), so we don't update it here.
     if (mfa_method !== 'authenticator') {

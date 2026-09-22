@@ -106,12 +106,17 @@ function normalizeRoleSet(input) {
   let base;
   if (set.has('disabled')) base = 'disabled';
   else if (set.has('admin')) base = 'admin';
+  else if (set.has('member')) base = 'member';
+  else if (set.has('guest')) base = 'guest';
   else if (set.has('vendor')) base = 'vendor';
-  else if (set.has('guest') && !set.has('member')) base = 'guest';
   else base = 'member';
   const result = [base];
   if (base === 'member') {
     for (const cap of CAPABILITY_ROLES) if (set.has(cap)) result.push(cap);
+    // A member who is also a parade vendor holds BOTH roles (a true dual
+    // representation) rather than having the vendor status collapse into the
+    // member base. Standalone vendors (no member) keep the sole 'vendor' base.
+    if (set.has('vendor')) result.push('vendor');
   }
   return result;
 }

@@ -44,8 +44,13 @@ describe('normalizeRoleSet', () => {
     expect(normalizeRoleSet('')).toEqual(['member']);
   });
 
-  test('vendor base wins over a member capability', () => {
-    expect(normalizeRoleSet(['vendor', 'member'])).toEqual(['vendor']);
+  test('member + vendor coexist as a true dual role', () => {
+    expect(normalizeRoleSet(['vendor', 'member'])).toEqual(['member', 'vendor']);
+    expect(normalizeRoleSet(['member', 'vendor'])).toEqual(['member', 'vendor']);
+  });
+
+  test('a standalone vendor keeps the vendor base with no member', () => {
+    expect(normalizeRoleSet(['vendor'])).toEqual(['vendor']);
   });
 });
 

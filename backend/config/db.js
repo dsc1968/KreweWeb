@@ -458,6 +458,9 @@ async function ensureContentTable() {
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS secondary_contact_phone TEXT',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS vendor_fee_paid BOOLEAN NOT NULL DEFAULT FALSE',
     'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS vendor_fee_paid_season INTEGER',
+    // Vendor parade-entry application: the complete Join-the-Parade form payload
+    // stored as JSONB so the vendor (and admin) can view/edit it from the profile.
+    'ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS parade_application JSONB',
     'ALTER TABLE floats ADD COLUMN IF NOT EXISTS capacity INTEGER',
     "ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending'",
   ]) {

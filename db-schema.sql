@@ -547,6 +547,7 @@ CREATE TABLE public.user_profiles (
     secondary_contact_name text,
     secondary_contact_email text,
     secondary_contact_phone text,
+    parade_application jsonb,
     vendor_fee_paid boolean DEFAULT false NOT NULL,
     vendor_fee_paid_season integer
 );
