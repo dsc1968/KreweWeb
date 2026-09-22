@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict OqioJAipXlDajIahthLecYG1etcS7XS5nSs2SGuhpwQOz51w68MEYVZNW8dIBXK
+\restrict HJgYIb561m4pQYV3OtlWysRZ5LFZPHSYofS3qj7wMuwPqWxgrjmO8NBXyf8j6Sy
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -547,9 +547,9 @@ CREATE TABLE public.user_profiles (
     secondary_contact_name text,
     secondary_contact_email text,
     secondary_contact_phone text,
-    parade_application jsonb,
     vendor_fee_paid boolean DEFAULT false NOT NULL,
-    vendor_fee_paid_season integer
+    vendor_fee_paid_season integer,
+    parade_application jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -1024,5 +1024,5 @@ ALTER TABLE ONLY public.user_profiles
 -- PostgreSQL database dump complete
 --
 
-\unrestrict OqioJAipXlDajIahthLecYG1etcS7XS5nSs2SGuhpwQOz51w68MEYVZNW8dIBXK
+\unrestrict HJgYIb561m4pQYV3OtlWysRZ5LFZPHSYofS3qj7wMuwPqWxgrjmO8NBXyf8j6Sy
 
